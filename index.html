@@ -748,7 +748,7 @@ const built=id=>!!(S.sys[id] && S.sys[id].built);
 // game doesn't drift into the hundreds with nothing to spend it on. Food,
 // water, and seeds aren't capped here — they're already bounded by spoilage,
 // tank size, and regular sowing respectively.
-const RES_CAP = {scrap:120, parts:60};
+const RES_CAP = {scrap:120, parts:60, wood:150};
 function addRes(k, amt){
   if(amt<=0) return 0;
   const cap = RES_CAP[k];
@@ -822,7 +822,10 @@ const PROJECTS = [
   {id:"coldFrames",  name:"Cold frames",           cost:{scrap:6, seeds:6},  work:16, gate:{sys:"irrigation"}, blurb:"Glass over good soil. A few beds keep growing straight through winter frost, and you can sow out of season."},
   {id:"herbalStores",name:"Herbal stores",         cost:{meds:6, seeds:3},   work:12, gate:{discover:true}, blurb:"Dried, labeled, jarred. Illness comes less often and leaves sooner."},
   {id:"oilPress",    name:"Oil press",             cost:{scrap:7, parts:3},  work:14, gate:{crop:"sunflower"}, blurb:"A hand crank and a screw. Turns seed into oil, if someone's willing to stand there and turn it."},
-  {id:"compost",     name:"Compost bins",          cost:{scrap:3},           work:8,  blurb:"What spoils and what's trimmed away doesn't have to just be gone. Turned rot closes the loop back into the beds — tired soil recovers faster."}
+  {id:"compost",     name:"Compost bins",          cost:{scrap:3},           work:8,  blurb:"What spoils and what's trimmed away doesn't have to just be gone. Turned rot closes the loop back into the beds — tired soil recovers faster."},
+  {id:"woodStove", name:"Masonry Heater", cost:{scrap:10, parts:4}, work:16, blurb:"A heavy stone hearth in the Commons. Burns wood slowly and holds the heat for hours. Crucial for winter survival."},
+  {id:"earthBerming", name:"Earth-bermed Walls", cost:{scrap:15}, work:25, blurb:"Packing earth and tires against the north walls of the Commons and sickbed. Passive solarpunk insulation. permanently softens extreme heat and cold."}
+
 ];
 
 const WEATHERS = [
@@ -1365,7 +1368,7 @@ function freshPerson(def){
 function newState(){
   return {
     v:5, day:1, lastTick:Date.now(),
-    res:{food:58, water:50, charge:4, scrap:6, parts:0, seeds:8, meds:0, rawSeed:0},
+    res:{food:58, water:50, charge:4, scrap:6, parts:0, seeds:8, meds:0, rawSeed:0, wood:10},
     larder:1,
     weather:"clear",
     people: ROSTER.map(freshPerson),
@@ -1398,6 +1401,11 @@ function newState(){
     festivalCooldown: 0, festivalBoostDays: 0,  // a deliberate sink for surplus food/oil — see holdFestival()
     compost: 0,  // built up from spoilage/preserving loss once compost bins exist; spread onto
                  // whichever bed or forest plot needs it most (see the compost phase below)
+
+    bonds: {},          // Keyed by "char1Id:char2Id", value is a float (0 to 10)
+    activeConflicts: [],// Array of current interpersonal issues
+    earthseedUnlocked: false, // Set to true once the Commons or a specific milestone is reached
+
     lastForageDay: -999,  // safely far in the past so "hasForaged" starts false, not undefined
     fabs: {}, fabProject: null,
     births: 0, deaths: 0, departures: 0,
@@ -1504,6 +1512,7 @@ function applyFounders(s, founderIds){
 }
 
 function migrate(s){
+
   if(s.v<2){
     s.v=2;
     Object.assign(s.res,{scrap:4,parts:0,seeds:0,meds:0});
@@ -1586,6 +1595,7 @@ function migrate(s){
     }
     s.v=5;
   }
+  if(s.res.wood === undefined) s.res.wood = 0;
   // beds track garden slots, however they were gained
   while(s.beds.length < 1 + (s.flags.gardenBeds?1:0) + (s.flags.terraces?1:0))
     s.beds.push({crop:null,growth:0,days:0,ready:false,stored:0,fertility:75,plantedDay:0});
@@ -1633,7 +1643,7 @@ const PRACTICE_SPECIFIC_DECAY = 0.0023;   // per day NOT worked -> ~300-day half
 const PRACTICE_BROAD_DECAY = 0.00115;     // per day NOT worked -> ~600-day half-life (slower: general handiness is stickier than one task)
 
 const JOB_PRACTICE = {
-  turbine:{specific:"turbine", broad:"hands"}, solar:{specific:"solar", broad:"hands"},
+  turbine:{specific:"turbine", broad:"hands"}, solar:{specific:"solar", broad:"hands"}, woodcut:{specific:"woodcut", broad:"wild"},
   battery:{specific:"battery", broad:"hands"}, catchment:{specific:"catchment", broad:"hands"},
   aquaponics:{specific:"aquaponics", broad:"hands"}, irrigation:{specific:"irrigation", broad:"hands"},
   commons:{specific:"commons", broad:"hands"},
@@ -2105,7 +2115,11 @@ function tickExpeditions(lines){
 const EVENTS = [
   {
     id:"stranger",
-    when:()=>S.newcomerIdx<S.arrivalQueue.length && !S.people.some(p=>p.id===S.arrivalQueue[S.newcomerIdx].id),
+    when:()=> {
+      const isHappyEnough = (S.lowSpiritsStreak || 0) < 5;
+      return isHappyEnough && S.newcomerIdx < S.arrivalQueue.length && !S.people.some(p=>p.id===S.arrivalQueue[S.newcomerIdx].id);
+    },    
+//    when:()=>S.newcomerIdx<S.arrivalQueue.length && !S.people.some(p=>p.id===S.arrivalQueue[S.newcomerIdx].id),
     roll:()=>({}),
     view:()=>{
       const n=S.arrivalQueue[S.newcomerIdx];
@@ -2136,7 +2150,11 @@ const EVENTS = [
   },
   {
     id:"strangerProc",
-    when:()=>S.flags.radioContact && S.newcomerIdx>=S.arrivalQueue.length,
+    when:()=> {
+      const isHappyEnough = (S.lowSpiritsStreak || 0) < 5;
+      return isHappyEnough && S.flags.radioContact && S.newcomerIdx>=S.arrivalQueue.length;
+    },  
+//  when:()=>S.flags.radioContact && S.newcomerIdx>=S.arrivalQueue.length,
     roll:()=>rollStranger(),
     view:ctx=>({
       title:"Someone on the road, again",
@@ -2316,6 +2334,163 @@ function maybeSpawnEvent(){
   if(stranger && Math.random()<0.3*((S.f||{}).strangerRate||1)*repMult) choice=stranger;
   S.event={defId:choice.id, ctx:choice.roll()};
 }
+
+function tickRelationships() {
+  S.bonds = S.bonds || {};
+  
+  // 1. Working together (for jobs that allow multiple people, like garden/preserve)
+  const jobs = {};
+  for (const p of S.people) {
+    if (p.job && p.status !== "away" && p.status !== "down") {
+      if (!jobs[p.job]) jobs[p.job] = [];
+      jobs[p.job].push(p.id);
+    }
+  }
+  for (const [jobId, workers] of Object.entries(jobs)) {
+    if (workers.length > 1) {
+      modifyBonds(workers, 0.04); 
+    }
+  }
+
+  // 2. Resting together in the Commons
+  const resting = S.people.filter(p => p.job === null && p.status === "ok").map(p => p.id);
+  if (resting.length > 1) {
+    modifyBonds(resting, 0.03); // Slightly slower but much more common
+  }
+
+  // 3. Caretaker and Patient bonding
+  const caretaker = S.people.find(p => p.job === "care" && p.status === "ok");
+  if (caretaker) {
+    const patients = S.people.filter(p => p.status === "down" || p.status === "spent").map(p => p.id);
+    for (const pid of patients) {
+      const key = [caretaker.id, pid].sort().join(":");
+      S.bonds[key] = Math.min(10, (S.bonds[key] || 0) + 0.08); // Fast bonding through vulnerability
+    }
+  }
+  for (const ex of S.expeditions) {
+  // Only bond characters who are actually in the active party and not dead/gone
+    const travelers = ex.party.filter(pid => byId(pid)); 
+    if (travelers.length > 1) {
+      // Surviving the road builds bonds quickly
+      modifyBonds(travelers, 0.08); 
+  }
+}
+}
+
+function tickDinnerBonds(hunger, commonsCond) {
+  if (hunger > 0 || commonsCond < 50) return; // No bonding during a cold, hungry night
+
+  // Find everyone present in the village for dinner
+  const diners = S.people
+    .filter(p => p.status !== "away" && p.status !== "down")
+    .map(p => p.id);
+
+  if (diners.length <= 1) return;
+
+  S.bonds = S.bonds || {};
+
+  for (let i = 0; i < diners.length; i++) {
+    for (let j = i + 1; j < diners.length; j++) {
+      const key = [diners[i], diners[j]].sort().join(":");
+      const currentBond = S.bonds[key] || 0;
+
+      // Baseline dinner boost
+      let boost = 0.02; 
+
+      // If they already have a meaningful connection, the bond deepens faster
+      if (currentBond > 1.0) {
+        boost = 0.05; 
+      }
+
+      S.bonds[key] = Math.min(10, currentBond + boost);
+    }
+  }
+}
+
+
+function modifyBonds(ids, amt) {
+  for (let i = 0; i < ids.length; i++) {
+    for (let j = i + 1; j < ids.length; j++) {
+      const key = [ids[i], ids[j]].sort().join(":");
+      S.bonds[key] = Math.min(10, (S.bonds[key] || 0) + amt);
+    }
+  }
+}
+
+
+//put new functions here
+
+function tickVillageSpiritsStreak() {
+  if (!S.people.length) return;
+
+  const avgWb = S.people.reduce((a, p) => a + p.wb, 0) / S.people.length;
+  
+  if (avgWb < 40) {
+    S.lowSpiritsStreak = (S.lowSpiritsStreak || 0) + 1;
+  } else {
+    S.lowSpiritsStreak = 0; // The streak instantly breaks if spirits recover
+  }
+}
+
+function tickDepartures(lines) {
+  const SPIRITS_THRESHOLD = 35;
+  const DAYS_TO_LEAVE = 10;
+  const MIN_POPULATION_TO_LEAVE = 4; // Prevent total population collapse
+
+  if (S.people.length <= MIN_POPULATION_TO_LEAVE) {
+    // If the village is in absolute crisis, people stay to hold the line
+    for (const p of S.people) {
+      p.lowSpiritsDays = 0;
+    }
+    return;
+  }
+
+  for (const p of [...S.people]) {
+    // We only track spirits for people currently present in the village
+    if (p.status === "away") continue;
+
+    if (p.wb < SPIRITS_THRESHOLD) {
+      p.lowSpiritsDays = (p.lowSpiritsDays || 0) + 1;
+    } else {
+      // If their spirits recover, reset the counter slowly
+      p.lowSpiritsDays = Math.max(0, (p.lowSpiritsDays || 0) - 1);
+    }
+
+    // Daily rolling chance to leave once consistent sadness is established
+    if (p.lowSpiritsDays >= DAYS_TO_LEAVE) {
+      const leaveChance = 0.35; // 35% chance to leave each day once they've had enough
+      if (Math.random() < leaveChance) {
+        S.people = S.people.filter(x => x.id !== p.id);
+        S.departures = (S.departures || 0) + 1;
+        
+        // Remove them from any job they had so they don't linger in systems
+        if (p.job) p.job = null;
+
+        // Rest of the village takes a spirits hit from the quiet departure
+        S.people.forEach(q => {
+          if (q.status !== "away") q.wb = clamp(q.wb - 5, wbFloor(q), 100);
+        });
+
+        lines.push(`${p.name} packed ${poss(p)} things in the grey light before dawn and left. ${Cap(subj(p))} didn't leave a note, but everyone at the table knew why. The quiet is heavier today.`);
+        
+        S.journal.unshift({
+          day: S.day,
+          weather: S.weather,
+          event: true,
+          lines: [`${p.name} left the community due to low spirits.`, `— "We couldn't make a life here that ${subj(p)} wanted to share."`]
+        });
+      }
+    }
+  }
+}
+
+
+
+
+
+
+
+
 
 /* ================= one day of the world ================= */
 /* =========================================================================
@@ -2508,6 +2683,80 @@ function simulateDay(){
   const wx = S.forecast ? scaledWeather(S.forecast) : rollWeather();
   S.weather=wx.id;
   const F=S.flags;
+
+  // --- TEMPERATURE EXTREMES ---
+  const isSummer = sn.id === "summer";
+  const isWinter = sn.id === "winter";
+  
+  let tempEvent = null;
+  if (isSummer && Math.random() < 0.15) tempEvent = "heatwave";
+  if (isWinter && Math.random() < 0.15) tempEvent = "deepfreeze";
+
+  let indoorSafety = 0; // 0 = dangerously exposed, 1 = perfectly comfortable
+  
+  if (isWinter) {
+    if (F.earthBerming) indoorSafety += 0.4; // Passive insulation
+    if (F.woodStove && S.res.wood >= 3) {
+      S.res.wood -= 3; // Burn wood to stay alive
+      indoorSafety += 0.6;
+      lines.push("The masonry heater burned through 3 wood today, keeping the Commons warm against the cold.");
+    } else if (F.woodStove && S.res.wood < 3) {
+      lines.push("A freezing day, and the woodpile is empty. The masonry heater sits cold.");
+    }
+  }
+
+  if (isSummer) {
+    if (F.earthBerming) indoorSafety += 0.6; // Earth walls keep things cool
+    // AC could be added here later, draining S.res.charge heavily
+  }
+
+  // --- APPLYING EXTREME WEATHER CONSEQUENCES ---
+  if (tempEvent === "heatwave") {
+    lines.push("A blistering heatwave today. The air shimmered over the ruins.");
+    for (const p of S.people) {
+      if (!canWork(p) && indoorSafety < 0.5 && Math.random() < 0.3) {
+         p.wb = clamp(p.wb - 10, wbFloor(p), 100);
+         lines.push(`${p.name} wilted in the heat. The children need a cooler place to rest.`);
+      }
+      // Outdoor workers risk heat exhaustion
+      const isOutdoors = ["garden", "project", "woodcut", "salvage"].includes(p.job) || p.status === "away";
+      if (isOutdoors && Math.random() < 0.35) {
+        if (p.status === "ok") {
+          p.status = "spent";
+          lines.push(`The sun hammered down. ${p.name} pushed too hard outside and came back completely spent.`);
+        } else if (p.status === "spent") {
+          p.status = "down";
+          p.downDays = 2;
+          lines.push(`Heatstroke. ${p.name} collapsed in the sun and had to be carried to the sickbed.`);
+        }
+      }
+    }
+  }
+
+  if (tempEvent === "deepfreeze") {
+    lines.push("A deep, killing freeze settled into the valley.");
+    for (const p of S.people) {
+      // The vulnerable are at extreme risk if indoor safety is low
+      if (p.age >= ELDER && indoorSafety < 0.5) {
+         p.wb = clamp(p.wb - 20, wbFloor(p), 100);
+         // Spikes the death roll for elders handled in the aging block
+         if (Math.random() < 0.15) {
+           p.status = "down";
+           p.downDays = 4;
+           lines.push(`The bitter cold got into ${p.name}'s chest. ${Cap(subj(p))} is in a bad way.`);
+         }
+      }
+      // Expeditions caught in a blizzard
+      if (p.status === "away" && Math.random() < 0.4) {
+        p.wb = clamp(p.wb - 15, wbFloor(p), 100);
+        lines.push(`${p.name} is caught out on the road in the freeze. A dangerous night to be away from the hearth.`);
+      }
+    }
+    if (indoorSafety < 0.5) {
+      lines.push("Without enough heat or insulation, the cold seeped into the Commons. Everyone suffered for it.");
+      S.people.forEach(q => { if (q.status !== "away") q.wb = clamp(q.wb - 8, wbFloor(q), 100); });
+    }
+  }
 
   tickExpeditions(lines);
 
@@ -2776,6 +3025,18 @@ function simulateDay(){
       S._pressWhy = `${take.toFixed(1)} seed pressed, ${(take*OIL_EFF).toFixed(1)} oil`;
     }
   }
+
+  // --- wood gathering ---
+  const woodcutters = working("woodcut");
+  if(woodcutters.length){
+    let gathered = 0;
+    for(const p of woodcutters) gathered += 1.5 + effStat(p,"wild","woodcut")*0.6*eff(p);
+    const actual = addRes("wood", gathered);
+    S._woodWhy = `${actual.toFixed(1)} wood hauled`;
+  } else {
+    S._woodWhy = "";
+  }
+
 
   // --- spoilage: fresh food does not keep; preserved food does ---
   {
@@ -3161,6 +3422,20 @@ function simulateDay(){
 
   // --- events ---
   maybeSpawnEvent();
+  // add new stuff here 
+  if (S.day > 5) { // e.g., let them settle in for a few days first
+    tickRelationships(); 
+    tickDinnerBonds(hunger, S.sys.commons.cond); //
+    checkForHearthConflicts(lines); 
+  }
+
+  tickDepartures(lines);            
+  tickVillageSpiritsStreak();      
+  
+  if (S.lowSpiritsStreak === 5 && S.day % 7 === 0) {
+    lines.push("No one has come up the road in a long time. The valley has a reputation now—a place where people go to fade.");
+  }
+
 
   // --- journal ---
   if(dayOfSeason(S.day)===1){
@@ -3313,6 +3588,10 @@ function simulateDay(){
     lines.push(`Turned compost went onto ${isForestPlot?"a tired plot in the food forest":"the worst of the beds"} — soil worn thin doesn't have to stay that way.`);
   }
 
+
+
+
+
   S.journal.unshift({day:S.day, weather:wx.word, lines});
   if(S.journal.length>80) S.journal.length=80;
 
@@ -3330,7 +3609,8 @@ function simulateDay(){
   }
 
   S.report={gen,draw,cap,foodIn,foodOut,waterIn:wIn,waterOut:wOut,brownout,thirst, preserveWhy:S._preserveWhy||"", pressWhy:S._pressWhy||"",
-    genWhy:genWhy.join(" · ")||"nothing built that makes power", gardenWhy:gWhy.join(" · "), aquaWhy:S._aquaWhy||"", gardenFood, aquaFood};
+    genWhy:genWhy.join(" · ")||"nothing built that makes power", gardenWhy:gWhy.join(" · "), aquaWhy:S._aquaWhy||"", gardenFood, aquaFood, woodWhy:S._woodWhy||""};
+
 
   // roll tomorrow's weather now, using tomorrow's season, so a forecast (once
   // unlocked) is a real fact about the day ahead rather than a guess
@@ -3339,7 +3619,7 @@ function simulateDay(){
   S.day++;
 }
 
-const JOB_SKILL = {garden:"green", aquatend:"green", care:"care", cook:"care", project:"hands", preserve:"care", press:"hands", fab:"hands"};
+const JOB_SKILL = {garden:"green", aquatend:"green", care:"care", cook:"care", project:"hands", preserve:"care", press:"hands", fab:"hands", woodcut:"wild"};
 /* whatever currently occupies the single work slot: a system being raised, or a project */
 function workDef(){
   if(!S.project) return null;
@@ -3428,6 +3708,7 @@ function salvageChips(){
   return `<div class="chips">
     <span class="chip">scrap ${S.res.scrap.toFixed(0)}</span>
     <span class="chip">parts ${S.res.parts.toFixed(0)}</span>
+    <span class="chip">wood ${S.res.wood.toFixed(0)}</span>
     <span class="chip">seeds ${S.res.seeds.toFixed(0)}</span>
     <span class="chip">meds ${S.res.meds.toFixed(0)}</span>
   </div>`;
@@ -3528,7 +3809,17 @@ function holdFestival(){
 }
 
 function renderVillage(){
-  let h=seasonBanner()+renderEvent()+powerCard();
+  const resting = S.people.filter(p=>p.job===null&&p.status==="ok").length;
+  const away = S.people.filter(p=>p.status==="away").length;
+  const laidup = S.people.filter(p=>p.status==="down"||p.status==="spent").length;
+
+  // Build the top dashboard
+  let h = seasonBanner();
+  h += `<div class="sectionlbl">${S.people.length} villagers · ${resting} resting · ${laidup} laid up · ${away} away</div>`;
+  h += salvageChips();
+  h += renderEvent();
+  h += powerCard();
+
   for(const def of SYS){
     const st=S.sys[def.id];
     if(!st.built && !isVisible(def)) continue;
@@ -3643,6 +3934,14 @@ function renderVillage(){
     rh+=`</div>`;
     h+=rh;
   }
+
+  // --- Chopping Wood ---
+  h+=`<div class="card">
+    <div class="card-top"><div class="sysname">The tree line</div><div class="condpct">${S.res.wood.toFixed(0)} wood</div></div>
+    <div class="blurb">Felling deadwood and hauling it back. You will need it when the deep freeze comes.</div>
+    <div class="rolerow">${roleChip("woodcut","hauler","no one")}</div>
+    <div class="sysmeta"><span class="outline-note">${S.report.woodWhy||"nobody chopping today"}</span></div>
+  </div>`;
 
   // --- the food forest: perennial ground, separate from the kitchen beds ---
   {
@@ -3803,10 +4102,10 @@ function renderVillage(){
     </div>`;
   }
 
-  const resting=S.people.filter(p=>p.job===null&&p.status==="ok").length;
-  const away=S.people.filter(p=>p.status==="away").length;
-  const laidup=S.people.filter(p=>p.status==="down"||p.status==="spent").length;
-  h+=`<div class="sectionlbl">${S.people.length} villagers · ${resting} resting · ${laidup} laid up · ${away} away</div>`;
+//  const resting=S.people.filter(p=>p.job===null&&p.status==="ok").length;
+//  const away=S.people.filter(p=>p.status==="away").length;
+//  const laidup=S.people.filter(p=>p.status==="down"||p.status==="spent").length;
+//  h+=`<div class="sectionlbl">${S.people.length} villagers · ${resting} resting · ${laidup} laid up · ${away} away</div>`;
 
   $("tab-village").innerHTML=h;
   $("tab-village").querySelectorAll("[data-open]").forEach(el=>{
@@ -4887,7 +5186,8 @@ const SHEET_META = {
   project:{name:"", sub:()=>"Choose who works on it. Uses hands.", multi:false},
   preserve:{name:"Putting food by", sub:()=>"Drying, fermenting, canning. Turns fresh food into food that keeps. Two can work at it. Uses care.", multi:true, cap:2},
   press:{name:"Pressing oil", sub:()=>"Standing at the crank, turning set-aside sunflower seed into oil. Slow work. Uses hands.", multi:false},
-  fab:{name:"Fabrication", sub:()=>"Building the thing that ends a trip. Uses hands.", multi:false}
+  fab:{name:"Fabrication", sub:()=>"Building the thing that ends a trip. Uses hands.", multi:false},
+  woodcut:{name:"Chopping wood", sub:()=>"Gathering deadwood for the winter fires. Hard work. Uses wild.", multi:true, cap:3}
 };
 
 function openSystemSheet(jobId){
