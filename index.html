@@ -384,7 +384,7 @@
 
 const SUPABASE_URL = "https://uhuyjlfffpwaphnlkdqb.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_3mBzFMrxYRyyDURL16JtUQ_dE7r3zRY";
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 /* ================= storage adapter ================= */
 const store = {
@@ -392,7 +392,7 @@ const store = {
 
   // Helper to quickly grab the logged-in user's ID from Supabase
   async getUserId() {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await db.auth.getUser();
     return user ? user.id : null;
   },
 
@@ -406,7 +406,7 @@ const store = {
       // Query the database for this user's row.
       // We use .maybeSingle() because if it's their first time playing, 
       // there won't be a row yet, and we want it to return null gracefully.
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('player_saves')
         .select('game_state')
         .eq('user_id', uid)
@@ -434,7 +434,7 @@ const store = {
 
       // upsert will automatically insert a new row OR update the existing row 
       // because we made user_id a UNIQUE key constraint in the database!
-      const { error } = await supabase
+      const { error } = await db
         .from('player_saves')
         .upsert(
           { user_id: uid, game_state: s },
@@ -453,7 +453,7 @@ const store = {
       const uid = await this.getUserId();
       if (!uid) return;
 
-      const { error } = await supabase
+      const { error } = await db
         .from('player_saves')
         .delete()
         .eq('user_id', uid);
@@ -5325,7 +5325,7 @@ async function handleSignUp() {
   const errDiv = document.getElementById("loginError");
   
   errDiv.style.display = "none";
-  const { data, error } = await supabase.auth.signUp({ email, password });
+  const { data, error } = await db.auth.signUp({ email, password });
   
   if (error) {
     errDiv.innerText = error.message;
@@ -5342,7 +5342,7 @@ async function handleSignIn() {
   const errDiv = document.getElementById("loginError");
   
   errDiv.style.display = "none";
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  const { data, error } = await db.auth.signInWithPassword({ email, password });
   
   if (error) {
     errDiv.innerText = error.message;
@@ -5372,7 +5372,7 @@ async function runGameBoot() {
 
 // This runs immediately when the page finishes loading in the browser
 (async function init() {
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { user } } = await db.auth.getUser();
   
   if (user) {
     // Already logged in! Hide login screen and run boot
