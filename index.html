@@ -384,7 +384,7 @@
 
 const SUPABASE_URL = "https://uhuyjlfffpwaphnlkdqb.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_3mBzFMrxYRyyDURL16JtUQ_dE7r3zRY";
-const supabase = json.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 /* ================= storage adapter ================= */
 const store = {
@@ -5317,10 +5317,6 @@ function openFounding(){
   drawFoundingPlace();
 }
 
-// 1. Initialize Supabase (Use your actual URL and Anon Key here)
-const SUPABASE_URL = "https://uhuyjlfffpwaphnlkdqb.supabase.co";
-const SUPABASE_ANON_KEY = "your-actual-anon-key-here";
-const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // 2. Handle User Registration
 async function handleSignUp() {
