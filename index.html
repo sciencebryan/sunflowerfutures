@@ -8,7 +8,7 @@
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,400;1,600&family=Courier+Prime:ital,wght@0,400;0,700;1,400&display=swap');
 
-  :root{
+  :root {
     --paper: #E6E4D3;
     --paper-deep: #DCD9BD;
     --ink: #21281A;
@@ -18,290 +18,393 @@
     --sun: #B88124;
     --water: #4C7286;
     --rust: #924624;
-    --card: #EDECE0;
+    --card: #F0EFE6; /* Slightly lighter for better contrast */
     --line: #B9B79E;
     --serif: "Cormorant Garamond", Georgia, serif;
     --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     --mono: "Courier Prime", ui-monospace, "SF Mono", monospace;
   }
   
-  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   
-  html{
+  html {
     background: var(--paper);
     background-image: 
-      radial-gradient(ellipse 120% 60% at 50% -10%, rgba(125,142,108,.22), transparent 70%),
-      repeating-linear-gradient(0deg, rgba(0,0,0,0.005) 0px, rgba(0,0,0,0.005) 1px, transparent 1px, transparent 4px);
+      radial-gradient(ellipse 120% 60% at 50% -10%, rgba(125,142,108,.15), transparent 70%),
+      repeating-linear-gradient(0deg, rgba(0,0,0,0.015) 0px, rgba(0,0,0,0.015) 1px, transparent 1px, transparent 4px);
     background-attachment: fixed;
+    color: var(--ink);
   }
   
-  body{
-    font-family: var(--sans); color: var(--ink); background: transparent;
-    max-width: 640px; margin: 0 auto; min-height: 100vh;
-    padding: 0 4px;
+  body {
+    font-family: var(--sans); 
+    max-width: 1200px; /* Expanded for desktop */
+    margin: 0 auto; 
+    min-height: 100vh;
+    padding: 0 16px;
+    line-height: 1.6;
   }
   
-  button{
+  button {
     font-family: var(--serif); color: var(--ink); background: none; border: none; cursor: pointer;
-    transition: transform 0.1s ease, filter 0.1s ease;
+    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   }
-  button:active:not(:disabled){ transform: scale(0.98) translateY(1px); }
-  button:disabled{ opacity: .35; cursor: default; filter: grayscale(50%); }
+  button:active:not(:disabled) { transform: scale(0.98) translateY(1px); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(80%); }
 
-  header{
+  header {
     position: sticky; top: 0; z-index: 30; background: var(--paper);
-    border: 3px double var(--line); border-top: none; padding: 12px 14px 10px;
-    box-shadow: 0 6px 20px -10px rgba(33,40,26,.3);
+    border-bottom: 2px solid var(--ink);
+    padding: 14px 0 12px;
   }
-  .masthead{display: flex; align-items: baseline; justify-content: space-between; gap: 8px}
-  .title{font-family: var(--serif); font-weight: 700; font-size: 22px; letter-spacing: .04em; text-transform: uppercase}
-  .title small{font-family: var(--mono); font-weight: 400; font-size: 11px; letter-spacing: 0; color: var(--ink-soft); text-transform: lowercase; margin-left: 6px}
-  .daywx{font-family: var(--serif); font-style: italic; font-weight: 600; font-size: 16px; color: var(--ink-soft)}
   
-  .res-strip{display: flex; gap: 8px; margin-top: 10px}
-  .res{
-    flex: 1; background: var(--card); border: 1px solid var(--line); border-radius: 4px; 
-    padding: 6px 8px; min-width: 0; box-shadow: inset 0 1px 3px rgba(0,0,0,0.04);
-  }
-  .res .lbl{font-family: var(--serif); font-weight: 600; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-soft)}
-  .res .val{font-family: var(--mono); font-size: 15px; font-weight: 700; margin-top: 2px; white-space: nowrap}
-  .res .sub{font-family: var(--mono); font-size: 10px; color: var(--ink-soft); white-space: nowrap; opacity: 0.85}
-  .neg{color: var(--rust)} .pos{color: var(--leaf)}
+  .masthead { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .title { font-family: var(--serif); font-weight: 700; font-size: 28px; letter-spacing: 0.02em; text-transform: uppercase; }
+  .title small { font-family: var(--mono); font-weight: 400; font-size: 13px; color: var(--moss); margin-left: 10px; }
+  .daywx { font-family: var(--serif); font-style: italic; font-weight: 600; font-size: 18px; color: var(--ink-soft); }
   
-  .daybar{display: flex; align-items: center; gap: 12px; margin-top: 10px}
-  .daytrack{flex: 1; height: 6px; background: var(--paper-deep); border-radius: 3px; overflow: hidden; border: 1px solid rgba(0,0,0,0.05)}
-  .dayfill{height: 100%; background: var(--sun); border-radius: 3px; transition: width 1s linear}
+  .neg { color: var(--rust); } .pos { color: var(--leaf); }
   
-  .endday{
-    font-family: var(--serif); font-weight: 600; font-size: 13.5px; letter-spacing: .04em; 
-    padding: 6px 16px; border: 2px solid var(--ink-soft); border-radius: 2px; 
-    color: var(--ink); background: var(--card); box-shadow: 2px 2px 0 var(--line);
+  .daybar { display: flex; align-items: center; gap: 16px; margin-top: 14px; }
+  .daytrack { flex: 1; height: 4px; background: var(--line); overflow: hidden; }
+  .dayfill { height: 100%; background: var(--ink); transition: width 1s linear; }
+  
+  /* Stamped, analog button feel */
+  .endday {
+    font-family: var(--mono); font-weight: 700; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 8px 20px; border: 1.5px solid var(--ink); 
+    color: var(--ink); background: var(--paper); 
+    box-shadow: 3px 3px 0 var(--ink);
   }
-  .endday:active{box-shadow: 0px 0px 0 var(--line);}
+  .endday:active { box-shadow: 0px 0px 0 var(--ink); transform: translate(3px, 3px); }
 
-  nav{display: flex; border-bottom: 2px solid var(--line); background: var(--paper); position: sticky; top: var(--navtop,0px); z-index: 29}
-  nav button{
-    flex: 1; padding: 11px 0 9px; font-family: var(--serif); font-size: 14px; font-weight: 600;
-    letter-spacing: .05em; text-transform: uppercase; color: var(--ink-soft); border-bottom: 3px solid transparent; position: relative;
+  nav { display: flex; border-bottom: 1px solid var(--line); background: var(--paper); position: sticky; top: var(--navtop,0px); z-index: 29; padding-top: 8px; flex-wrap: wrap; }
+  nav button {
+    flex: 1; padding: 12px 16px; font-family: var(--serif); font-size: 16px; font-weight: 600;
+    letter-spacing: 0.05em; color: var(--moss); border-bottom: 3px solid transparent; position: relative; min-width: 80px;
   }
-  nav button.on{color: var(--ink); border-bottom-color: var(--leaf); font-weight: 700}
-  nav button .evdot{position: absolute; top: 8px; right: 12px; width: 8px; height: 8px; border-radius: 50%; background: var(--rust); animation: pulse 2s infinite}
+  nav button:hover { color: var(--ink); }
+  nav button.on { color: var(--ink); border-bottom-color: var(--ink); font-weight: 700; }
+  nav button .evdot { position: absolute; top: 12px; right: 12px; width: 6px; height: 6px; border-radius: 50%; background: var(--rust); }
 
-  main{padding: 16px 8px 90px}
+  main { padding: 32px 0 90px; }
+  
+  /* --- The Desktop Grid Magic --- */
+  main section {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 24px;
+    align-items: start;
+  }
+  
+  /* Elements that should span full width */
+  .sectionlbl, .banner, .legend, .chips {
+    grid-column: 1 / -1;
+  }
+  /* --- HUD: vitals grid + ledger lines --- */
+  .hud-vitals {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    margin-top: 14px;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+  .stat { padding: 8px 12px 9px; min-width: 0; border-left: 1px solid var(--line); }
+  .stat:first-child { border-left: none; padding-left: 0; }
+  .stat .lbl {
+    display: block; font-family: var(--mono); font-weight: 700; font-size: 12px;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-soft);
+  }
+  .stat .val {
+    display: block; font-family: var(--mono); font-size: 18px; font-weight: 700;
+    margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .stat .val small { font-size: 12px; font-weight: 400; color: var(--ink-soft); }
+  .stat .delta {
+    display: block; font-family: var(--mono); font-size: 11px; color: var(--ink-soft);
+    margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
 
+  .hud-line {
+    display: flex; flex-wrap: wrap; gap: 2px 18px; padding: 7px 0;
+    border-bottom: 1px solid var(--line); font-family: var(--mono);
+  }
+  .hud-line .item { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+  .hud-line .lbl { font-size: 11px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-soft); }
+  .hud-line .val { font-size: 14px; font-weight: 700; color: var(--ink); }
+  .hud-line .val.dim { color: var(--ink-soft); font-weight: 400; opacity: 0.7; }
+  /* Analog Cards */
   .card {
-    background: var(--card); border: 1px solid var(--line); border-radius: 6px 4px 5px 3px/4px 6px 3px 5px; 
-    padding: 14px 14px; margin-bottom: 14px; box-shadow: 1px 2px 5px rgba(33,40,26,0.06);
+    background: var(--card); 
+    border: none;
+    border-radius: 2px; /* Less bubbly, more paper-stack */
+    padding: 20px; 
+    box-shadow: 0 4px 12px rgba(33,40,26,0.06), 0 1px 2px rgba(33,40,26,0.08);
     position: relative;
+    display: flex; flex-direction: column; height: 100%;
   }
-  .card.grey{opacity: .6; background: var(--paper-deep); border-style: dashed;}
-  .card-top{display: flex; justify-content: space-between; align-items: baseline; gap: 8px}
-  .sysname{font-family: var(--serif); font-size: 19px; font-weight: 700; letter-spacing: 0.02em}
-  .condpct{font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--ink-soft)}
-  .blurb{font-family: var(--serif); font-size: 14px; line-height: 1.4; color: var(--ink-soft); margin-top: 4px}
+  .card.grey { opacity: 0.7; background: var(--paper-deep); box-shadow: none; border: 1px dashed var(--line); }
+  
+  .card-top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; border-bottom: 1px solid var(--line); padding-bottom: 8px; margin-bottom: 12px; }
+  .sysname { font-family: var(--serif); font-size: 22px; font-weight: 700; letter-spacing: 0.01em; }
+  .condpct { font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--moss); }
+  .blurb { font-family: var(--serif); font-size: 16px; line-height: 1.5; color: var(--ink-soft); flex-grow: 1; }
 
-  .cbar{position: relative; height: 12px; margin: 10px 0; background: var(--paper-deep); border-radius: 2px; border: 1px solid rgba(0,0,0,0.04); overflow: hidden}
-  .cbar .fill{
-    position: absolute; inset: 0; right: auto; border-radius: 1px; opacity: .9; 
-    transition: width .6s cubic-bezier(0.16, 1, 0.3, 1);
-    background-image: linear-gradient(45deg, rgba(255,255,255,0.1) 25%, transparent 25%, transparent 50%, rgba(255,255,255,0.1) 50%, rgba(255,255,255,0.1) 75%, transparent 75%, transparent);
-    background-size: 12px 12px;
-    animation: barMove 30s linear infinite;
-  }
-  .c-good{background-color: var(--leaf)}
-  .c-mid{background-color: var(--sun)}
-  .c-bad{background-color: var(--rust)}
-  .c-sun{background-color: var(--sun)}
 
-  .sysmeta{display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 4px}
-  .rolerow{display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px}
-  .outline-note{font-size: 12px; font-family: var(--mono); color: var(--ink-soft)}
-  
-  .keeper{
-    display: inline-flex; align-items: center; gap: 6px; font-family: var(--serif); font-size: 13.5px; font-weight: 600;
-    border: 1px dashed var(--ink-soft); border-radius: 4px; padding: 5px 12px; background: var(--paper);
-    box-shadow: 1px 1px 2px rgba(0,0,0,0.05);
+  .ledger {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    padding: 12px 0;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    font-family: var(--mono);
+    font-size: 13px;
   }
-  .keeper.filled{border-style: solid; background: #E2E4D2; border-color: var(--leaf); padding-left: 10px}
-  .keeper .dot{width: 6px; height: 6px; border-radius: 50%; background: var(--leaf)}
-  .keeper.empty .dot{background: var(--rust); animation: pulse 2.5s infinite}
-  .keeper .role{font-family: var(--mono); font-size: 10px; font-weight: 400; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-soft); margin-right: 2px}
-  .warnline{font-size: 13.5px; color: var(--rust); margin-top: 8px; font-style: italic; font-family: var(--serif); font-weight: 600}
 
-  .evcard{
-    border: 2px solid var(--sun); background: #FAF5E6; 
-    transform: rotate(-0.5deg); box-shadow: 3px 5px 15px rgba(184,129,36,0.12);
-  }
-  .evtitle{font-family: var(--serif); font-size: 20px; font-weight: 700; color: var(--rust)}
-  .evtext{font-family: var(--serif); font-style: italic; font-size: 15.5px; line-height: 1.5; margin: 8px 0 12px; color: var(--ink)}
-  
-  .evopt{
-    display: block; width: 100%; text-align: left; padding: 10px 14px; border: 1px solid var(--line); 
-    border-radius: 4px; margin-bottom: 8px; background: var(--card); box-shadow: 1px 2px 0 var(--line);
-  }
-  .evopt:active{box-shadow: 0px 0px 0 var(--line); transform: translateY(2px);}
-  .evopt .l1{font-family: var(--serif); font-weight: 700; font-size: 15px}
-  .evopt .l2{font-family: var(--sans); font-size: 12px; color: var(--ink-soft); margin-top: 2px}
 
-  .pcard{display: block; width: 100%; text-align: left; text-decoration: none;}
-  .pname{font-family: var(--serif); font-size: 18px; font-weight: 700}
-  .pn{font-family: var(--serif); font-style: italic; font-size: 13px; color: var(--ink-soft); font-weight: 400; margin-left: 6px}
-  .trait{font-family: var(--mono); font-size: 10px; text-transform: uppercase; color: var(--paper); background: var(--ink-soft); border-radius: 3px; padding: 2px 6px; vertical-align: 2px}
-  .skills{font-family: var(--mono); font-size: 12px; color: var(--ink-soft); margin-top: 6px; line-height: 1.6}
-  
-  .wbwrap{display: flex; align-items: center; gap: 8px; margin-top: 8px}
-  .wbtrack{flex: 1; height: 8px; background: var(--paper-deep); border-radius: 4px; position: relative; border: 1px solid rgba(0,0,0,0.03)}
-  .wbfill{position: absolute; inset: 0; right: auto; border-radius: 4px; opacity: .9}
-  .wbnum{font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--ink-soft); width: 28px; text-align: right}
+  .ledger-item { 
+    display: flex; 
+    align-items: baseline; 
+    gap: 4px; 
+    white-space: nowrap;
+  }
+  .ledger-item b { 
+    color: var(--ink); 
+    font-size: 15px; 
+  }
+  .ledger-item b small { 
+    font-size: 10px; 
+    color: var(--ink-soft); 
+    font-weight: 400; 
+  }
+  .ledger-item span { 
+    color: var(--ink-soft); 
+    font-size: 11px; 
+    text-transform: uppercase; 
+    letter-spacing: 0.04em;
+  }
+  /* Refined Progress Bars */
+  .cbar { height: 6px; margin: 16px 0; background: var(--line); position: relative; border-radius: 3px; overflow: hidden; }
+  .cbar .fill {
+    position: absolute; inset: 0; right: auto; 
+    transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .c-good { background-color: var(--leaf); }
+  .c-mid { background-color: var(--sun); }
+  .c-bad { background-color: var(--rust); }
+  .c-sun { background-color: var(--sun); }
 
-  .passign{font-family: var(--serif); font-size: 13.5px; margin-top: 8px; border-top: 1px dashed var(--line); padding-top: 6px}
-  .passign b{font-weight: 700; color: var(--leaf)}
-  .flavor{font-family: var(--serif); font-style: italic; font-size: 13px; color: var(--ink-soft); margin-top: 5px}
-  .mem{font-family: var(--serif); font-style: italic; font-size: 12.5px; color: var(--rust); margin-top: 4px; font-weight: 600}
+  .sysmeta { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .rolerow { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; padding-top: 12px; border-top: 1px dashed var(--line); }
+  .outline-note { font-size: 12px; font-family: var(--mono); color: var(--ink-soft); }
   
-  .status-badge{font-family: var(--mono); font-size: 9.5px; text-transform: uppercase; color: var(--rust); border: 1px solid var(--rust); border-radius: 3px; padding: 1px 6px; margin-left: 6px; vertical-align: 2px}
-  .status-badge.away{color: var(--water); border-color: var(--water)}
-  
-  .legend{
-    font-family: var(--serif); font-size: 14px; color: var(--ink-soft); line-height: 1.6; 
-    margin-bottom: 16px; padding: 10px 12px; background: var(--card); border: 1px solid var(--line); 
-    border-radius: 4px; border-left: 4px solid var(--ink-soft);
-  }
-  .legend b{font-family: var(--mono); font-size: 12px; color: var(--ink)}
 
-  .jentry{margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px dashed var(--line)}
-  .jday{font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-soft); margin-bottom: 6px}
-  .jlines{font-family: var(--serif); font-style: italic; font-size: 16px; line-height: 1.5; color: var(--ink)}
-  .jlines p{margin-bottom: 4px}
+.task-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 0;
+  border-bottom: 1px dashed var(--line);
+  gap: 16px;
+}
 
-  .scrim{position: fixed; inset: 0; background: rgba(33,40,26,.45); z-index: 40; display: none; backdrop-filter: blur(1px)}
-  .scrim.open{display: block}
-  
-  .sheet{
-    position: fixed; left: 0; right: 0; bottom: 0; z-index: 41; max-width: 640px; margin: 0 auto; 
-    background: var(--paper); border: 3px double var(--line); border-bottom: none; border-radius: 12px 12px 0 0; 
-    padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); max-height: 80vh; overflow: auto; 
-    transform: translateY(105%); transition: transform .25s cubic-bezier(0.16, 1, 0.3, 1);
-    box-shadow: 0 -10px 30px rgba(0,0,0,0.15);
-  }
-  .sheet.open{transform: translateY(0)}
-  .sheet h3{font-family: var(--serif); font-size: 20px; font-weight: 700; margin-bottom: 4px}
-  .sheet .sub{font-family: var(--serif); font-size: 14px; color: var(--ink-soft); margin-bottom: 12px}
-  
-  .opt{
-    display: flex; justify-content: space-between; align-items: center; width: 100%; text-align: left; 
-    padding: 11px 12px; border: 1px solid var(--line); border-radius: 4px; margin-bottom: 8px; 
-    background: var(--card); box-shadow: 1px 1px 2px rgba(0,0,0,0.03);
-  }
-  .opt:active{background: var(--paper-deep)}
-  .opt .l1{font-family: var(--serif); font-weight: 700; font-size: 16px}
-  .opt .l2{font-family: var(--sans); font-size: 11.5px; color: var(--ink-soft); margin-top: 2px}
-  .opt .r{font-family: var(--mono); font-size: 12px; color: var(--ink-soft); text-align: right; white-space: nowrap}
-  .opt.dim{opacity: .45}
-  .opt.current{border-color: var(--leaf); background: #E1E4D0; border-width: 2px; box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);}
-  
-  .confirm{
-    display: block; width: 100%; text-align: center; padding: 12px; border-radius: 4px; 
-    background: var(--leaf); color: var(--paper); font-family: var(--serif); font-weight: 700; 
-    font-size: 16px; letter-spacing: .04em; margin-top: 8px; box-shadow: 0 4px 10px rgba(68,98,47,0.2);
-  }
-  .confirm:disabled{background: var(--moss); box-shadow: none}
+.task-info {
+  display: flex;
+  flex-direction: column;
+}
 
-  .banner{
-    background: #E1E4D0; border: 1px solid var(--moss); border-left: 4px solid var(--leaf); 
-    border-radius: 4px; padding: 10px 14px; font-family: var(--serif); font-size: 15px; margin-bottom: 14px;
-    line-height: 1.45;
-  }
-  .sectionlbl{font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-soft); margin: 20px 2px 10px}
-  
-  .chips{display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px}
-  .chip{font-family: var(--mono); font-size: 12px; font-weight: 700; background: var(--card); border: 1px solid var(--line); border-radius: 4px; padding: 4px 10px}
-  
-  .costchips{display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px}
-  .cost{font-family: var(--mono); font-size: 11px; border: 1px solid var(--line); border-radius: 3px; padding: 2px 6px; color: var(--ink-soft); background: rgba(0,0,0,0.01)}
-  .cost.short{color: var(--rust); border-color: var(--rust); background: rgba(146,70,36,0.05); font-weight: 700}
-  
-  .go{
-    font-family: var(--serif); font-weight: 700; font-size: 13px; letter-spacing: .02em; 
-    padding: 5px 14px; border: 1px solid var(--leaf); border-radius: 3px; color: var(--leaf); 
-    background: var(--paper); box-shadow: 1px 1px 0 var(--leaf);
-  }
-  .go:active{box-shadow: 0 0 0 transparent; transform: translateY(1px);}
-  .go.ready{background: var(--leaf); color: var(--paper); border-color: var(--leaf); box-shadow: 1px 2px 4px rgba(68,98,47,0.25)}
-  .go.ready:active{background: #354d25}
-  
-  .card.buildable{border-left: 4px solid var(--leaf)}
-  .card.buildable .sysname::after{content: " · choice open"; font-family: var(--serif); font-style: italic; font-size: 13px; font-weight: 500; color: var(--leaf); margin-left: 6px}
+.task-name {
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--ink);
+}
 
-  /* ---------- puzzles ---------- */
-  .pzhead{display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 4px}
-  .pzteach{font-family: var(--serif); font-style: italic; font-size: 14.5px; color: var(--ink-soft); margin: 4px 0 12px; line-height: 1.45}
-  .grid{display: grid; gap: 4px; justify-content: center; margin: 14px 0; background: rgba(0,0,0,0.02); padding: 6px; border-radius: 6px; border: 1px solid var(--line)}
-  
-  .cell{
-    position: relative; background: var(--paper-deep); border: 1px solid var(--line); border-radius: 4px;
-    display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 11px; color: var(--ink-soft);
-    box-shadow: inset 0 1px 2px rgba(0,0,0,0.05); transition: background-color 0.15s ease, border-color 0.15s ease;
-  }
-  .cell.on{background: #CCD4BD; border-color: var(--leaf); color: var(--ink)}
-  .cell.over{background: #E2B9A6; border-color: var(--rust); color: var(--rust); animation: shiver 0.3s linear infinite}
-  .cell.blk{background: #2D3327; border-color: #2D3327; box-shadow: none}
-  .cell.src{background: var(--sun); border-color: #926416; color: #fff; font-weight: 700; box-shadow: 0 2px 4px rgba(184,129,36,0.3)}
-  .cell.load{background: #C4D3DC; border-color: var(--water); color: #1F3642; font-weight: 700}
-  .cell.load.lit{background: #A9C299; border-color: var(--leaf); color: #223714; box-shadow: 0 0 8px rgba(68,98,47,0.2)}
-  .cell.jcold{background: #E1D5B7; border-color: var(--sun); border-style: dashed; color: #6E5118}
-  .cell.jopen{background: #D0BE79; border-color: var(--sun); color: #44320E; font-weight: 700; box-shadow: 0 0 6px rgba(184,129,36,0.15)}
-  .cell.bed{background: #C1D0B5; border-color: var(--leaf)}
-  .cell.bed.dry{background: #DFD7B7; border-color: var(--sun)}
-  .cell.bed.drown{background: #DCA993; border-color: var(--rust)}
-  .cell .amp{position: absolute; top: 2px; right: 4px; font-size: 9px; opacity: .85; font-weight: 700}
-  .cell .cap{position: absolute; bottom: 2px; left: 4px; font-size: 9px; opacity: .7}
-  .cell .glyph{font-size: 16px; line-height: 1}
-  .cell .elev{position: absolute; top: 2px; left: 4px; font-size: 9px; opacity: .6}
-  
-  .pieces{display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0}
-  .piece{
-    border: 1px solid var(--line); border-radius: 4px; padding: 6px 12px; background: var(--card); 
-    font-family: var(--serif); font-size: 14px; font-weight: 600; box-shadow: 1px 1px 2px rgba(0,0,0,0.04);
-  }
-  .piece.sel{border-color: var(--leaf); background: #E1E4D0; font-weight: 700; border-width: 2px}
-  .piece.out{opacity: .35; box-shadow: none}
-  .pzstatus{font-family: var(--serif); font-style: italic; font-size: 14.5px; font-weight: 600; margin-top: 8px; min-height: 20px}
-  .pzstatus.good{color: var(--leaf)} .pzstatus.bad{color: var(--rust)}
-  
-  .pzbar{display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap}
-  .pzbar button{font-family: var(--serif); font-size: 13px; font-weight: 600; padding: 6px 14px; border: 1px solid var(--ink-soft); border-radius: 3px; background: var(--card)}
-  
-  .loadlist{font-size: 12px; color: var(--ink-soft); font-family: var(--mono); line-height: 1.6; margin-top: 6px}
-  .loadlist .sel{color: var(--leaf); font-weight: 700}
-  .done{font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--leaf); border: 1px solid var(--leaf); border-radius: 3px; padding: 1px 6px}
-  .bannerx{margin-left: 8px; font-family: var(--sans); font-size: 11px; padding: 2px 10px; border: 1px solid var(--ink-soft); border-radius: 2px; background: var(--card); cursor: pointer}
-  
-  footer{padding: 12px 14px 30px; text-align: center; border-top: 1px dashed var(--line); margin-top: 20px}
-  footer button{font-family: var(--mono); font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-soft); text-decoration: underline}
-  .protonote{font-family: var(--serif); font-size: 13px; color: var(--ink-soft); margin-top: 12px; line-height: 1.5}
+.task-desc {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-soft);
+}
 
-  @keyframes pulse {
-    0% { transform: scale(1); opacity: 0.9; }
-    50% { transform: scale(1.08); opacity: 1; }
-    100% { transform: scale(1); opacity: 0.9; }
+.task-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.task-btn {
+  padding: 10px 20px;
+  border: 1px solid var(--ink);
+  background: var(--paper);
+  font-family: var(--mono);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.task-btn:hover {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.task-btn:disabled {
+  border-color: var(--line);
+  color: var(--line);
+  cursor: not-allowed;
+}
+  /* Keeper Badges */
+  .keeper {
+    display: inline-flex; align-items: center; gap: 8px; font-family: var(--serif); font-size: 15px; font-weight: 600;
+    border: 1px solid var(--line); padding: 6px 14px; background: var(--paper); border-radius: 20px;
   }
-  @keyframes barMove {
-    from { background-position: 0 0; }
-    to { background-position: 360px 0; }
-  }
-  @keyframes shiver {
-    0% { transform: translate(0, 0); }
-    25% { transform: translate(0.5px, -0.5px); }
-    50% { transform: translate(-0.5px, 0.5px); }
-    75% { transform: translate(0.5px, 0.5px); }
-    100% { transform: translate(0, 0); }
-  }
+  .keeper.filled { border-color: var(--leaf); background: rgba(68,98,47,0.08); }
+  .keeper .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--moss); }
+  .keeper.empty .dot { background: var(--rust); }
+  .keeper .role { font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-soft); }
   
-  @media (max-width:480px), (pointer:coarse), (prefers-reduced-motion:reduce){
-    .cbar .fill { animation: none; filter: none; }
-    .cell.over { animation: none; }
-    button:active:not(:disabled) { transform: none; }
+  .warnline { font-size: 15px; color: var(--rust); margin-top: 12px; font-style: italic; font-family: var(--serif); font-weight: 600; padding-left: 12px; border-left: 3px solid var(--rust); }
+
+  /* Event Cards */
+  .evcard { border: none; background: #FAF5E6; box-shadow: 4px 6px 0 rgba(184,129,36,0.15), 0 0 0 1px var(--sun); transform: rotate(-0.5deg); }
+  .evtitle { font-family: var(--serif); font-size: 24px; font-weight: 700; color: var(--rust); border-bottom: 2px solid var(--rust); padding-bottom: 8px; margin-bottom: 12px; }
+  .evtext { font-family: var(--serif); font-style: italic; font-size: 18px; line-height: 1.6; color: var(--ink); margin-bottom: 20px; }
+  
+  .evopt {
+    width: 100%; text-align: left; padding: 12px 16px; border: 1px solid var(--ink); 
+    background: var(--paper); box-shadow: 3px 3px 0 var(--ink); margin-bottom: 12px;
+  }
+  .evopt:active { box-shadow: 0px 0px 0 var(--ink); transform: translate(3px, 3px); }
+  .evopt .l1 { font-family: var(--serif); font-weight: 700; font-size: 17px; }
+  .evopt .l2 { font-family: var(--mono); font-size: 12px; color: var(--moss); margin-top: 4px; }
+
+  /* People Cards */
+  .pcard { text-align: left; text-decoration: none; cursor: pointer; transition: transform 0.1s; }
+  .pcard:hover { transform: translateY(-2px); box-shadow: 0 8px 16px rgba(33,40,26,0.08); }
+  .pname { font-family: var(--serif); font-size: 22px; font-weight: 700; }
+  .pn { font-family: var(--serif); font-style: italic; font-size: 15px; color: var(--moss); font-weight: 400; margin-left: 8px; }
+  .trait { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--paper); background: var(--ink); padding: 2px 8px; border-radius: 12px; vertical-align: middle; margin-left: 8px; }
+  .skills { font-family: var(--mono); font-size: 13px; color: var(--ink-soft); margin-top: 12px; line-height: 1.6; }
+  
+  .wbwrap { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+  .wbtrack { flex: 1; height: 4px; background: var(--line); }
+  .wbfill { height: 100%; background: var(--leaf); transition: width 0.3s ease; }
+  .wbnum { font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--ink); width: 32px; text-align: right; }
+
+  .passign { font-family: var(--serif); font-size: 15px; margin-top: 16px; border-top: 1px dashed var(--line); padding-top: 12px; }
+  .flavor { font-family: var(--serif); font-style: italic; font-size: 15px; color: var(--ink-soft); margin-top: 12px; }
+  
+  .legend { font-family: var(--serif); font-size: 16px; color: var(--ink-soft); line-height: 1.6; padding: 16px; background: transparent; border-left: 4px solid var(--moss); margin-bottom: 24px; max-width: 600px; }
+  .legend b { font-family: var(--mono); font-size: 13px; color: var(--ink); text-transform: uppercase; }
+
+  /* Journal styling */
+  #tab-journal {
+    max-width: 700px;
+    margin: 0 auto;
+  }
+  .jentry { 
+    margin-bottom: 48px; 
+    border: none;
+    padding: 0;
+  }
+  .jday { 
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 4px;
+    color: var(--ink);
+    font-weight: 700;
+  }
+  .jlines { font-family: var(--serif); font-size: 20px; color: var(--ink); }
+  /* Action Buttons & Sheets */
+  .scrim { position: fixed; inset: 0; background: rgba(33,40,26,0.6); z-index: 40; display: none; backdrop-filter: blur(2px); }
+  .scrim.open { display: block; }
+  
+  .sheet {
+    position: fixed; left: 50%; bottom: 0; z-index: 41; 
+    width: 100%; max-width: 640px; margin-left: -320px; 
+    background: var(--paper); border: 2px solid var(--ink); border-bottom: none; 
+    padding: 24px 24px calc(24px + env(safe-area-inset-bottom)); 
+    max-height: 85vh; overflow: auto; 
+    transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 0 -10px 40px rgba(0,0,0,0.2);
+  }
+  @media (max-width: 640px) { .sheet { margin-left: 0; left: 0; } }
+  .sheet.open { transform: translateY(0); }
+  .sheet h3 { font-family: var(--serif); font-size: 26px; font-weight: 700; margin-bottom: 8px; }
+  .sheet .sub { font-family: var(--serif); font-size: 16px; color: var(--moss); margin-bottom: 20px; line-height: 1.5; }
+
+  /* Sheet option rows (assign / sow / expedition party / etc.) */
+  .opt {
+    display: flex; justify-content: space-between; align-items: center; gap: 14px;
+    width: 100%; text-align: left;
+    padding: 12px 14px; margin-bottom: 10px;
+    border: 1px solid var(--line); background: var(--card);
+  }
+  .opt > span:first-child { min-width: 0; }
+  .opt:hover:not(:disabled) { border-color: var(--ink); }
+  .opt .l1 { font-family: var(--serif); font-weight: 700; font-size: 17px; color: var(--ink); }
+  .opt .l2 { font-family: var(--mono); font-size: 11px; color: var(--ink-soft); margin-top: 2px; line-height: 1.45; }
+  .opt .r {
+    flex: none; font-family: var(--mono); font-size: 11px; line-height: 1.5;
+    color: var(--moss); text-align: right; white-space: nowrap;
+  }
+  .opt.current { border-color: var(--leaf); border-left: 3px solid var(--leaf); background: rgba(68,98,47,0.08); }
+  .opt.dim { opacity: 0.55; }
+
+  .confirm {
+    display: block; width: 100%; margin-top: 6px; padding: 13px 16px;
+    font-family: var(--mono); font-weight: 700; font-size: 13px;
+    letter-spacing: 0.05em; text-transform: uppercase;
+    background: var(--leaf); color: var(--paper);
+    border: 1.5px solid var(--ink); box-shadow: 3px 3px 0 var(--ink);
+  }
+  .confirm:active:not(:disabled) { box-shadow: 0 0 0 var(--ink); transform: translate(3px, 3px); }
+  
+  .banner { background: transparent; border-left: 4px solid var(--leaf); padding: 12px 16px; font-family: var(--serif); font-size: 17px; margin-bottom: 24px; line-height: 1.5; background: rgba(68,98,47,0.05); }
+  .sectionlbl { font-family: var(--mono); font-size: 13px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink); margin: 32px 0 16px; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+  
+  /* Buttons */
+  .go {
+    font-family: var(--mono); font-weight: 700; font-size: 12px; letter-spacing: 0.05em; text-transform: uppercase;
+    padding: 8px 16px; border: 1.5px solid var(--ink); color: var(--ink); background: transparent; 
+  }
+  .go:hover:not(:disabled) { background: var(--ink); color: var(--paper); }
+  .go.ready { background: var(--leaf); color: var(--paper); border-color: var(--leaf); }
+  
+  /* Cost Chips */
+  .costchips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .cost { font-family: var(--mono); font-size: 12px; border: 1px solid var(--line); padding: 4px 8px; color: var(--moss); }
+  .cost.short { color: var(--rust); border-color: var(--rust); font-weight: 700; background: rgba(146,70,36,0.05); }
+
+  /* Login / Fullscreen Views */
+  #loginScreen { padding: 40px 20px; }
+  #loginScreen .card { box-shadow: 6px 8px 0 rgba(33,40,26,0.15), 0 0 0 2px var(--ink); padding: 40px 30px; }
+
+  footer { padding: 32px 16px 60px; text-align: center; border-top: 1px solid var(--line); margin-top: 40px; }
+  footer button { font-family: var(--mono); font-size: 13px; font-weight: 700; text-transform: uppercase; color: var(--rust); text-decoration: underline; }
+  .protonote { font-family: var(--serif); font-style: italic; font-size: 15px; color: var(--ink-soft); margin-top: 16px; line-height: 1.6; max-width: 600px; margin-left: auto; margin-right: auto; }
+
+  @media (max-width: 768px){
+    body { padding: 0 12px; }
+    main section { grid-template-columns: 1fr; }
+    .title { font-size: 22px; }
+    .daywx { font-size: 15px; }
+    .masthead { flex-direction: column; gap: 0; }
+    .stat { padding: 7px 8px 8px; }
+    .stat .val { font-size: 16px; }
+    .stat .val small { font-size: 11px; }
+    .hud-line { gap: 2px 14px; }
+
+    /* Minimized header while scrolled down: masthead on one line,
+       compact vitals, everything else tucked away */
+    header.mini { padding: 6px 0 7px; }
+    header.mini .hud-line, header.mini .daybar { display: none; }
+    header.mini .masthead { flex-direction: row; align-items: baseline; justify-content: space-between; gap: 10px; }
+    header.mini .title { font-size: 16px; }
+    header.mini .daywx { font-size: 13px; }
+    header.mini .hud-vitals { margin-top: 5px; }
+    header.mini .stat { padding: 4px 8px 5px; }
+    header.mini .stat .lbl { font-size: 10px; }
+    header.mini .stat .val { font-size: 14px; margin-top: 0; }
   }
 </style>
 </head>
@@ -316,10 +419,14 @@
 
 <header>
   <div class="masthead">
-    <div class="title">Sunflower Futures<small>Phase 1</small></div>
-    <div class="daywx" id="daywx">Day 1 · clear</div>
+    <div class="title">Sunflower Futures</div>
+    <div class="daywx" id="daywx"></div>
   </div>
-  <div class="res-strip" id="resStrip"></div>
+
+  <div class="hud-vitals" id="hudVitals"></div>
+  <div class="hud-line" id="hudPeople"></div>
+  <div class="hud-line" id="hudMaterials"></div>
+
   <div class="daybar">
     <div class="daytrack"><div class="dayfill" id="dayFill" style="width:0%"></div></div>
     <button class="endday" id="endDayBtn">End the day</button>
@@ -796,6 +903,18 @@ const SITE_DEF = [
   {id:"solarfarm",name:"Solar Farm Ruins",      days:7, known:false, stock:{parts:34, scrap:20},           blurb:"A field of cracked mirrors aimed at nothing."},
   {id:"reservoir",name:"The Reservoir Works",   days:8, known:false, stock:{scrap:30, parts:16, meds:6},   blurb:"The far edge of anyone's map."}
 ];
+
+const SITE_LOOT_TABLE = {
+  "oldtown":    { scrap: 0.6, parts: 0.4 },
+  "kessler":    { parts: 0.8, scrap: 0.2 },
+  "pharmacy":   { meds: 1.0 },
+  "seedvault":  { seeds: 0.8, meds: 0.2 },
+  "substation": { parts: 1.0 },
+  "extension":  { seeds: 0.6, parts: 0.4 },
+  "hospital":   { meds: 0.8, parts: 0.2 },
+  "solarfarm":  { parts: 1.0 },
+  "reservoir":  { scrap: 0.5, parts: 0.5 }
+};
 
 /* PROJECTS — one-time builds that set a permanent S.flags[id]=true and change some
    rule elsewhere in the code (search for F.<id> to find the effect — e.g. F.dryRacks
@@ -1359,9 +1478,14 @@ function focusCheck(L, placed){
 function newSites(){
   return Object.fromEntries(SITE_DEF.map(s=>[s.id,{
     stock:{...s.stock}, total0:Object.values(s.stock).reduce((a,b)=>a+b,0),
-    discovered:!!s.known, depleted:false
+    discovered:!!s.known, 
+    visited: false, // Add this new flag
+    lastVisited: -999,    
+    depleted:false
   }]));
 }
+
+
 function freshPerson(def){
   return {...def, age: AGES[def.id] ?? 30, years:0, perm:null, wb:78+Math.floor(Math.random()*10), job:null, streak:0, status:"ok", downDays:0, mem:null, practice:{specific:{}, broad:{hands:0,green:0,care:0,wild:0}}};
 }
@@ -2040,6 +2164,8 @@ function tickExpeditions(lines){
       }
     } else {
       const st=S.sites[ex.siteId], def=siteDef(ex.siteId);
+      st.visited = true;
+      st.lastVisited = S.day;
       const carry=ex.party.reduce((a,pid)=>a+4+effStat(byId(pid),"wild",ex.type)+((S.f||{}).carry||0),0);
       let wants={}, wantTotal=0;
       for(const [k,v] of Object.entries(st.stock)){ const t=Math.min(v, v*0.4+1); wants[k]=t; wantTotal+=t; }
@@ -2212,10 +2338,35 @@ const EVENTS = [
   },
   {
     id:"lockedWing",
-    when:()=>SITE_DEF.some(d=>S.sites[d.id].discovered && !S.sites[d.id].depleted),
-    roll:()=>{
-      const cands=SITE_DEF.filter(d=>S.sites[d.id].discovered && !S.sites[d.id].depleted);
-      return {siteId:pick(cands).id, kind:Math.random()<0.5?"parts":"meds"};
+    when:() => SITE_DEF.some(d => {
+      const site = S.sites[d.id];
+      const isFreshlyVisited = (S.day - site.lastVisited) <= 2;
+      const isActiveExpedition = S.expeditions.some(ex => ex.siteId === d.id);
+      
+      return site.visited && !site.depleted && (isFreshlyVisited || isActiveExpedition);
+    }),
+    roll:() => {
+      const cands = SITE_DEF.filter(d => {
+        const site = S.sites[d.id];
+        return site.visited && !site.depleted && ((S.day - site.lastVisited) <= 2 || S.expeditions.some(ex => ex.siteId === d.id));
+      });
+  
+      const site = pick(cands);
+      const lootTable = SITE_LOOT_TABLE[site.id] || { scrap: 1.0 };
+  
+      // Pick a random key based on the weights in the loot table
+      const roll = Math.random();
+      let cumulative = 0;
+      let kind = "scrap"; // Fallback
+  
+      for (const [res, weight] of Object.entries(lootTable)) {
+         cumulative += weight;
+         if (roll < cumulative) {
+            kind = res;
+            break;
+         }
+      }
+      return { siteId: site.id, kind };
     },
     view:ctx=>({
       title:"A sealed room",
@@ -2230,7 +2381,7 @@ const EVENTS = [
         S.res.scrap-=3;
         const st=S.sites[ctx.siteId];
         st.stock[ctx.kind]=(st.stock[ctx.kind]||0)+8; st.total0+=8;
-        S.pending.push(`The sealed room at ${siteName(ctx.siteId)} gave way. Shelves inside, mostly intact. Worth the crowbars.`);
+        S.pending.push(`The sealed room at ${siteName(ctx.siteId)} gave way. Inside: a cache of ${ctx.kind}. Worth the crowbars.`);
       } else {
         S.pending.push(`The door at ${siteName(ctx.siteId)} stays shut. ${aliveName("kav","Someone")} approved. ${aliveName("bec","Someone else")} did not.`);
       }
@@ -2683,6 +2834,8 @@ function simulateDay(){
   const wx = S.forecast ? scaledWeather(S.forecast) : rollWeather();
   S.weather=wx.id;
   const F=S.flags;
+  const sn=season();
+
 
   // --- TEMPERATURE EXTREMES ---
   const isSummer = sn.id === "summer";
@@ -2820,7 +2973,6 @@ function simulateDay(){
   // ---- the beds: a crop is planted, tended, and only then harvested ----
   const tenders = working("garden");
   const fo=S.f||{};
-  const sn=season();
   let gardenFood = 0;
   const gWhy=[];
 
@@ -3426,7 +3578,7 @@ function simulateDay(){
   if (S.day > 5) { // e.g., let them settle in for a few days first
     tickRelationships(); 
     tickDinnerBonds(hunger, S.sys.commons.cond); //
-    checkForHearthConflicts(lines); 
+//    checkForHearthConflicts(lines); 
   }
 
   tickDepartures(lines);            
@@ -3683,35 +3835,82 @@ function endDayNow(){
 /* ================= rendering ================= */
 const $=id=>document.getElementById(id);
 
-function renderHeader(){
-  const sn=season();
-  let wxLine=`${sn.name} ${dayOfSeason(S.day)} · Yr ${yearOf(S.day)} · ${S.weather}`;
-  if(S.forecast && forecastUnlocked()){
-    const fw=WEATHERS.find(w=>w.id===S.forecast);
-    wxLine += ` · tomorrow: ${fw?fw.word:S.forecast}`;
-  }
-  $("daywx").textContent=wxLine;
-  const r=S.report;
-  const net=v=>`<span class="${v>=0?'pos':'neg'}">${v>=0?'+':''}${v.toFixed(1)}</span>`;
-  const cap=S.report.cap||0;
-  const bal=r.gen-r.draw;
-  $("resStrip").innerHTML=`
-    <div class="res"><div class="lbl">Food</div><div class="val">${S.res.food.toFixed(0)}<span style="color:var(--ink-soft)"> + ${S.preserved.toFixed(0)}</span></div><div class="sub">${(S.res.food+S.preserved).toFixed(0)} total${S.spoilMemo>0.05?` · −${S.spoilMemo.toFixed(1)} spoiled`:""}</div></div>
-    <div class="res"><div class="lbl">Water</div><div class="val">${S.res.water.toFixed(0)}<span style="font-size:10px;color:var(--ink-soft)">/${waterCapEff()}</span></div><div class="sub">${net(r.waterIn-r.waterOut)}/day</div></div>
-    <div class="res"><div class="lbl">Power</div><div class="val">${r.brownout?'<span class="neg">brownout</span>':`${net(bal)}`}</div><div class="sub">${r.brownout?"no charge left":`cell ${S.res.charge.toFixed(0)}/${cap.toFixed(0)}`}</div></div>`;
+function renderHeader() {
+  const sn = season();
+  const r = S.report;
+  
+  // 1. Weather and Date
+  $("daywx").textContent = `${sn.name}, day ${dayOfSeason(S.day)} — ${S.weather}`;
+
+
+  // Vitals: Food / Water / Power — value line, then a small colored delta line
+  const foodChange = (r.foodIn - r.foodOut);
+  const waterNet = (r.waterIn - r.waterOut);
+  const powerNet = (r.gen - r.draw);
+  const cap = r.cap || 0;
+
+  const delta = v => `<span class="delta"><span class="${v >= 0 ? 'pos' : 'neg'}">${v >= 0 ? '+' : ''}${v.toFixed(1)}</span></span>`;
+  const foodBreakdown = S.preserved > 0
+    ? ` · ${S.res.food.toFixed(0)}f ${S.preserved.toFixed(0)}r` : '';
+
+  $("hudVitals").innerHTML = `
+    <div class="stat">
+      <span class="lbl">Food</span>
+      <span class="val">${(S.res.food + S.preserved).toFixed(0)}</span>
+      <span class="delta"><span class="${foodChange >= 0 ? 'pos' : 'neg'}">${foodChange >= 0 ? '+' : ''}${foodChange.toFixed(1)}</span>${foodBreakdown}</span>
+    </div>
+    <div class="stat">
+      <span class="lbl">Water</span>
+      <span class="val">${S.res.water.toFixed(0)}<small> / ${waterCapEff()}</small></span>
+      ${delta(waterNet)}
+    </div>
+    <div class="stat">
+      <span class="lbl">Power</span>
+      <span class="val">${S.res.charge.toFixed(1)}${cap > 0 ? `<small> / ${cap.toFixed(0)}</small>` : ''}</span>
+      ${r.brownout ? `<span class="delta"><span class="neg">brownout</span></span>` : delta(powerNet)}
+    </div>
+  `;
+
+  // People and materials: compact ledger lines; zeros render dimmed
+  const resting = S.people.filter(p => p.job === null && p.status === "ok").length;
+  const laidup = S.people.filter(p => p.status === "down" || p.status === "spent").length;
+  const away = S.people.filter(p => p.status === "away").length;
+
+  const ledgerItem = (l, v) =>
+    `<span class="item"><span class="lbl">${l}</span><span class="val${v === 0 ? ' dim' : ''}">${v}</span></span>`;
+
+  $("hudPeople").innerHTML = [
+    ["Villagers", S.people.length], ["Resting", resting], ["Laid up", laidup], ["Away", away]
+  ].map(x => ledgerItem(x[0], x[1])).join("");
+
+  $("hudMaterials").innerHTML = [
+    ["Scrap", Math.round(S.res.scrap)], ["Parts", Math.round(S.res.parts)],
+    ["Wood", Math.round(S.res.wood || 0)], ["Seeds", Math.round(S.res.seeds || 0)],
+    ["Meds", Math.round(S.res.meds || 0)]
+  ].map(x => ledgerItem(x[0], x[1])).join("");
+
   $("evdot").style.display = S.event ? "" : "none";
 }
 
 function condClass(c){return c>=60?"c-good":c>=35?"c-mid":"c-bad";}
 function wbColor(w){return w>=60?"#58793F":w>=30?"#C8963B":"#A85B38";}
+
 function salvageChips(){
-  return `<div class="chips">
-    <span class="chip">scrap ${S.res.scrap.toFixed(0)}</span>
-    <span class="chip">parts ${S.res.parts.toFixed(0)}</span>
-    <span class="chip">wood ${S.res.wood.toFixed(0)}</span>
-    <span class="chip">seeds ${S.res.seeds.toFixed(0)}</span>
-    <span class="chip">meds ${S.res.meds.toFixed(0)}</span>
-  </div>`;
+  const items = [
+    {n: "Scrap", v: S.res.scrap},
+    {n: "Parts", v: S.res.parts},
+    {n: "Wood", v: S.res.wood},    
+    {n: "Seeds", v: S.res.seeds},
+    {n: "Meds", v: S.res.meds}
+  ];
+  return `
+    <div class="ledger">
+      ${items.map(i => `
+        <div class="ledger-item">
+          <b>${i.v.toFixed(0)}</b> <span>${i.n}</span>
+        </div>
+      `).join('')}
+    </div>`;
 }
 function roleChip(jobId, roleLabel, empty){
   const list=S.people.filter(p=>p.job===jobId);
@@ -3815,8 +4014,8 @@ function renderVillage(){
 
   // Build the top dashboard
   let h = seasonBanner();
-  h += `<div class="sectionlbl">${S.people.length} villagers · ${resting} resting · ${laidup} laid up · ${away} away</div>`;
-  h += salvageChips();
+//  h += `<div class="sectionlbl">${S.people.length} villagers · ${resting} resting · ${laidup} laid up · ${away} away</div>`;
+//  h += salvageChips();
   h += renderEvent();
   h += powerCard();
 
@@ -5502,6 +5701,19 @@ function syncNavTop(){
 }
 window.addEventListener("resize", syncNavTop);
 window.addEventListener("orientationchange", syncNavTop);
+
+// minimize the header once you've scrolled down; restore near the top.
+// two thresholds so it doesn't flicker at the boundary.
+(function(){
+  const hdr=document.querySelector("header");
+  let mini=false;
+  function onScroll(){
+    const y=window.scrollY||0;
+    if(!mini && y>90){ mini=true; hdr.classList.add("mini"); syncNavTop(); }
+    else if(mini && y<30){ mini=false; hdr.classList.remove("mini"); syncNavTop(); }
+  }
+  window.addEventListener("scroll", onScroll, {passive:true});
+})();
 
 setInterval(()=>{
   if(!S) return;
