@@ -482,6 +482,18 @@
   justify-content: center; /* Centers the puzzle in the tab */
 }
 
+.picross-controls {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+.picross-controls button.active {
+  border-color: var(--sun);
+  background: var(--paper-deep);
+  color: var(--ink);
+}
+
 .top-clues {
   grid-column: 2;
   grid-row: 1;
@@ -520,6 +532,7 @@
   background: var(--ink); /* Uses your dark green/black variable */
   border: 2px solid var(--ink);
   gap: 1px; /* This creates the grid lines automatically */
+  touch-action: none;
 }
 
 .puzzle-cell {
