@@ -531,7 +531,7 @@ function focusCheck(L, placed){
    ============================================================ */
 
 // The library of puzzle layouts (1 = filled, 0 = empty)
-export const PICROSS_LEVELS = [
+const PICROSS_LEVELS = [
   {
     n: 1, 
     teach: "Resolve LIDAR interference to map the heavy tool cache.",
@@ -560,7 +560,7 @@ export const PICROSS_LEVELS = [
 ];
 
 // Generates the number clues for the top and sides based on a target grid
-export function generatePicrossClues(grid) {
+function generatePicrossClues(grid) {
   const extract = (line) => {
     const runs = [];
     let current = 0;
