@@ -52,7 +52,8 @@ const PUZ_META = {
   seed:{levels:SEED_LEVELS, reward:SEED_REWARD, noun:"frame"},
   radio:{levels:SIGNAL_LEVELS, reward:SIGNAL_REWARD, noun:"frequency"},
   patch:{levels:PATCH_LEVELS, reward:PATCH_REWARD, noun:"draft"},
-  focus:{levels:FOCUS_LEVELS, reward:FOCUS_REWARD, noun:"array"}
+  focus:{levels:FOCUS_LEVELS, reward:FOCUS_REWARD, noun:"array"},
+  picross:{levels:PICROSS_LEVELS, reward: PICROSS_REWARD, noun: "scan"}
 };
 
 let pz = null;   // {kind, lvl, paths|placed, sel}
