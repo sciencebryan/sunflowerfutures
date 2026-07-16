@@ -526,5 +526,55 @@ function focusCheck(L, placed){
   return {beams, pts:beams[0], hit, hitTarget:hitAll, used, solved};
 }
 
+/* ============================================================
+   PICROSS / SPECTRAL SCANS
+   ============================================================ */
 
-export { CIRCUIT_LEVELS, FOCUS_LEVELS, PATCH_LEVELS, PATCH_SHAPES, PATCH_VARIANTS, SEEDLINGS, SEED_COMPANION, SEED_LEVELS, SEED_RIVAL, SIGNAL_LEVELS, WATER_LEVELS, WATER_PIECES, cKey, circuitAdj, circuitCap, circuitCheck, focusCheck, focusSrcs, focusTargets, patchCheck, seedCheck, seedSlotAt, signalCheck, waterSim };
+// The library of puzzle layouts (1 = filled, 0 = empty)
+export const PICROSS_LEVELS = {
+  "wrench": {
+    name: "Heavy Wrench",
+    rewardText: "You recovered a cache of heavy tools! +5 parts.",
+    grid: [
+      [0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0],
+      [0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0],
+      [1,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0],
+      [1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0],
+      [0,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0],
+      [0,0,0,1,1,0,0,1,0,0,0,0,0,0,0,0],
+      [0,0,0,0,1,1,0,0,1,0,0,0,0,0,0,0],
+      [0,0,0,0,0,1,1,0,0,1,0,0,0,0,0,0],
+      [0,0,0,0,0,0,1,1,0,0,1,0,0,0,0,0],
+      [0,0,0,0,0,0,0,1,1,0,0,1,0,0,0,0],
+      [0,0,0,0,0,0,0,0,1,1,1,1,1,1,0,0],
+      [0,0,0,0,0,0,0,0,0,1,1,1,0,1,1,0],
+      [0,0,0,0,0,0,0,0,0,0,1,0,0,0,1,0],
+      [0,0,0,0,0,0,0,0,0,0,1,1,0,1,1,0],
+      [0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0],
+      [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+       
+    ]
+  }
+};
+
+// Generates the number clues for the top and sides based on a target grid
+export function generatePicrossClues(grid) {
+  const extract = (line) => {
+    const runs = [];
+    let current = 0;
+    for (let cell of line) {
+      if (cell === 1) current++;
+      else if (current > 0) { runs.push(current); current = 0; }
+    }
+    if (current > 0) runs.push(current);
+    return runs.length ? runs : [0];
+  };
+
+  const rowClues = grid.map(row => extract(row));
+  // Map columns by extracting the c-th index of every row
+  const colClues = Array(16).fill().map((_, c) => extract(grid.map(row => row[c])));
+  
+  return { rowClues, colClues };
+}
+
+export { CIRCUIT_LEVELS, FOCUS_LEVELS, PATCH_LEVELS, PATCH_SHAPES, PATCH_VARIANTS, SEEDLINGS, SEED_COMPANION, SEED_LEVELS, SEED_RIVAL, SIGNAL_LEVELS, WATER_LEVELS, WATER_PIECES, cKey, circuitAdj, circuitCap, circuitCheck, focusCheck, focusSrcs, focusTargets, patchCheck, seedCheck, seedSlotAt, signalCheck, waterSim, PICROSS_LEVELS, generatePicrossClues };
