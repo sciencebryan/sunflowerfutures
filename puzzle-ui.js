@@ -1,4 +1,4 @@
-import { CIRCUIT_LEVELS, FOCUS_LEVELS, PATCH_LEVELS, PATCH_SHAPES, PATCH_VARIANTS, SEEDLINGS, SEED_COMPANION, SEED_LEVELS, SEED_RIVAL, SIGNAL_LEVELS, WATER_LEVELS, WATER_PIECES, cKey, circuitAdj, circuitCap, circuitCheck, focusCheck, focusSrcs, focusTargets, patchCheck, seedCheck, seedSlotAt, signalCheck, waterSim } from "./puzzles.js";
+import { CIRCUIT_LEVELS, FOCUS_LEVELS, PATCH_LEVELS, PATCH_SHAPES, PATCH_VARIANTS, SEEDLINGS, SEED_COMPANION, SEED_LEVELS, SEED_RIVAL, SIGNAL_LEVELS, WATER_LEVELS, WATER_PIECES, cKey, circuitAdj, circuitCap, circuitCheck, focusCheck, focusSrcs, focusTargets, patchCheck, seedCheck, seedSlotAt, signalCheck, waterSim, PICROSS_LEVELS, generatePicrossClues } from "./puzzles.js";
 import { S } from "./state.js";
 import { $ } from "./dom.js";
 import { store } from "./store.js";
@@ -930,6 +930,98 @@ function renderFocus(){
       }
     };
   });
+}
+
+/* ================= SPECTRAL SCANS UI ================= */
+
+// Temporary state to hold the player's current puzzle progress
+let currentPicrossState = null;
+let currentPicrossTarget = null;
+
+export function renderPicross(levelId) {
+  const level = PICROSS_LEVELS[levelId];
+  if (!level) return;
+  
+  currentPicrossTarget = level.grid;
+  // Initialize an empty 16x16 grid for the player (0 = empty, 1 = filled, 2 = crossed)
+  currentPicrossState = Array(16).fill().map(() => Array(16).fill(0));
+  
+  const { rowClues, colClues } = generatePicrossClues(currentPicrossTarget);
+  
+  let h = `<div class="puzzle-header">
+    <h3>Spectral Scan</h3>
+    <div class="sub">Resolve the interference to map the cache.</div>
+  </div>
+  <div class="picross-board">`;
+  
+  // 1. Top Clues (Vertical)
+  h += `<div class="top-clues">`;
+  colClues.forEach(clue => { h += `<div>${clue.join("<br>")}</div>`; });
+  h += `</div>`;
+  
+  // 2. Left Clues (Horizontal)
+  h += `<div class="left-clues">`;
+  rowClues.forEach(clue => { h += `<div>${clue.join(" ")}</div>`; });
+  h += `</div>`;
+  
+  // 3. Playable Grid
+  h += `<div class="puzzle-grid">`;
+  for (let r = 0; r < 16; r++) {
+    for (let c = 0; c < 16; c++) {
+      h += `<div class="puzzle-cell" data-px="${r},${c}"></div>`;
+    }
+  }
+  h += `</div></div>`; // End grid and board
+  
+  h += `<div class="blurb" style="margin-top:16px;">Left-click to fill block. Right-click to mark empty (×).</div>`;
+  
+  // Inject into the Works tab (or wherever you want it to appear)
+  $("tab-works").innerHTML = h;
+
+  // Attach event listeners
+  $("tab-works").querySelectorAll(".puzzle-cell").forEach(el => {
+    // Left Click: Toggle filled state
+    el.onclick = () => handlePicrossClick(el, 1, levelId);
+    
+    // Right Click: Toggle crossed state
+    el.oncontextmenu = (e) => {
+      e.preventDefault(); 
+      handlePicrossClick(el, 2, levelId);
+    };
+  });
+}
+
+function handlePicrossClick(el, actionType, levelId) {
+  const [r, c] = el.dataset.px.split(",").map(Number);
+  
+  // Cycle the state: if it's already the action type, clear it to 0. Otherwise set to actionType.
+  currentPicrossState[r][c] = currentPicrossState[r][c] === actionType ? 0 : actionType;
+  
+  // Update visual classes
+  el.className = "puzzle-cell";
+  if (currentPicrossState[r][c] === 1) el.classList.add("filled");
+  if (currentPicrossState[r][c] === 2) el.classList.add("crossed");
+  
+  checkPicrossWin(levelId);
+}
+
+function checkPicrossWin(levelId) {
+  // Check if every 1 in the target is a 1 in the player's grid, and every 0 is NOT a 1
+  const isWin = currentPicrossTarget.every((row, r) => 
+    row.every((val, c) => (val === 1 ? currentPicrossState[r][c] === 1 : currentPicrossState[r][c] !== 1))
+  );
+
+  if (isWin) {
+    const level = PICROSS_LEVELS[levelId];
+    S.pending.push(level.rewardText);
+    
+    // Add rewards based on the level here
+    if (levelId === "wrench") S.res.parts += 5;
+    
+    // Clear the board and re-render header to show updated resources
+    $("tab-works").innerHTML = `<div class="banner">Scan Complete. Data recovered.</div>`;
+    renderAll(); // Assuming renderAll from your render.js updates the top header
+  }
 }
 
 
