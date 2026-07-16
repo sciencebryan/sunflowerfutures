@@ -41,6 +41,11 @@ const FOCUS_REWARD = {
   4:{flag:"thermalStore", desc:"a thermal mass tank is plumbed in: the panels give a baseline trickle of power even in the rain"},
   5:{parts:12, scrap:20, desc:"the field is fully calibrated, yielding a haul of spare tracking motors: +12 parts, +20 scrap"}
 };
+
+const PICROSS_REWARD = {
+  1: { parts: 5, desc: "a cache of heavy tools: +5 parts" }
+};
+
 const PUZ_META = {
   circuit:{levels:CIRCUIT_LEVELS, reward:CIRCUIT_REWARD, noun:"board"},
   water:{levels:WATER_LEVELS, reward:WATER_REWARD, noun:"season"},
