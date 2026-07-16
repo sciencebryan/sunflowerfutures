@@ -7,6 +7,10 @@ import { CROPS } from "./seasons.js";
 import { bestPresent, byId } from "./helpers.js";
 import { RESTORE_IN, addRestore } from "./defs.js";
 
+let picrossMode = 1;      // 1 = Fill Mode, 2 = Cross Mode
+let picrossDragging = false; 
+let picrossPaintState = 0; // What color are we painting right now? (0, 1, or 2)
+
 /* ================= WORKS: puzzle UI ================= */
 const CIRCUIT_REWARD = {
   2:{parts:5, desc:"the first boards give up their good components: +5 parts"},
@@ -974,8 +978,15 @@ export function renderPicross() {
     <div style="margin-top:8px">
       <button class="go" data-act="back">Leave it</button>
     </div>
-  </div>
-  <div class="picross-board">`;
+  </div>`;
+  
+  // ADDED: The Mode Toggle for Mobile
+  h += `<div class="picross-controls">
+    <button class="go ${picrossMode === 1 ? 'active' : ''}" id="pmode-fill">■ Fill</button>
+    <button class="go ${picrossMode === 2 ? 'active' : ''}" id="pmode-cross">× Mark</button>
+  </div>`;
+
+  h += `<div class="picross-board">`;
   
   h += `<div class="top-clues">`;
   colClues.forEach(clue => { h += `<div>${clue.join("<br>")}</div>`; });
@@ -985,28 +996,91 @@ export function renderPicross() {
   rowClues.forEach(clue => { h += `<div>${clue.join(" ")}</div>`; });
   h += `</div>`;
   
-  h += `<div class="puzzle-grid">`;
+  h += `<div class="puzzle-grid" id="p-grid">`;
   for (let r = 0; r < L.grid.length; r++) {
     for (let c = 0; c < L.grid[0].length; c++) {
-      // Check pz.state to apply the correct visual classes
       const st = pz.state[r][c];
       const cls = st === 1 ? " filled" : st === 2 ? " crossed" : "";
       h += `<div class="puzzle-cell${cls}" data-px="${r},${c}"></div>`;
     }
   }
   h += `</div></div>`;
-  h += `<div class="blurb" style="margin-top:16px;">Tap to fill. Right-click to mark empty (×).</div>`;
+  h += `<div class="blurb" style="margin-top:16px;text-align:center;">Drag to paint. Desktop: right-click to mark.</div>`;
   
   $("tab-works").innerHTML = h;
 
-  // Back button
+  // Setup UI Buttons
   $("tab-works").querySelector("[data-act='back']").onclick = closePuzzle;
+  
+  $("pmode-fill").onclick = () => { picrossMode = 1; renderPicross(); };
+  $("pmode-cross").onclick = () => { picrossMode = 2; renderPicross(); };
 
-  // Grid clicks
-  $("tab-works").querySelectorAll(".puzzle-cell").forEach(el => {
-    el.onclick = () => handlePicrossClick(el, 1);
-    el.oncontextmenu = (e) => { e.preventDefault(); handlePicrossClick(el, 2); };
+  // Setup Drag-to-Paint Logic
+  attachPicrossDragEvents();
+}
+
+function attachPicrossDragEvents() {
+  const grid = document.getElementById("p-grid");
+  
+  // Stop right clicks from opening the browser menu anywhere on the grid
+  grid.oncontextmenu = e => e.preventDefault();
+
+  grid.addEventListener("pointerdown", (e) => {
+    const cell = e.target.closest(".puzzle-cell");
+    if (!cell) return;
+
+    e.preventDefault(); // Stop text highlighting/scrolling
+    grid.setPointerCapture(e.pointerId); // Lock events to the grid even if finger slides off
+    
+    picrossDragging = true;
+    const [r, c] = cell.dataset.px.split(",").map(Number);
+    
+    // Determine target state based on desktop right-click OR mobile mode toggle
+    const isRightClick = e.button === 2;
+    const activeMode = isRightClick ? 2 : picrossMode;
+
+    // If we click on a cell that is ALREADY the active mode, we want to erase instead
+    picrossPaintState = pz.state[r][c] === activeMode ? 0 : activeMode;
+
+    applyPicrossPaint(r, c, picrossPaintState);
   });
+
+  grid.addEventListener("pointermove", (e) => {
+    if (!picrossDragging) return;
+    
+    // On touch screens, pointermove fires on the ORIGINAL element touched.
+    // We must use elementFromPoint to find out what cell the finger is CURRENTLY hovering over.
+    const hoveredEl = document.elementFromPoint(e.clientX, e.clientY);
+    const cell = hoveredEl ? hoveredEl.closest(".puzzle-cell") : null;
+    
+    if (cell && grid.contains(cell)) {
+      const [r, c] = cell.dataset.px.split(",").map(Number);
+      applyPicrossPaint(r, c, picrossPaintState);
+    }
+  });
+
+  // End drag when lifting finger/mouse OR sliding off the screen completely
+  const stopDrag = (e) => {
+    if (picrossDragging) {
+      picrossDragging = false;
+      grid.releasePointerCapture(e.pointerId);
+      checkPicrossWin(); // Check for a win only when they finish a drag stroke
+    }
+  };
+  
+  grid.addEventListener("pointerup", stopDrag);
+  grid.addEventListener("pointercancel", stopDrag);
+}
+
+// Helper: Applies paint and updates UI instantly without a full re-render
+function applyPicrossPaint(r, c, targetState) {
+  if (pz.state[r][c] !== targetState) {
+    pz.state[r][c] = targetState;
+    const cell = document.querySelector(`.puzzle-cell[data-px="${r},${c}"]`);
+    if (cell) {
+      cell.className = "puzzle-cell" + (targetState === 1 ? " filled" : targetState === 2 ? " crossed" : "");
+    }
+  }
 }
 
 function handlePicrossClick(el, actionType) {
