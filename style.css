@@ -487,6 +487,8 @@
   grid-row: 1;
   display: grid;
   grid-template-columns: repeat(16, 20px);
+  gap: 1px;          /* <--- Matches the main grid lines */
+  padding: 0 2px;    /* <--- Shifts the clues 2px right to clear the main grid's border */
   align-items: end;
   text-align: center;
   font-size: 11px;
@@ -499,9 +501,11 @@
   grid-row: 2;
   display: grid;
   grid-template-rows: repeat(16, 20px);
+  gap: 1px;          /* <--- Matches the main grid lines */
+  padding-top: 2px;  /* <--- Shifts the clues 2px down to clear the main grid's top border */
+  padding-right: 8px; 
   align-items: center;
   text-align: right;
-  padding-right: 8px;
   font-size: 11px;
   letter-spacing: 2px;
   color: var(--ink-soft);
