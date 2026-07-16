@@ -80,6 +80,7 @@ function renderWorks(){
     else if(pz.kind==="seed") renderSeed();
     else if(pz.kind==="patch") renderPatch();
     else if(pz.kind==="focus") renderFocus();
+    else if(pz.kind==="picross") renderPicross();
     else renderSignal();
     return;
   }
@@ -122,6 +123,18 @@ function renderWorks(){
   if(S.flags.keyline)   h+=`<div class="sectionlbl">Keyline cut — the gardens drink deeper</div>`;
   if(S.flags.seedLibrary) h+=`<div class="sectionlbl">The seed library — crops keep a little better</div>`;
 
+  h+=`<div class="sectionlbl">Spectral scans</div>`;
+  if(S.puz.picross>=PICROSS_LEVELS.length) h+=`<div class="card grey"><div class="sysname">The drives are clean</div><div class="blurb">Every cache mapped. There is no more interference to resolve.</div></div>`;
+  else{
+    const L=PICROSS_LEVELS[S.puz.picross];
+    h+=`<div class="card">
+      <div class="card-top"><div class="sysname">Scan ${L.n}</div><button class="go" data-pz="picross">Open</button></div>
+      <div class="blurb">${L.teach}</div>
+      <div class="costchips"><span class="cost">${L.grid[0].length}x${L.grid.length} grid</span></div>
+      <div class="blurb" style="margin-top:6px;color:var(--leaf)">${rewardPreview("picross")}</div>
+    </div>`;
+  }
+  
   h+=`<div class="sectionlbl">Patchwork &amp; insulation</div>`;
   if(S.puz.patch>=PATCH_LEVELS.length) h+=`<div class="card grey"><div class="sysname">The drafts are sealed</div><div class="blurb">Every crack packed, every pane replaced. The heat stays where it belongs.</div></div>`;
   else{
@@ -183,6 +196,13 @@ function openPuzzle(kind){
   } else if(kind==="focus") {
     const L=FOCUS_LEVELS[S.puz.focus];
     pz={kind, L, placed:{}};
+  } else if(kind==="picross") {
+    // <-- ADDED INITIALIZATION
+    const L=PICROSS_LEVELS[S.puz.picross];
+    const w=L.grid[0].length;
+    const h=L.grid.length;
+    // Create an empty array filled with 0s to track player clicks
+    pz={kind, L, state: Array(h).fill().map(() => Array(w).fill(0))};
   } else {
     const L=SIGNAL_LEVELS[S.puz.radio];
     pz={kind, L, placed:{}};
@@ -938,89 +958,75 @@ function renderFocus(){
 let currentPicrossState = null;
 let currentPicrossTarget = null;
 
-export function renderPicross(levelId) {
-  const level = PICROSS_LEVELS[levelId];
-  if (!level) return;
-  
-  currentPicrossTarget = level.grid;
-  // Initialize an empty 16x16 grid for the player (0 = empty, 1 = filled, 2 = crossed)
-  currentPicrossState = Array(16).fill().map(() => Array(16).fill(0));
-  
-  const { rowClues, colClues } = generatePicrossClues(currentPicrossTarget);
+export function renderPicross() {
+  const L = pz.L;
+  const { rowClues, colClues } = generatePicrossClues(L.grid);
   
   let h = `<div class="puzzle-header">
-    <h3>Spectral Scan</h3>
-    <div class="sub">Resolve the interference to map the cache.</div>
+    <h3>Scan ${L.n}</h3>
+    <div class="sub">${L.teach}</div>
+    <div style="margin-top:8px">
+      <button class="go" data-act="back">Leave it</button>
+    </div>
   </div>
   <div class="picross-board">`;
   
-  // 1. Top Clues (Vertical)
   h += `<div class="top-clues">`;
   colClues.forEach(clue => { h += `<div>${clue.join("<br>")}</div>`; });
   h += `</div>`;
   
-  // 2. Left Clues (Horizontal)
   h += `<div class="left-clues">`;
   rowClues.forEach(clue => { h += `<div>${clue.join(" ")}</div>`; });
   h += `</div>`;
   
-  // 3. Playable Grid
   h += `<div class="puzzle-grid">`;
-  for (let r = 0; r < 16; r++) {
-    for (let c = 0; c < 16; c++) {
-      h += `<div class="puzzle-cell" data-px="${r},${c}"></div>`;
+  for (let r = 0; r < L.grid.length; r++) {
+    for (let c = 0; c < L.grid[0].length; c++) {
+      // Check pz.state to apply the correct visual classes
+      const st = pz.state[r][c];
+      const cls = st === 1 ? " filled" : st === 2 ? " crossed" : "";
+      h += `<div class="puzzle-cell${cls}" data-px="${r},${c}"></div>`;
     }
   }
-  h += `</div></div>`; // End grid and board
+  h += `</div></div>`;
+  h += `<div class="blurb" style="margin-top:16px;">Tap to fill. Right-click to mark empty (×).</div>`;
   
-  h += `<div class="blurb" style="margin-top:16px;">Left-click to fill block. Right-click to mark empty (×).</div>`;
-  
-  // Inject into the Works tab (or wherever you want it to appear)
   $("tab-works").innerHTML = h;
 
-  // Attach event listeners
+  // Back button
+  $("tab-works").querySelector("[data-act='back']").onclick = closePuzzle;
+
+  // Grid clicks
   $("tab-works").querySelectorAll(".puzzle-cell").forEach(el => {
-    // Left Click: Toggle filled state
-    el.onclick = () => handlePicrossClick(el, 1, levelId);
-    
-    // Right Click: Toggle crossed state
-    el.oncontextmenu = (e) => {
-      e.preventDefault(); 
-      handlePicrossClick(el, 2, levelId);
-    };
+    el.onclick = () => handlePicrossClick(el, 1);
+    el.oncontextmenu = (e) => { e.preventDefault(); handlePicrossClick(el, 2); };
   });
 }
 
-function handlePicrossClick(el, actionType, levelId) {
+function handlePicrossClick(el, actionType) {
   const [r, c] = el.dataset.px.split(",").map(Number);
   
-  // Cycle the state: if it's already the action type, clear it to 0. Otherwise set to actionType.
-  currentPicrossState[r][c] = currentPicrossState[r][c] === actionType ? 0 : actionType;
-  
-  // Update visual classes
-  el.className = "puzzle-cell";
-  if (currentPicrossState[r][c] === 1) el.classList.add("filled");
-  if (currentPicrossState[r][c] === 2) el.classList.add("crossed");
-  
-  checkPicrossWin(levelId);
+  // Toggle logic: if already this type, set to 0, else set to actionType
+  pz.state[r][c] = pz.state[r][c] === actionType ? 0 : actionType;
+  renderPicross(); // Re-render to update classes
+  checkPicrossWin();
 }
 
-function checkPicrossWin(levelId) {
-  // Check if every 1 in the target is a 1 in the player's grid, and every 0 is NOT a 1
-  const isWin = currentPicrossTarget.every((row, r) => 
-    row.every((val, c) => (val === 1 ? currentPicrossState[r][c] === 1 : currentPicrossState[r][c] !== 1))
+function checkPicrossWin() {
+  const L = pz.L;
+  const isWin = L.grid.every((row, r) => 
+    row.every((val, c) => (val === 1 ? pz.state[r][c] === 1 : pz.state[r][c] !== 1))
   );
 
   if (isWin) {
-    const level = PICROSS_LEVELS[levelId];
-    S.pending.push(level.rewardText);
+    S.pending.push(L.rewardText);
     
-    // Add rewards based on the level here
-    if (levelId === "wrench") S.res.parts += 5;
+    // Apply reward (e.g., if level yields parts)
+    if (L.parts) S.res.parts += L.parts;
     
-    // Clear the board and re-render header to show updated resources
-    $("tab-works").innerHTML = `<div class="banner">Scan Complete. Data recovered.</div>`;
-    renderAll(); // Assuming renderAll from your render.js updates the top header
+    // Advance progress
+    S.puz.picross++;
+    closePuzzle();
   }
 }
 
