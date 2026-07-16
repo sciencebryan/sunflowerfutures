@@ -62,7 +62,7 @@ function newState(){
     fabs: {}, fabProject: null,
     births: 0, deaths: 0, departures: 0,
     dietLog: [],   // recent harvests, for food-variety spirits
-    puz:{circuit:0, water:0, seed:0, radio:0, patch:0, focus:0}, crops:{},
+    puz:{circuit:0, water:0, seed:0, radio:0, patch:0, focus:0, picross:0}, crops:{},
     restore:{mycosphere:0, aquifer:0, pollinator:0, seen:false, restored:false},
     journal: [],
     report:{gen:0,draw:6,foodIn:0,foodOut:12,waterIn:0,waterOut:13,brownout:false}
