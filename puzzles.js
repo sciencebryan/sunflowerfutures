@@ -531,9 +531,11 @@ function focusCheck(L, placed){
    ============================================================ */
 
 // The library of puzzle layouts (1 = filled, 0 = empty)
-export const PICROSS_LEVELS = {
-  "wrench": {
-    name: "Heavy Wrench",
+export const PICROSS_LEVELS = [
+  {
+    n: 1, 
+    teach: "Resolve LIDAR interference to map the heavy tool cache.",
+    parts: 5,
     rewardText: "You recovered a cache of heavy tools! +5 parts.",
     grid: [
       [0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0],
@@ -555,7 +557,7 @@ export const PICROSS_LEVELS = {
        
     ]
   }
-};
+];
 
 // Generates the number clues for the top and sides based on a target grid
 export function generatePicrossClues(grid) {
