@@ -980,108 +980,107 @@ function wireTermSVG(t, px, kindLabel){
   return h+"</svg>";
 }
 
-function renderWires(){
-  const L=pz.L;
-  const r=wiresCheck(L, pz.placed);
-  const cellPx=Math.min(52, Math.floor((Math.min(window.innerWidth,620)-46)/L.w));
-  const remaining=L.inv.map((t,i)=> t.count - Object.values(pz.placed).filter(p=>p.inv===i).length);
-  let h=`<div class="card">
+function renderWires() {
+  const L = pz.L;
+  const r = wiresCheck(L, pz.placed);
+  const cellPx = Math.min(52, Math.floor((Math.min(window.innerWidth, 620) - 46) / L.w));
+  const remaining = L.inv.map((t, i) => t.count - Object.values(pz.placed).filter(p => p.inv === i).length);
+
+  let h = `<div class="card">
     <div class="pzhead"><div class="sysname">Run ${L.n}</div>
-      <div class="condpct">${Object.entries(r.fedByColor).map(([c,ok])=>`${c==="k"?"black":c==="r"?"red":"blue"} ${ok?"live":"dead"}`).join(" · ")}</div></div>
+      <div class="condpct">${Object.entries(r.fedByColor).map(([c, ok]) => `${c === "k" ? "black" : c === "r" ? "red" : "blue"} ${ok ? "live" : "dead"}`).join(" · ")}</div></div>
     <div class="pzteach">${L.teach}</div>
     <div class="sectionlbl" style="margin:10px 0 6px">Boards on the bench</div>
     <div class="pieces">`;
-  L.inv.forEach((t,i)=>{
-    h+=`<button class="piece ${pz.sel===i?'sel':''} ${remaining[i]<=0?'out':''}" data-sel="${i}">
-      ${wireTileSVG(t.wires,0,34)}<span>${t.name} ×${remaining[i]}</span></button>`;
+
+  L.inv.forEach((t, i) => {
+    h += `<button class="piece ${pz.sel === i ? 'sel' : ''} ${remaining[i] <= 0 ? 'out' : ''}" data-sel="${i}">
+      ${wireTileSVG(t.wires, 0, 34)}<span>${t.name} ×${remaining[i]}</span></button>`;
   });
-  h+=`</div>
+
+  h += `</div>
     <div class="blurb">Tap an empty cell to set the selected board. Tap a placed board to turn it a quarter. Tap it while holding nothing left to pick it back up — or use Clear.</div>
     <div class="grid" style="grid-template-columns:repeat(${L.w},${cellPx}px)">`;
-  for(let y=0;y<L.h;y++) for(let x=0;x<L.w;x++){
-    const src=L.srcs.find(t=>t.x===x&&t.y===y), snk=L.sinks.find(t=>t.x===x&&t.y===y);
-    const blocked=L.blocks.some(([bx,by])=>bx===x&&by===y);
-    const pl=pz.placed[`${x},${y}`];
-    let inner="", cls="cell";
-    if(src) inner=wireTermSVG(src,cellPx,"src");
-    else if(snk) inner=wireTermSVG(snk,cellPx,"sink");
-    else if(blocked){ cls+=" blockcell"; inner=""; }
-    else if(pl) inner=wireTileSVG(L.inv[pl.inv].wires, pl.rot, cellPx);
-    h+=`<div class="${cls}" data-cell="${x},${y}" style="width:${cellPx}px;height:${cellPx}px;padding:0">${inner}</div>`;
+
+  for (let y = 0; y < L.h; y++) for (let x = 0; x < L.w; x++) {
+    const src = L.srcs.find(t => t.x === x && t.y === y), snk = L.sinks.find(t => t.x === x && t.y === y);
+    const blocked = L.blocks.some(([bx, by]) => bx === x && by === y);
+    const pl = pz.placed[`${x},${y}`];
+    let inner = "", cls = "cell";
+    if (src) inner = wireTermSVG(src, cellPx, "src");
+    else if (snk) inner = wireTermSVG(snk, cellPx, "sink");
+    else if (blocked) { cls += " blockcell"; inner = ""; }
+    else if (pl) inner = wireTileSVG(L.inv[pl.inv].wires, pl.rot, cellPx);
+    h += `<div class="${cls}" data-cell="${x},${y}" style="width:${cellPx}px;height:${cellPx}px;padding:0">${inner}</div>`;
   }
-  h+=`</div>
-    ${r.mismatches.length?`<div class="warnline">Somewhere a red post meets a black one. Nothing conducts across a mismatched joint.</div>`:""}
+
+  h += `</div>
+    ${r.mismatches.length ? `<div class="warnline">Somewhere a red post meets a black one. Nothing conducts across a mismatched joint.</div>` : ""}
     <div class="btnrow" style="margin-top:10px">
       <button data-act="clear">Clear</button>
       <button data-act="back">Put it down</button>
-      ${r.solved?`<button data-act="commit" style="border-color:var(--leaf);color:var(--leaf);font-weight:600">Energize the run</button>`:""}
+      ${r.solved ? `<button data-act="commit" style="border-color:var(--leaf);color:var(--leaf);font-weight:600">Energize the run</button>` : ""}
     </div>
     <div class="blurb" style="margin-top:6px;color:var(--leaf)">${rewardPreview("wires")}</div>
   </div>`;
-  $("tab-works").innerHTML=h;
-  $("tab-works").querySelectorAll("[data-sel]").forEach(b=>{ b.onclick=()=>{ pz.sel=+b.dataset.sel; renderWires(); }; });
+
+  $("tab-works").innerHTML = h;
+
+  // 1. Bind Selection Buttons
+  $("tab-works").querySelectorAll("[data-sel]").forEach(b => {
+    b.onclick = () => { pz.sel = +b.dataset.sel; renderWires(); };
+  });
+
+  // 2. Bind Grid Interactions (Drag/Swap/Rotate)
   $("tab-works").querySelectorAll("[data-cell]").forEach(el => {
-    $("tab-works").querySelectorAll("[data-cell]").forEach(el => {
-  el.onpointerdown = (e) => {
-    const [x, y] = el.dataset.cell.split(",").map(Number);
-    const key = `${x},${y}`;
-    
-    // Ignore terminals and blocked cells
-    if (L.srcs.some(t => t.x === x && t.y === y) || L.sinks.some(t => t.x === x && t.y === y)) return;
-    if (L.blocks.some(([bx, by]) => bx === x && by === y)) return;
+    el.onpointerdown = (e) => {
+      const [x, y] = el.dataset.cell.split(",").map(Number);
+      const key = `${x},${y}`;
 
-    el.setPointerCapture(e.pointerId);
+      if (L.srcs.some(t => t.x === x && t.y === y) || L.sinks.some(t => t.x === x && t.y === y) || L.blocks.some(([bx, by]) => bx === x && by === y)) return;
 
-    const onPointerUp = (ev) => {
-      el.releasePointerCapture(ev.pointerId);
-      
-      // Determine landing cell
-      const targetEl = document.elementFromPoint(ev.clientX, ev.clientY)?.closest("[data-cell]");
-      const gridRect = $("tab-works").querySelector(".grid").getBoundingClientRect();
-      const isOutside = ev.clientX < gridRect.left || ev.clientX > gridRect.right ||
-                        ev.clientY < gridRect.top || ev.clientY > gridRect.bottom;
+      el.setPointerCapture(e.pointerId);
 
-      if (isOutside) {
-        // DRAG OFF: Remove piece
-        delete pz.placed[key];
-      } else if (targetEl) {
-        const [tx, ty] = targetEl.dataset.cell.split(",").map(Number);
-        const targetKey = `${tx},${ty}`;
+      const onPointerUp = (ev) => {
+        el.releasePointerCapture(ev.pointerId);
+        const targetEl = document.elementFromPoint(ev.clientX, ev.clientY)?.closest("[data-cell]");
+        const gridRect = $("tab-works").querySelector(".grid").getBoundingClientRect();
+        const isOutside = ev.clientX < gridRect.left || ev.clientX > gridRect.right || ev.clientY < gridRect.top || ev.clientY > gridRect.bottom;
 
-        if (targetKey !== key) {
-          // SWAP logic: Swap the pieces (or move if target is empty)
-          const sourcePiece = pz.placed[key];
-          const targetPiece = pz.placed[targetKey];
-          
-          pz.placed[targetKey] = sourcePiece;
-          if (targetPiece) pz.placed[key] = targetPiece;
-          else delete pz.placed[key];
-        } else {
-          // TAP: Rotate if it was just a click
-          if (pz.placed[key]) pz.placed[key].rot = (pz.placed[key].rot + 1) % 4;
-          else if (pz.sel != null && remaining[pz.sel] > 0) pz.placed[key] = { inv: pz.sel, rot: 0 };
+        if (isOutside) {
+          delete pz.placed[key];
+        } else if (targetEl) {
+          const [tx, ty] = targetEl.dataset.cell.split(",").map(Number);
+          const targetKey = `${tx},${ty}`;
+          if (targetKey !== key) {
+            const sourcePiece = pz.placed[key];
+            const targetPiece = pz.placed[targetKey];
+            pz.placed[targetKey] = sourcePiece;
+            if (targetPiece) pz.placed[key] = targetPiece;
+            else delete pz.placed[key];
+          } else {
+            if (pz.placed[key]) pz.placed[key].rot = (pz.placed[key].rot + 1) % 4;
+            else if (pz.sel != null && remaining[pz.sel] > 0) pz.placed[key] = { inv: pz.sel, rot: 0 };
+          }
         }
-      }
-      
-      renderWires();
-      el.removeEventListener("pointerup", onPointerUp);
+        renderWires();
+        el.removeEventListener("pointerup", onPointerUp);
+      };
+      el.addEventListener("pointerup", onPointerUp);
     };
+  });
 
-    el.addEventListener("pointerup", onPointerUp);
-  };
-
-
-    
-  $("tab-works").querySelectorAll("[data-act]").forEach(b=>{
-    b.onclick=()=>{
-      const a=b.dataset.act;
-      if(a==="clear"){ pz.placed={}; renderWires(); }
-      else if(a==="back"){ closePuzzle(); }
-      else if(a==="commit"){
+  // 3. Bind Footer Buttons
+  $("tab-works").querySelectorAll("[data-act]").forEach(b => {
+    b.onclick = () => {
+      const a = b.dataset.act;
+      if (a === "clear") { pz.placed = {}; renderWires(); }
+      else if (a === "back") { closePuzzle(); }
+      else if (a === "commit") {
         S.puz.wires++;
-        const extra=grantReward("wires");
-        const solver=bestPresent("hands");
-        S.pending.push(`${solver?solver.name:"Somebody"} energized run ${L.n}, and the meter barely dips now.${extra}`);
+        const extra = grantReward("wires");
+        const solver = bestPresent("hands");
+        S.pending.push(`${solver ? solver.name : "Somebody"} energized run ${L.n}, and the meter barely dips now.${extra}`);
         finishPuzzle("wires");
       }
     };
