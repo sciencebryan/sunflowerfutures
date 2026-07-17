@@ -488,3 +488,92 @@
   .btnrow { display:flex; gap:8px; flex-wrap:wrap; }
   .btnrow button { padding:8px 14px; border:1px solid var(--line); border-radius:6px; background:var(--paper); color:var(--ink); font-size:13px; cursor:pointer; }
   .cell.blockcell { background: repeating-linear-gradient(45deg, var(--paper-deep), var(--paper-deep) 4px, var(--line) 4px, var(--line) 6px); }
+
+/* ================= PICROSS PUZZLE ================= */
+.picross-board {
+display: grid;
+grid-template-columns: max-content max-content;
+grid-template-rows: max-content max-content;
+gap: 4px;
+font-family: var(--mono);
+user-select: none; /* Stops text highlighting during fast clicks */
+margin-top: 16px;
+justify-content: center; /* Centers the puzzle in the tab */
+}
+
+.picross-controls {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+.picross-controls button.active {
+  border-color: var(--sun);
+  background: var(--paper-deep);
+  color: var(--ink);
+}
+
+.top-clues {
+grid-column: 2;
+grid-row: 1;
+display: grid;
+grid-template-columns: repeat(16, 20px);
+gap: 1px;          /* <--- Matches the main grid lines */
+padding: 0 2px;    /* <--- Shifts the clues 2px right to clear the main grid's border */
+align-items: end;
+text-align: center;
+font-size: 11px;
+line-height: 1.1;
+color: var(--ink-soft);
+}
+
+.left-clues {
+grid-column: 1;
+grid-row: 2;
+display: grid;
+grid-template-rows: repeat(16, 20px);
+gap: 1px;          /* <--- Matches the main grid lines */
+padding-top: 2px;  /* <--- Shifts the clues 2px down to clear the main grid's top border */
+padding-right: 8px; 
+align-items: center;
+text-align: right;
+font-size: 11px;
+letter-spacing: 2px;
+color: var(--ink-soft);
+}
+
+.puzzle-grid {
+grid-column: 2;
+grid-row: 2;
+display: grid;
+grid-template-columns: repeat(16, 20px);
+grid-template-rows: repeat(16, 20px);
+background: var(--ink); /* Uses your dark green/black variable */
+border: 2px solid var(--ink);
+gap: 1px; /* This creates the grid lines automatically */
+  touch-action: none;
+}
+
+.puzzle-cell {
+background: var(--paper-deep);
+cursor: pointer;
+display: flex;
+justify-content: center;
+align-items: center;
+}
+
+.puzzle-cell:hover { background: #cfccaf; }
+
+.puzzle-cell.filled { background: var(--rust); } /* Rust red looks great for filled cells */
+
+.puzzle-cell.crossed::after {
+content: "×";
+color: var(--moss);
+font-size: 14px;
+}
+
+/* Helper lines: slightly thicker borders every 4 cells to make counting easier */
+.puzzle-cell:nth-child(4n) { border-right: 1px solid var(--moss); }
+.puzzle-cell:nth-child(n+49):nth-child(-n+64),
+.puzzle-cell:nth-child(n+113):nth-child(-n+128),
+.puzzle-cell:nth-child(n+177):nth-child(-n+192) { border-bottom: 1px solid var(--moss); }
