@@ -1021,34 +1021,46 @@ function renderWires(){
   $("tab-works").innerHTML=h;
   $("tab-works").querySelectorAll("[data-sel]").forEach(b=>{ b.onclick=()=>{ pz.sel=+b.dataset.sel; renderWires(); }; });
   $("tab-works").querySelectorAll("[data-cell]").forEach(el => {
+    $("tab-works").querySelectorAll("[data-cell]").forEach(el => {
   el.onpointerdown = (e) => {
     const [x, y] = el.dataset.cell.split(",").map(Number);
     const key = `${x},${y}`;
     
-    // Check for blocked/terminals
+    // Ignore terminals and blocked cells
     if (L.srcs.some(t => t.x === x && t.y === y) || L.sinks.some(t => t.x === x && t.y === y)) return;
     if (L.blocks.some(([bx, by]) => bx === x && by === y)) return;
 
-    // Start tracking the drag
     el.setPointerCapture(e.pointerId);
 
     const onPointerUp = (ev) => {
       el.releasePointerCapture(ev.pointerId);
       
-      // Determine if dropped outside the grid
+      // Determine landing cell
+      const targetEl = document.elementFromPoint(ev.clientX, ev.clientY)?.closest("[data-cell]");
       const gridRect = $("tab-works").querySelector(".grid").getBoundingClientRect();
       const isOutside = ev.clientX < gridRect.left || ev.clientX > gridRect.right ||
                         ev.clientY < gridRect.top || ev.clientY > gridRect.bottom;
 
       if (isOutside) {
-        // DRAG OFF BOARD: Remove piece and return to inventory
+        // DRAG OFF: Remove piece
         delete pz.placed[key];
-      } else if (pz.placed[key]) {
-        // TAP ON PIECE: Rotate
-        pz.placed[key].rot = (pz.placed[key].rot + 1) % 4;
-      } else if (pz.sel != null && remaining[pz.sel] > 0) {
-        // TAP ON EMPTY: Place
-        pz.placed[key] = { inv: pz.sel, rot: 0 };
+      } else if (targetEl) {
+        const [tx, ty] = targetEl.dataset.cell.split(",").map(Number);
+        const targetKey = `${tx},${ty}`;
+
+        if (targetKey !== key) {
+          // SWAP logic: Swap the pieces (or move if target is empty)
+          const sourcePiece = pz.placed[key];
+          const targetPiece = pz.placed[targetKey];
+          
+          pz.placed[targetKey] = sourcePiece;
+          if (targetPiece) pz.placed[key] = targetPiece;
+          else delete pz.placed[key];
+        } else {
+          // TAP: Rotate if it was just a click
+          if (pz.placed[key]) pz.placed[key].rot = (pz.placed[key].rot + 1) % 4;
+          else if (pz.sel != null && remaining[pz.sel] > 0) pz.placed[key] = { inv: pz.sel, rot: 0 };
+        }
       }
       
       renderWires();
@@ -1056,9 +1068,10 @@ function renderWires(){
     };
 
     el.addEventListener("pointerup", onPointerUp);
-   };
-   });
+  };
+});
 
+    
   $("tab-works").querySelectorAll("[data-act]").forEach(b=>{
     b.onclick=()=>{
       const a=b.dataset.act;
