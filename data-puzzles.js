@@ -3,17 +3,6 @@
    vly() lives here because it is a level-authoring helper (it generates the
    watershed valley edge rows) and levels are defined in terms of it. */
 
-const PUZ_META = { //this is our definitive puzzle list. keep it correct.
-  circuit:{levels:CIRCUIT_LEVELS, reward:CIRCUIT_REWARD, noun:"board"},
-  water:{levels:WATER_LEVELS, reward:WATER_REWARD, noun:"season"},
-  seed:{levels:SEED_LEVELS, reward:SEED_REWARD, noun:"frame"},
-  radio:{levels:SIGNAL_LEVELS, reward:SIGNAL_REWARD, noun:"frequency"},
-  patch:{levels:PATCH_LEVELS, reward:PATCH_REWARD, noun:"draft"},
-  focus:{levels:FOCUS_LEVELS, reward:FOCUS_REWARD, noun:"array"},
-  wires:{levels:WIRES_LEVELS, reward:WIRES_REWARD, noun:"run"},
-  pipes:{levels:PIPES_LEVELS, reward:PIPES_REWARD, noun:"main"},
-  picross:{levels:PICROSS_LEVELS, reward: PICROSS_REWARD, noun: "scan"}
-};
 
 
 /* ---------- CIRCUIT SALVAGE ----------
@@ -483,6 +472,18 @@ const PICROSS_LEVELS = [
 
 const PICROSS_REWARD = {
   1: { parts: 5, desc: "a cache of heavy tools: +5 parts" }
+};
+
+const PUZ_META = { //this is our definitive puzzle list. keep it correct.
+  circuit:{levels:CIRCUIT_LEVELS, reward:CIRCUIT_REWARD, noun:"board"},
+  water:{levels:WATER_LEVELS, reward:WATER_REWARD, noun:"season"},
+  seed:{levels:SEED_LEVELS, reward:SEED_REWARD, noun:"frame"},
+  radio:{levels:SIGNAL_LEVELS, reward:SIGNAL_REWARD, noun:"frequency"},
+  patch:{levels:PATCH_LEVELS, reward:PATCH_REWARD, noun:"draft"},
+  focus:{levels:FOCUS_LEVELS, reward:FOCUS_REWARD, noun:"array"},
+  wires:{levels:WIRES_LEVELS, reward:WIRES_REWARD, noun:"run"},
+  pipes:{levels:PIPES_LEVELS, reward:PIPES_REWARD, noun:"main"},
+  picross:{levels:PICROSS_LEVELS, reward: PICROSS_REWARD, noun: "scan"}
 };
 
 
