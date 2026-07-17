@@ -80,7 +80,7 @@ function newState(){
     fabs: {}, fabProject: null,
     births: 0, deaths: 0, departures: 0,
     dietLog: [],   // recent harvests, for food-variety spirits
-    puz:{circuit:0, water:0, seed:0, radio:0, patch:0, focus:0, wires:0, pipes:0}, crops:{},
+    puz:{circuit:0, water:0, seed:0, radio:0, patch:0, focus:0, picross:0, wires:0, pipes:0}, crops:{},
     restore:{mycosphere:0, aquifer:0, pollinator:0, seen:false, restored:false},
     journal: [],
     report:{gen:0,draw:6,foodIn:0,foodOut:12,waterIn:0,waterOut:13,brownout:false}
@@ -218,6 +218,7 @@ function migrate(s){
   if(s.puz.radio===undefined) s.puz.radio=0;
   if(s.puz.patch===undefined) s.puz.patch=0;
   if(s.puz.focus===undefined) s.puz.focus=0;
+  if(s.puz.picross ===undefined) s.puz.picross=0;
   if(!s.crops) s.crops={};
   if(s.hungerDays===undefined) s.hungerDays=0;
   if(s.thirstDays===undefined) s.thirstDays=0;
