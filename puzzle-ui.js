@@ -1032,22 +1032,45 @@ function renderWires(){
   </div>`;
   $("tab-works").innerHTML=h;
   $("tab-works").querySelectorAll("[data-sel]").forEach(b=>{ b.onclick=()=>{ pz.sel=+b.dataset.sel; renderWires(); }; });
-  $("tab-works").querySelectorAll("[data-cell]").forEach(el=>{
-    el.onclick=()=>{
-      const [x,y]=el.dataset.cell.split(",").map(Number);
-      if(L.srcs.some(t=>t.x===x&&t.y===y)||L.sinks.some(t=>t.x===x&&t.y===y)) return;
-      if(L.blocks.some(([bx,by])=>bx===x&&by===y)) return;
-      const key=`${x},${y}`;
-      if(pz.placed[key]){
-        pz.placed[key].rot=(pz.placed[key].rot+1)%4;
-      } else if(pz.sel!=null && remaining[pz.sel]>0){
-        pz.placed[key]={inv:pz.sel, rot:0};
+  $("tab-works").querySelectorAll("[data-cell]").forEach(el => {
+  el.onpointerdown = (e) => {
+    const [x, y] = el.dataset.cell.split(",").map(Number);
+    const key = `${x},${y}`;
+    
+    // Check for blocked/terminals
+    if (L.srcs.some(t => t.x === x && t.y === y) || L.sinks.some(t => t.x === x && t.y === y)) return;
+    if (L.blocks.some(([bx, by]) => bx === x && by === y)) return;
+
+    // Start tracking the drag
+    el.setPointerCapture(e.pointerId);
+
+    const onPointerUp = (ev) => {
+      el.releasePointerCapture(ev.pointerId);
+      
+      // Determine if dropped outside the grid
+      const gridRect = $("tab-works").querySelector(".grid").getBoundingClientRect();
+      const isOutside = ev.clientX < gridRect.left || ev.clientX > gridRect.right ||
+                        ev.clientY < gridRect.top || ev.clientY > gridRect.bottom;
+
+      if (isOutside) {
+        // DRAG OFF BOARD: Remove piece and return to inventory
+        delete pz.placed[key];
+      } else if (pz.placed[key]) {
+        // TAP ON PIECE: Rotate
+        pz.placed[key].rot = (pz.placed[key].rot + 1) % 4;
+      } else if (pz.sel != null && remaining[pz.sel] > 0) {
+        // TAP ON EMPTY: Place
+        pz.placed[key] = { inv: pz.sel, rot: 0 };
       }
+      
       renderWires();
+      el.removeEventListener("pointerup", onPointerUp);
     };
-    // long-press / right-click removes
-    el.oncontextmenu=(e)=>{ e.preventDefault(); delete pz.placed[el.dataset.cell]; renderWires(); };
-  });
+
+    el.addEventListener("pointerup", onPointerUp);
+   };
+   });
+
   $("tab-works").querySelectorAll("[data-act]").forEach(b=>{
     b.onclick=()=>{
       const a=b.dataset.act;
