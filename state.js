@@ -1,4 +1,6 @@
 import { CROPS, MAX_BATTERIES, MAX_SOLAR, SEASON_LEN, SITE_DEF, SYS } from "./data-economy.js";
+import { PUZ_META } from "./data-puzzles.js";
+
 import { AGES } from "./seasons.js";
 import { NEWCOMERS, ROSTER, VISUALS } from "./defs.js";
 import { clamp } from "./helpers.js";
@@ -35,6 +37,10 @@ function defaultAlloc(){
 }
 
 function newState(){
+  const puz = {};
+  Object.keys(PUZ_META).forEach(key => {
+    puz[key] = 0;
+  });
   return {
     v:7, day:1, lastTick:Date.now(),
     alloc: defaultAlloc(),
@@ -80,7 +86,7 @@ function newState(){
     fabs: {}, fabProject: null,
     births: 0, deaths: 0, departures: 0,
     dietLog: [],   // recent harvests, for food-variety spirits
-    puz:{circuit:0, water:0, seed:0, radio:0, patch:0, focus:0, picross:0, wires:0, pipes:0}, crops:{},
+    puz:puz, crops:{},
     restore:{mycosphere:0, aquifer:0, pollinator:0, seen:false, restored:false},
     journal: [],
     report:{gen:0,draw:6,foodIn:0,foodOut:12,waterIn:0,waterOut:13,brownout:false}
@@ -213,12 +219,10 @@ function migrate(s){
   if(!s.founding) s.founding={visuals:[]};
   if(!s.waterCap) s.waterCap=80;
   if(!s.f) s.f={};
-  if(!s.puz) s.puz={circuit:0, water:0, seed:0, radio:0};
-  if(s.puz.seed===undefined) s.puz.seed=0;
-  if(s.puz.radio===undefined) s.puz.radio=0;
-  if(s.puz.patch===undefined) s.puz.patch=0;
-  if(s.puz.focus===undefined) s.puz.focus=0;
-  if(s.puz.picross ===undefined) s.puz.picross=0;
+  if (!s.puz) s.puz = {};
+    Object.keys(PUZ_META).forEach(key => {
+    if (s.puz[key] === undefined) s.puz[key] = 0;
+  });
   if(!s.crops) s.crops={};
   if(s.hungerDays===undefined) s.hungerDays=0;
   if(s.thirstDays===undefined) s.thirstDays=0;
