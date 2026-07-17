@@ -341,11 +341,13 @@ function pipesCheck(L, rots){
   // leaks: any open face on a REACHED tile that isn't answered by the neighbour
   let leaks=0;
   for(const i of seen){
-    const x=i%L.w, y=(i/L.w)|0;
-    for(const d of open[i]){
-      const nx=x+DIRDX[d], ny=y+DIRDY[d];
-      const j=(nx<0||ny<0||nx>=L.w||ny>=L.h)?-1:idx(nx,ny);
-      if(j<0 || !open[j] || !open[j].includes((d+2)%4)) leaks++;
+    if (L.cells[i] !== "K") {
+      const x=i%L.w, y=(i/L.w)|0;
+      for(const d of open[i]){
+        const nx=x+DIRDX[d], ny=y+DIRDY[d];
+        const j=(nx<0||ny<0||nx>=L.w||ny>=L.h)?-1:idx(nx,ny);
+        if(j<0 || !open[j] || !open[j].includes((d+2)%4)) leaks++;
+      }
     }
   }
   const fed=sinks.filter(i=>seen.has(i));
