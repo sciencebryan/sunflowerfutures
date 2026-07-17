@@ -1069,7 +1069,7 @@ function renderWires(){
 
     el.addEventListener("pointerup", onPointerUp);
   };
-});
+
 
     
   $("tab-works").querySelectorAll("[data-act]").forEach(b=>{
