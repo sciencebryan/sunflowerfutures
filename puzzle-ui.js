@@ -1,4 +1,4 @@
-import { CIRCUIT_LEVELS, CIRCUIT_REWARD, FOCUS_LEVELS, FOCUS_REWARD, PATCH_LEVELS, PATCH_REWARD, PATCH_SHAPES, PATCH_VARIANTS, PIPES_LEVELS, PIPES_REWARD, SEEDLINGS, SEED_COMPANION, SEED_LEVELS, SEED_REWARD, SEED_RIVAL, SIGNAL_LEVELS, SIGNAL_REWARD, WATER_LEVELS, WATER_PIECES, WATER_REWARD, WIRES_LEVELS, WIRES_REWARD, PICROSS_LEVELS, PICROSS_REWARD } from "./data-puzzles.js";
+import { PUZ_META, CIRCUIT_LEVELS, CIRCUIT_REWARD, FOCUS_LEVELS, FOCUS_REWARD, PATCH_LEVELS, PATCH_REWARD, PATCH_SHAPES, PATCH_VARIANTS, PIPES_LEVELS, PIPES_REWARD, SEEDLINGS, SEED_COMPANION, SEED_LEVELS, SEED_REWARD, SEED_RIVAL, SIGNAL_LEVELS, SIGNAL_REWARD, WATER_LEVELS, WATER_PIECES, WATER_REWARD, WIRES_LEVELS, WIRES_REWARD, PICROSS_LEVELS, PICROSS_REWARD } from "./data-puzzles.js";
 import { S } from "./state.js";
 import { $ } from "./dom.js";
 import { store } from "./store.js";
@@ -10,18 +10,6 @@ import { addRestore } from "./defs.js";
 
 
 
-
-const PUZ_META = {
-  circuit:{levels:CIRCUIT_LEVELS, reward:CIRCUIT_REWARD, noun:"board"},
-  water:{levels:WATER_LEVELS, reward:WATER_REWARD, noun:"season"},
-  seed:{levels:SEED_LEVELS, reward:SEED_REWARD, noun:"frame"},
-  radio:{levels:SIGNAL_LEVELS, reward:SIGNAL_REWARD, noun:"frequency"},
-  patch:{levels:PATCH_LEVELS, reward:PATCH_REWARD, noun:"draft"},
-  focus:{levels:FOCUS_LEVELS, reward:FOCUS_REWARD, noun:"array"},
-  wires:{levels:WIRES_LEVELS, reward:WIRES_REWARD, noun:"run"},
-  pipes:{levels:PIPES_LEVELS, reward:PIPES_REWARD, noun:"main"},
-  picross:{levels:PICROSS_LEVELS, reward: PICROSS_REWARD, noun: "scan"}
-};
 
 let picrossMode = 1;      // 1 = Fill Mode, 2 = Cross Mode
 let picrossDragging = false; 
