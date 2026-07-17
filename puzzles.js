@@ -310,7 +310,7 @@ function focusCheck(L, placed){
 
 /* ---------- the water mains (pipes): rotate-only, junctions, many sinks ---------- */
 // tile openings at rotation 0, as N=0 E=1 S=2 W=3
-const PIPE_OPEN = { I:[0,2], L:[0,1], T:[0,1,3], X:[0,1,2,3], S:[0], K:[0] };
+const PIPE_OPEN = { I:[0,2], L:[0,1], T:[0,1,3], X:[0,1,2,3], S:[0], K:[0,1,2,3] };
 const DIRDX=[0,1,0,-1], DIRDY=[-1,0,1,0];
 
 function pipeOpenings(type, rot){ return PIPE_OPEN[type].map(d=>(d+rot)%4); }
