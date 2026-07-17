@@ -1,6 +1,15 @@
-import { MAX_BATTERIES, MAX_SOLAR, NEWCOMERS, ROSTER, SITE_DEF, SYS, VISUALS } from "./defs.js";
-import { AGES, CROPS, SEASON_LEN } from "./seasons.js";
+import { CROPS, MAX_BATTERIES, MAX_SOLAR, SEASON_LEN, SITE_DEF, SYS } from "./data-economy.js";
+import { AGES } from "./seasons.js";
+import { NEWCOMERS, ROSTER, VISUALS } from "./defs.js";
 import { clamp } from "./helpers.js";
+
+
+
+
+
+
+
+
 
 /* ================= state ================= */
 function newSites(){
@@ -17,9 +26,18 @@ function newSites(){
 function freshPerson(def){
   return {...def, age: AGES[def.id] ?? 30, years:0, perm:null, wb:78+Math.floor(Math.random()*10), job:null, streak:0, status:"ok", downDays:0, mem:null, practice:{specific:{}, broad:{hands:0,green:0,care:0,wild:0}}};
 }
+
+// every demand at full — the sim at these defaults behaves exactly as it
+// did before allocation existed (see the ALLOCATION section of data-economy)
+function defaultAlloc(){
+  return { power:{pump:1, aqua:1, commons:1, canning:1, fab:1},
+           water:{drinking:1, cooking:1, cleaning:1, irrigation:1} };
+}
+
 function newState(){
   return {
-    v:5, day:1, lastTick:Date.now(),
+    v:7, day:1, lastTick:Date.now(),
+    alloc: defaultAlloc(),
     res:{food:58, water:50, charge:4, scrap:6, parts:0, seeds:8, meds:0, rawSeed:0, wood:10},
     larder:1,
     weather:"clear",
@@ -62,7 +80,7 @@ function newState(){
     fabs: {}, fabProject: null,
     births: 0, deaths: 0, departures: 0,
     dietLog: [],   // recent harvests, for food-variety spirits
-    puz:{circuit:0, water:0, seed:0, radio:0, patch:0, focus:0, picross:0}, crops:{},
+    puz:{circuit:0, water:0, seed:0, radio:0, patch:0, focus:0, wires:0, pipes:0}, crops:{},
     restore:{mycosphere:0, aquifer:0, pollinator:0, seen:false, restored:false},
     journal: [],
     report:{gen:0,draw:6,foodIn:0,foodOut:12,waterIn:0,waterOut:13,brownout:false}
@@ -247,6 +265,29 @@ function migrate(s){
     }
     s.v=5;
   }
+  if(s.v<6){
+    s.v=6;
+    if(!s.alloc) s.alloc=defaultAlloc();
+  }
+  if(s.v<7){
+    s.v=7;
+    if(s.puz.wires===undefined) s.puz.wires=0;
+    if(s.puz.pipes===undefined) s.puz.pipes=0;
+  }
+  // repair rather than trust: fill any missing keys, snap values to a legal level
+  {
+    const d=defaultAlloc();
+    if(!s.alloc) s.alloc=d;
+    for(const side of ["power","water"]){
+      if(!s.alloc[side]) s.alloc[side]=d[side];
+      for(const k of Object.keys(d[side])){
+        const v=s.alloc[side][k];
+        s.alloc[side][k] = (v===0||v===0.5||v===1) ? v : d[side][k];
+      }
+    }
+    // drinking has no off switch
+    if(s.alloc.water.drinking===0) s.alloc.water.drinking=0.5;
+  }
   if(s.res.wood === undefined) s.res.wood = 0;
   // beds track garden slots, however they were gained
   while(s.beds.length < 1 + (s.flags.gardenBeds?1:0) + (s.flags.terraces?1:0))
@@ -257,6 +298,14 @@ function migrate(s){
 }
 let S = null;
 function setS(v){ S = v; }
+
+
+
+
+
+
+
+
 
 
 export { FOUNDER_COUNT, S, applyFounders, applyFounding, freshPerson, migrate, newState, setS };

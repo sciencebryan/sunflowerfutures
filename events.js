@@ -1,6 +1,15 @@
 import { S, freshPerson } from "./state.js";
 import { Cap, aliveName, byId, clamp, pick, poss, siteDef, siteName, subj, wbFloor } from "./helpers.js";
-import { SITE_DEF, SITE_LOOT_TABLE, rollStranger } from "./defs.js";
+import { rollStranger } from "./defs.js";
+import { SITE_DEF, SITE_LOOT_TABLE } from "./data-economy.js";
+
+
+
+
+
+
+
+
 
 /* ================= events ================= */
 /* Events are stored in state as {defId, ctx} — PLAIN DATA ONLY.
@@ -405,6 +414,14 @@ function tickDepartures(lines) {
     }
   }
 }
+
+
+
+
+
+
+
+
 
 
 

@@ -1,54 +1,15 @@
-import { CIRCUIT_LEVELS, FOCUS_LEVELS, PATCH_LEVELS, PATCH_SHAPES, PATCH_VARIANTS, SEEDLINGS, SEED_COMPANION, SEED_LEVELS, SEED_RIVAL, SIGNAL_LEVELS, WATER_LEVELS, WATER_PIECES, cKey, circuitAdj, circuitCap, circuitCheck, focusCheck, focusSrcs, focusTargets, patchCheck, seedCheck, seedSlotAt, signalCheck, waterSim, PICROSS_LEVELS, generatePicrossClues } from "./puzzles.js";
+import { CIRCUIT_LEVELS, CIRCUIT_REWARD, FOCUS_LEVELS, FOCUS_REWARD, PATCH_LEVELS, PATCH_REWARD, PATCH_SHAPES, PATCH_VARIANTS, PIPES_LEVELS, PIPES_REWARD, SEEDLINGS, SEED_COMPANION, SEED_LEVELS, SEED_REWARD, SEED_RIVAL, SIGNAL_LEVELS, SIGNAL_REWARD, WATER_LEVELS, WATER_PIECES, WATER_REWARD, WIRES_LEVELS, WIRES_REWARD, PICROSS_LEVELS, PICROSS_REWARD } from "./data-puzzles.js";
 import { S } from "./state.js";
 import { $ } from "./dom.js";
 import { store } from "./store.js";
 import { renderAll } from "./render.js";
-import { CROPS } from "./seasons.js";
+import { CROPS, RESTORE_IN } from "./data-economy.js";
+import { cKey, circuitAdj, circuitCap, circuitCheck, focusCheck, focusSrcs, focusTargets, patchCheck, pipesCheck, seedCheck, seedSlotAt, signalCheck, waterSim, wireRot, wiresCheck, generatePicrossClues } from "./puzzles.js";
 import { bestPresent, byId } from "./helpers.js";
-import { RESTORE_IN, addRestore } from "./defs.js";
+import { addRestore } from "./defs.js";
 
-let picrossMode = 1;      // 1 = Fill Mode, 2 = Cross Mode
-let picrossDragging = false; 
-let picrossPaintState = 0; // What color are we painting right now? (0, 1, or 2)
 
-/* ================= WORKS: puzzle UI ================= */
-const CIRCUIT_REWARD = {
-  2:{parts:5, desc:"the first boards give up their good components: +5 parts"},
-  4:{parts:6, flag:"gridTuned", desc:"the whole grid rewired: +6 parts, and the village draws 1 less power, forever"},
-  6:{parts:8, flag:"fineTools", desc:"+8 parts, and the bench earns fine tools: projects go 10% faster"},
-  8:{parts:10, flag:"relayGrid", desc:"the relay boards mastered: +10 parts, and the grid self-balances — systems wear 10% slower"}
-};
-const WATER_REWARD = {
-  2:{flag:"contourBeds", desc:"the first works are cut into the real beds: every harvest comes in 15% heavier"},
-  4:{flag:"cutCistern", desc:"a cistern cut into the hill: water storage +12"},
-  6:{flag:"keyline", desc:"the keyline: gardens drink less and yield more"},
-  9:{seeds:10, flag:"terraces", desc:"terraces on the south slope: a third garden bed, and +10 seeds"}
-};
-const SEED_REWARD = {
-  2:{seeds:6, desc:"a drawer of sorted seed: +6 seeds"},
-  4:{crop:"turnip", desc:"a new crop for the beds: turnips, quick and frost-hardy"},
-  6:{crop:"sunflower", desc:"a new crop: sunflowers, for oil and for spirits"},
-  8:{crop:"amaranth", seeds:8, flag:"seedLibrary", desc:"the seed library opens: amaranth to plant, +8 seeds, and every crop keeps a little better"}
-};
-const SIGNAL_REWARD = {
-  2:{parts:4, desc:"a clean signal, twice: +4 parts off a channel that used to be static"},
-  4:{scrap:6, parts:3, desc:"the band's mapped past the near static: +6 scrap, +3 parts"},
-  6:{flag:"radioContact", desc:"the antenna reaches someone who reaches back — the road doesn't end at the maps anymore. Word of this place travels now, on its own, the way it always should have."}
-};
-const PATCH_REWARD = {
-  2:{flag:"sealedTanks", desc:"the catchment tanks are sealed tight: catchment gathers 20% more water"},
-  4:{flag:"draftProof", desc:"the commons and sickbed are draft-proofed: illness is a little rarer"},
-  6:{scrap:15, parts:5, desc:"the last of the big drafts sealed, leaving a pile of good surplus materials: +15 scrap, +5 parts"}
-};
-const FOCUS_REWARD = {
-  2:{flag:"silveredPanels", desc:"the arrays are realigned and silvered: solar generates 20% more power"},
-  4:{flag:"thermalStore", desc:"a thermal mass tank is plumbed in: the panels give a baseline trickle of power even in the rain"},
-  5:{parts:12, scrap:20, desc:"the field is fully calibrated, yielding a haul of spare tracking motors: +12 parts, +20 scrap"}
-};
 
-const PICROSS_REWARD = {
-  1: { parts: 5, desc: "a cache of heavy tools: +5 parts" }
-};
 
 const PUZ_META = {
   circuit:{levels:CIRCUIT_LEVELS, reward:CIRCUIT_REWARD, noun:"board"},
@@ -57,8 +18,15 @@ const PUZ_META = {
   radio:{levels:SIGNAL_LEVELS, reward:SIGNAL_REWARD, noun:"frequency"},
   patch:{levels:PATCH_LEVELS, reward:PATCH_REWARD, noun:"draft"},
   focus:{levels:FOCUS_LEVELS, reward:FOCUS_REWARD, noun:"array"},
+  wires:{levels:WIRES_LEVELS, reward:WIRES_REWARD, noun:"run"},
+  pipes:{levels:PIPES_LEVELS, reward:PIPES_REWARD, noun:"main"},
   picross:{levels:PICROSS_LEVELS, reward: PICROSS_REWARD, noun: "scan"}
 };
+
+let picrossMode = 1;      // 1 = Fill Mode, 2 = Cross Mode
+let picrossDragging = false; 
+let picrossPaintState = 0; // What color are we painting right now? (0, 1, or 2)
+
 
 let pz = null;   // {kind, lvl, paths|placed, sel}
 function setPz(v){ pz = v; }
@@ -79,7 +47,7 @@ function worksIntro(){
   return `<div class="card">
     <div class="sysname">The workshop bench</div>
     <div class="blurb">The long problems the village keeps coming back to: getting current where it's needed without burning the board, getting water where it's needed without losing the soil, sorting the seed so everything grows, sealing the drafts before winter, catching the light properly, and keeping a channel open to the world beyond. Solving one for good changes how the village works, permanently.</div>
-    <div class="loadlist" style="margin-top:8px">circuit — ${c}/${CIRCUIT_LEVELS.length} &nbsp;·&nbsp; watershed — ${w}/${WATER_LEVELS.length} &nbsp;·&nbsp; seed frame — ${S.puz.seed}/${SEED_LEVELS.length} &nbsp;·&nbsp; patchwork — ${S.puz.patch}/${PATCH_LEVELS.length} &nbsp;·&nbsp; heliostat — ${S.puz.focus}/${FOCUS_LEVELS.length} &nbsp;·&nbsp; the radio — ${S.puz.radio}/${SIGNAL_LEVELS.length}</div>
+    <div class="loadlist" style="margin-top:8px">circuit — ${c}/${CIRCUIT_LEVELS.length} &nbsp;·&nbsp; watershed — ${w}/${WATER_LEVELS.length} &nbsp;·&nbsp; seed frame — ${S.puz.seed}/${SEED_LEVELS.length} &nbsp;·&nbsp; patchwork — ${S.puz.patch}/${PATCH_LEVELS.length} &nbsp;·&nbsp; heliostat — ${S.puz.focus}/${FOCUS_LEVELS.length} &nbsp;·&nbsp; the radio — ${S.puz.radio}/${SIGNAL_LEVELS.length} &nbsp;·&nbsp; the line run — ${S.puz.wires||0}/${WIRES_LEVELS.length} &nbsp;·&nbsp; the mains — ${S.puz.pipes||0}/${PIPES_LEVELS.length}</div>
   </div>`;
 }
 
@@ -90,6 +58,8 @@ function renderWorks(){
     else if(pz.kind==="seed") renderSeed();
     else if(pz.kind==="patch") renderPatch();
     else if(pz.kind==="focus") renderFocus();
+    else if(pz.kind==="wires") renderWires();
+    else if(pz.kind==="pipes") renderPipes();
     else if(pz.kind==="picross") renderPicross();
     else renderSignal();
     return;
@@ -133,7 +103,7 @@ function renderWorks(){
   if(S.flags.keyline)   h+=`<div class="sectionlbl">Keyline cut — the gardens drink deeper</div>`;
   if(S.flags.seedLibrary) h+=`<div class="sectionlbl">The seed library — crops keep a little better</div>`;
 
-  h+=`<div class="sectionlbl">Spectral scans</div>`;
+ h+=`<div class="sectionlbl">Spectral scans</div>`;
   if(S.puz.picross>=PICROSS_LEVELS.length) h+=`<div class="card grey"><div class="sysname">The drives are clean</div><div class="blurb">Every cache mapped. There is no more interference to resolve.</div></div>`;
   else{
     const L=PICROSS_LEVELS[S.puz.picross];
@@ -144,7 +114,8 @@ function renderWorks(){
       <div class="blurb" style="margin-top:6px;color:var(--leaf)">${rewardPreview("picross")}</div>
     </div>`;
   }
-  
+
+
   h+=`<div class="sectionlbl">Patchwork &amp; insulation</div>`;
   if(S.puz.patch>=PATCH_LEVELS.length) h+=`<div class="card grey"><div class="sysname">The drafts are sealed</div><div class="blurb">Every crack packed, every pane replaced. The heat stays where it belongs.</div></div>`;
   else{
@@ -186,6 +157,30 @@ function renderWorks(){
   }
   if(S.flags.radioContact) h+=`<div class="sectionlbl">The antenna reaches out — word of this place travels on its own now</div>`;
 
+  h+=`<div class="sectionlbl">The line run</div>`;
+  if((S.puz.wires||0)>=WIRES_LEVELS.length) h+=`<div class="card grey"><div class="sysname">The lines run tight</div><div class="blurb">Every joint posted true. Only a trace is lost between the turbine and the table now.</div></div>`;
+  else{
+    const L=WIRES_LEVELS[S.puz.wires||0];
+    h+=`<div class="card">
+      <div class="card-top"><div class="sysname">Run ${L.n}</div><button class="go" data-pz="wires">Open</button></div>
+      <div class="blurb">${L.teach}</div>
+      <div class="costchips"><span class="cost">${L.inv.reduce((a,t)=>a+t.count,0)} boards</span><span class="cost">${L.srcs.length} circuit${L.srcs.length>1?"s":""}</span></div>
+      <div class="blurb" style="margin-top:6px;color:var(--leaf)">${rewardPreview("wires")}</div>
+    </div>`;
+  }
+
+  h+=`<div class="sectionlbl">The water mains</div>`;
+  if((S.puz.pipes||0)>=PIPES_LEVELS.length) h+=`<div class="card grey"><div class="sysname">The mains hold pressure</div><div class="blurb">Every junction seated, every trench dry on the outside. Only a trace seeps away underground now.</div></div>`;
+  else{
+    const L=PIPES_LEVELS[S.puz.pipes||0];
+    h+=`<div class="card">
+      <div class="card-top"><div class="sysname">Main ${L.n}</div><button class="go" data-pz="pipes">Open</button></div>
+      <div class="blurb">${L.teach}</div>
+      <div class="costchips"><span class="cost">${L.cells.filter(Boolean).length} fittings</span><span class="cost">${L.cells.filter(c=>c==="K").length} standpipe${L.cells.filter(c=>c==="K").length>1?"s":""}</span></div>
+      <div class="blurb" style="margin-top:6px;color:var(--leaf)">${rewardPreview("pipes")}</div>
+    </div>`;
+  }
+
   $("tab-works").innerHTML=h;
   $("tab-works").querySelectorAll("[data-pz]").forEach(b=>{ b.onclick=()=>openPuzzle(b.dataset.pz); });
 }
@@ -206,12 +201,16 @@ function openPuzzle(kind){
   } else if(kind==="focus") {
     const L=FOCUS_LEVELS[S.puz.focus];
     pz={kind, L, placed:{}};
+  } else if(kind==="wires") {
+    const L=WIRES_LEVELS[S.puz.wires];
+    pz={kind, L, placed:{}, sel:0};
+  } else if(kind==="pipes") {
+    const L=PIPES_LEVELS[S.puz.pipes];
+    pz={kind, L, rots:[...L.start]};
   } else if(kind==="picross") {
-    // <-- ADDED INITIALIZATION
     const L=PICROSS_LEVELS[S.puz.picross];
     const w=L.grid[0].length;
     const h=L.grid.length;
-    // Create an empty array filled with 0s to track player clicks
     pz={kind, L, state: Array(h).fill().map(() => Array(w).fill(0))};
   } else {
     const L=SIGNAL_LEVELS[S.puz.radio];
@@ -962,6 +961,165 @@ function renderFocus(){
   });
 }
 
+
+
+
+
+
+
+/* ---------- the line run (wires) UI ---------- */
+// posts, clockwise from top-left, as x,y fractions of the cell
+const WIRE_POST = [[1/3,0],[2/3,0],[1,1/3],[1,2/3],[2/3,1],[1/3,1],[0,2/3],[0,1/3]];
+const WIRE_COLORS = {k:"var(--ink)", r:"var(--rust)", b:"#3d6b8a"};
+
+function wireTileSVG(wires, rot, px, opts={}){
+  let h=`<svg width="${px}" height="${px}" viewBox="0 0 48 48" style="display:block">`;
+  h+=`<rect x="1" y="1" width="46" height="46" rx="5" fill="${opts.bg||"var(--card)"}" stroke="var(--line)"/>`;
+  for(const w of wires){
+    const a=WIRE_POST[wireRot(w.a,rot)], b=WIRE_POST[wireRot(w.b,rot)];
+    const [ax,ay]=[a[0]*48,a[1]*48], [bx,by]=[b[0]*48,b[1]*48];
+    h+=`<path d="M ${ax} ${ay} Q 24 24 ${bx} ${by}" fill="none" stroke="${WIRE_COLORS[w.c]||"var(--ink)"}" stroke-width="3.4" stroke-linecap="round"/>`;
+    h+=`<circle cx="${ax}" cy="${ay}" r="2.6" fill="${WIRE_COLORS[w.c]}"/><circle cx="${bx}" cy="${by}" r="2.6" fill="${WIRE_COLORS[w.c]}"/>`;
+  }
+  return h+"</svg>";
+}
+function wireTermSVG(t, px, kindLabel){
+  const p=WIRE_POST[t.node];
+  let h=`<svg width="${px}" height="${px}" viewBox="0 0 48 48" style="display:block">`;
+  h+=`<rect x="1" y="1" width="46" height="46" rx="5" fill="var(--paper-deep)" stroke="var(--ink)"/>`;
+  h+=`<path d="M ${p[0]*48} ${p[1]*48} L 24 24" fill="none" stroke="${WIRE_COLORS[t.c]}" stroke-width="3.4" stroke-linecap="round"/>`;
+  h+=`<circle cx="24" cy="24" r="7" fill="${kindLabel==="src"?WIRE_COLORS[t.c]:"var(--card)"}" stroke="${WIRE_COLORS[t.c]}" stroke-width="2.5"/>`;
+  return h+"</svg>";
+}
+
+function renderWires(){
+  const L=pz.L;
+  const r=wiresCheck(L, pz.placed);
+  const cellPx=Math.min(52, Math.floor((Math.min(window.innerWidth,620)-46)/L.w));
+  const remaining=L.inv.map((t,i)=> t.count - Object.values(pz.placed).filter(p=>p.inv===i).length);
+  let h=`<div class="card">
+    <div class="pzhead"><div class="sysname">Run ${L.n}</div>
+      <div class="condpct">${Object.entries(r.fedByColor).map(([c,ok])=>`${c==="k"?"black":c==="r"?"red":"blue"} ${ok?"live":"dead"}`).join(" · ")}</div></div>
+    <div class="pzteach">${L.teach}</div>
+    <div class="sectionlbl" style="margin:10px 0 6px">Boards on the bench</div>
+    <div class="pieces">`;
+  L.inv.forEach((t,i)=>{
+    h+=`<button class="piece ${pz.sel===i?'sel':''} ${remaining[i]<=0?'out':''}" data-sel="${i}">
+      ${wireTileSVG(t.wires,0,34)}<span>${t.name} ×${remaining[i]}</span></button>`;
+  });
+  h+=`</div>
+    <div class="blurb">Tap an empty cell to set the selected board. Tap a placed board to turn it a quarter. Tap it while holding nothing left to pick it back up — or use Clear.</div>
+    <div class="grid" style="grid-template-columns:repeat(${L.w},${cellPx}px)">`;
+  for(let y=0;y<L.h;y++) for(let x=0;x<L.w;x++){
+    const src=L.srcs.find(t=>t.x===x&&t.y===y), snk=L.sinks.find(t=>t.x===x&&t.y===y);
+    const blocked=L.blocks.some(([bx,by])=>bx===x&&by===y);
+    const pl=pz.placed[`${x},${y}`];
+    let inner="", cls="cell";
+    if(src) inner=wireTermSVG(src,cellPx,"src");
+    else if(snk) inner=wireTermSVG(snk,cellPx,"sink");
+    else if(blocked){ cls+=" blockcell"; inner=""; }
+    else if(pl) inner=wireTileSVG(L.inv[pl.inv].wires, pl.rot, cellPx);
+    h+=`<div class="${cls}" data-cell="${x},${y}" style="width:${cellPx}px;height:${cellPx}px;padding:0">${inner}</div>`;
+  }
+  h+=`</div>
+    ${r.mismatches.length?`<div class="warnline">Somewhere a red post meets a black one. Nothing conducts across a mismatched joint.</div>`:""}
+    <div class="btnrow" style="margin-top:10px">
+      <button data-act="clear">Clear</button>
+      <button data-act="back">Put it down</button>
+      ${r.solved?`<button data-act="commit" style="border-color:var(--leaf);color:var(--leaf);font-weight:600">Energize the run</button>`:""}
+    </div>
+    <div class="blurb" style="margin-top:6px;color:var(--leaf)">${rewardPreview("wires")}</div>
+  </div>`;
+  $("tab-works").innerHTML=h;
+  $("tab-works").querySelectorAll("[data-sel]").forEach(b=>{ b.onclick=()=>{ pz.sel=+b.dataset.sel; renderWires(); }; });
+  $("tab-works").querySelectorAll("[data-cell]").forEach(el=>{
+    el.onclick=()=>{
+      const [x,y]=el.dataset.cell.split(",").map(Number);
+      if(L.srcs.some(t=>t.x===x&&t.y===y)||L.sinks.some(t=>t.x===x&&t.y===y)) return;
+      if(L.blocks.some(([bx,by])=>bx===x&&by===y)) return;
+      const key=`${x},${y}`;
+      if(pz.placed[key]){
+        pz.placed[key].rot=(pz.placed[key].rot+1)%4;
+      } else if(pz.sel!=null && remaining[pz.sel]>0){
+        pz.placed[key]={inv:pz.sel, rot:0};
+      }
+      renderWires();
+    };
+    // long-press / right-click removes
+    el.oncontextmenu=(e)=>{ e.preventDefault(); delete pz.placed[el.dataset.cell]; renderWires(); };
+  });
+  $("tab-works").querySelectorAll("[data-act]").forEach(b=>{
+    b.onclick=()=>{
+      const a=b.dataset.act;
+      if(a==="clear"){ pz.placed={}; renderWires(); }
+      else if(a==="back"){ closePuzzle(); }
+      else if(a==="commit"){
+        S.puz.wires++;
+        const extra=grantReward("wires");
+        const solver=bestPresent("hands");
+        S.pending.push(`${solver?solver.name:"Somebody"} energized run ${L.n}, and the meter barely dips now.${extra}`);
+        finishPuzzle("wires");
+      }
+    };
+  });
+}
+
+/* ---------- the water mains (pipes) UI ---------- */
+const PIPE_GLYPH = {
+  I:["│","─","│","─"],
+  L:["└","┌","┐","┘"],
+  T:["┴","├","┬","┤"],
+  X:["┼","┼","┼","┼"],
+  S:["▲","▶","▼","◀"],
+  K:["◍","◍","◍","◍"]
+};
+function renderPipes(){
+  const L=pz.L;
+  const r=pipesCheck(L, pz.rots);
+  const cellPx=Math.min(52, Math.floor((Math.min(window.innerWidth,620)-46)/L.w));
+  let h=`<div class="card">
+    <div class="pzhead"><div class="sysname">Main ${L.n}</div>
+      <div class="condpct">${r.fed.length}/${r.sinks.length} standpipes fed${r.leaks?` · <span class="neg">${r.leaks} spilling</span>`:""}</div></div>
+    <div class="pzteach">${L.teach}</div>
+    <div class="blurb">Tap a fitting to turn it a quarter. Blue is under pressure. The main is done when every standpipe drinks and nothing spills.</div>
+    <div class="grid" style="grid-template-columns:repeat(${L.w},${cellPx}px)">`;
+  for(let y=0;y<L.h;y++) for(let x=0;x<L.w;x++){
+    const i=y*L.w+x, t=(L.cells[i]&&L.cells[i]!==".")?L.cells[i]:null;
+    const wet=r.seen.has(i);
+    const glyph=t?PIPE_GLYPH[t][pz.rots[i]%4]:"";
+    h+=`<div class="cell" data-pipe="${i}" style="width:${cellPx}px;height:${cellPx}px;font-size:${Math.floor(cellPx*0.72)}px;line-height:${cellPx}px;color:${wet?"#3d6b8a":"var(--ink-soft)"};font-weight:${wet?700:400}">${glyph}</div>`;
+  }
+  h+=`</div>
+    <div class="btnrow" style="margin-top:10px">
+      <button data-act="back">Put it down</button>
+      ${r.solved?`<button data-act="commit" style="border-color:var(--leaf);color:var(--leaf);font-weight:600">Charge the main</button>`:""}
+    </div>
+    <div class="blurb" style="margin-top:6px;color:var(--leaf)">${rewardPreview("pipes")}</div>
+  </div>`;
+  $("tab-works").innerHTML=h;
+  $("tab-works").querySelectorAll("[data-pipe]").forEach(el=>{
+    el.onclick=()=>{
+      const i=+el.dataset.pipe;
+      if(!pz.L.cells[i] || pz.L.cells[i]===".") return;
+      pz.rots[i]=(pz.rots[i]+1)%4;
+      renderPipes();
+    };
+  });
+  $("tab-works").querySelectorAll("[data-act]").forEach(b=>{
+    b.onclick=()=>{
+      const a=b.dataset.act;
+      if(a==="back"){ closePuzzle(); }
+      else if(a==="commit"){
+        S.puz.pipes++;
+        const extra=grantReward("pipes");
+        const solver=bestPresent("hands");
+        S.pending.push(`${solver?solver.name:"Somebody"} charged main ${L.n}. You can hear the standpipes running clear.${extra}`);
+        finishPuzzle("pipes");
+      }
+    };
+  });
+}
+
 /* ================= SPECTRAL SCANS UI ================= */
 
 // Temporary state to hold the player's current puzzle progress
@@ -1113,4 +1271,4 @@ function checkPicrossWin() {
 
 
 
-export { renderWorks, setPz };
+export { closePuzzle, openPuzzle, renderWorks, setPz };

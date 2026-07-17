@@ -1,12 +1,21 @@
 import { $ } from "./dom.js";
-import { RESTORE_IN, SITE_DEF, SYS, TRAITS, addRestore, built, gardenSlots } from "./defs.js";
+import { TRAITS, addRestore, built, gardenSlots } from "./defs.js";
+import { CROPS, FABS, PRESERVE, RESTORE_IN, SEASONS, SEASON_LEN, SITE_DEF, SYS } from "./data-economy.js";
 import { S } from "./state.js";
 import { jobName, jobSkill, workDef, workName } from "./day.js";
-import { CROPS, FABS, PRESERVE, SEASONS, SEASON_LEN, canWork, dayOfSeason, roadReady, season, seasonIdx, seasonNote } from "./seasons.js";
+import { canWork, dayOfSeason, roadReady, season, seasonIdx, seasonNote } from "./seasons.js";
 import { store } from "./store.js";
 import { renderAll } from "./render.js";
 import { byId, clamp, effStat, objp, siteDef, siteName, tripDays } from "./helpers.js";
 import { exWhere } from "./events.js";
+
+
+
+
+
+
+
+
 
 /* ================= sheets ================= */
 function openSheet(html){ $("sheet").innerHTML=html; $("sheet").classList.add("open"); $("scrim").classList.add("open"); }
@@ -128,7 +137,10 @@ function openSowSheet(i, isForest){
     else if(c.sowWindow)  inSeason = c.sow.includes(sn.id) && inWindow;
     else                  inSeason = c.sow.includes(sn.id) || S.flags.coldFrames;
     const afford = S.res.seeds >= c.seed;
-    const days = Math.ceil((c.work||0)/2.2);
+    // the floor is a fact; the work estimate is a guess at a decent crew's pace.
+    // Take the later of the two: nothing ripens before minDays no matter who tends it.
+    const floorDays = c.minDays||0;
+    const days = Math.max(floorDays, Math.ceil((c.work||0)/2.2));
     const toFrost = sn.id==="winter" ? 0
       : ((SEASONS.findIndex(x=>x.id==="winter") - seasonIdx(S.day))*SEASON_LEN) - dayOfSeason(S.day) + 1;
     const risky = !c.perennial && !c.hardy && !S.flags.coldFrames && toFrost>0 && days>toFrost;
@@ -138,7 +150,7 @@ function openSowSheet(i, isForest){
     const windowHint = c.sowWindow ? " · early spring or late summer only" : c.perennial ? " · plant in spring" : " · not this season";
     const rightSide = c.perennial
       ? `${c.seed} seed<br>~${c.matureYears}y to bear`
-      : `${c.seed} seed<br>~${days}d · ${c.yield} food`;
+      : `${c.seed} seed<br>${floorDays}d+ · ~${c.yield} food`;
     h+=`<button class="opt ${(!inSeason||!afford)?'dim':''}" data-crop="${id}" ${(!inSeason||!afford)?"disabled":""}>
       <span><span class="l1">${c.name} ${tag}</span>
         <div class="l2">${c.note}${!inSeason?windowHint:!afford?" · not enough seed":risky?` · <span style="color:var(--rust)">won't finish before frost</span>`:""}</div></span>
@@ -309,6 +321,14 @@ function drawPartySheet(target){
     store.save(S); closeSheet(); renderAll();
   };
 }
+
+
+
+
+
+
+
+
 
 
 export { SOIL_WORD, closeSheet, openPartySheet, openPersonSheet, openSheet, openSowSheet, openSystemSheet };

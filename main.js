@@ -4,17 +4,25 @@ import { closeSheet, openSheet } from "./sheets.js";
 import { store } from "./store.js";
 import { S, migrate, setS } from "./state.js";
 import { dismissOffline, openFounding } from "./founding.js";
-import { DAY_MS } from "./defs.js";
+import { DAY_MS } from "./data-economy.js";
 import { renderAll } from "./render.js";
 import { clamp } from "./helpers.js";
 import { db } from "./db.js";
+
+
+
+
+
+
+
+
 
 /* ================= tabs, timer, boot ================= */
 document.querySelectorAll("nav button").forEach(b=>{
   b.onclick=()=>{
     document.querySelectorAll("nav button").forEach(x=>x.classList.remove("on"));
     b.classList.add("on");
-    ["village","beyond","works","people","journal"].forEach(t=>$("tab-"+t).style.display = b.dataset.tab===t?"":"none");
+    ["village","beyond","works","power","water","people","journal"].forEach(t=>$("tab-"+t).style.display = b.dataset.tab===t?"":"none");
   };
 });
 
@@ -126,6 +134,14 @@ async function runGameBoot() {
     document.getElementById("loginScreen").style.display = "flex";
   }
 })();
+
+
+
+
+
+
+
+
 
 export { syncNavTop };
 

@@ -1,14 +1,24 @@
-import { ADULT, CROPS, ELDER, FABS, FAB_RATE, FORAGE_FLAVOR, PRESERVE, SEASON_LEN, canWork, dayOfSeason, season, seasonNote } from "./seasons.js";
+import { ADULT, ELDER, canWork, dayOfSeason, season, seasonNote } from "./seasons.js";
 import { S } from "./state.js";
 import { $ } from "./dom.js";
-import { FOREST_PLOT_COST, MAX_FOREST_PLOTS, PROJECTS, RESTORE_GATE, RESTORE_HIGH, RESTORE_LOW, SITE_DEF, SKILL_INFO, STACKABLE, SYS, TRAITS, built, decayOf, isVisible, waterCapEff } from "./defs.js";
+import { SKILL_INFO, TRAITS, built, decayOf, isVisible, waterCapEff } from "./defs.js";
 import { eventDef, eventView, exWhere } from "./events.js";
-import { Cap, PRACTICE_SPECIFIC_CAP, byId, clamp, eff, effStat, isAre, pick, poss, practiceOf, siteName, siteRemainFrac, subj, wbFloor } from "./helpers.js";
+import { CROPS, FABS, FAB_RATE, FOREST_PLOT_COST, MAX_FOREST_PLOTS, POWER_DEMANDS, PRACTICE_SPECIFIC_CAP, PRESERVE, PROJECTS, RESTORE_GATE, RESTORE_HIGH, RESTORE_LOW, SEASON_LEN, SITE_DEF, STACKABLE, SYS, WATER_DEMANDS } from "./data-economy.js";
+import { Cap, byId, clamp, eff, effStat, isAre, pick, poss, practiceOf, siteName, siteRemainFrac, subj, wbFloor } from "./helpers.js";
 import { SOIL_WORD, openPartySheet, openPersonSheet, openSowSheet, openSystemSheet } from "./sheets.js";
 import { assignPhrase, workDef } from "./day.js";
 import { store } from "./store.js";
+import { FORAGE_FLAVOR } from "./data-events.js";
 import { renderWorks } from "./puzzle-ui.js";
 import { syncNavTop } from "./main.js";
+
+
+
+
+
+
+
+
 
 /* ================= rendering ================= */
 
@@ -277,8 +287,17 @@ function renderVillage(){
             <button class="go" data-sow="${i}" style="margin-left:6px">Manage</button></div>
           <div class="cbar" style="margin:3px 0 2px"><div class="fill ${bed.ready?'c-good':'c-sun'}" style="width:${(bed.ready?100:estFrac*100)}%"></div></div>`;
       } else {
-        const pc=clamp(bed.growth/crop.work*100,0,100);
-        h+=`<div class="sysmeta" style="margin-top:7px"><span class="outline-note">Bed ${i+1} — ${crop.name.toLowerCase()}${bed.ready?" · ready to bring in":""}${soilTag}</span>
+        // two gates, so progress is whichever is furthest from being met —
+        // a bar that sat at 100% while the bed waited on the calendar would
+        // be lying. The note says WHICH gate is binding, so the player knows
+        // whether putting more hands on it would actually do anything.
+        const workFrac = crop.work>0 ? bed.growth/crop.work : 1;
+        const dayFrac  = crop.minDays ? bed.days/crop.minDays : 1;
+        const pc=clamp(Math.min(workFrac,dayFrac)*100,0,100);
+        const gate = bed.ready ? " · ready to bring in"
+                   : workFrac>=1 ? ` · grown out, ripens in ${Math.ceil(crop.minDays-bed.days)}d`
+                   : dayFrac>=1  ? " · wants more tending" : "";
+        h+=`<div class="sysmeta" style="margin-top:7px"><span class="outline-note">Bed ${i+1} — ${crop.name.toLowerCase()}${gate}${soilTag}</span>
             <span class="outline-note">${bed.ready?`${bed.stored.toFixed(0)} waiting`:`${pc.toFixed(0)}%`}</span>
             <button class="go" data-sow="${i}" style="margin-left:6px">Manage</button></div>
           <div class="cbar" style="margin:3px 0 2px"><div class="fill ${bed.ready?'c-good':'c-sun'}" style="width:${pc}%"></div></div>`;
@@ -737,8 +756,142 @@ function renderJournal(){
   $("tab-journal").innerHTML=h;
 }
 
-function renderAll(){ renderHeader(); renderVillage(); renderBeyond(); renderWorks(); renderPeople(); renderJournal(); if(typeof syncNavTop==="function") syncNavTop(); }
+
+/* ================= power & water allocation tabs ================= */
+// which demands are live right now (gates are engine knowledge, so they
+// resolve here, not in the data)
+function allocGateOpen(gate){
+  if(!gate) return true;
+  if(gate==="fab") return !!S.fabProject || ["seedSaving","forge","machineShop"].some(id=>S.flags[id]);
+  if(gate.startsWith("flag:")) return !!S.flags[gate.slice(5)];
+  return built(gate);
+}
+
+function lvlLabel(v, demand){
+  if(v===0) return "Off";
+  if(v===0.5) return demand.id==="drinking" ? "Ration" : "Half";
+  return "Full";
+}
+
+function allocRows(demands, side){
+  let h="";
+  for(const d of demands){
+    const open = side==="power" ? allocGateOpen(d.gate) : (d.id==="irrigation" ? true : true);
+    if(side==="power" && !open) continue;
+    const cur = (S.alloc && S.alloc[side] && S.alloc[side][d.id]);
+    const val = (cur===0||cur===0.5||cur===1)?cur:1;
+    const fx = d.fx[val]||"";
+    h+=`<div class="allocrow">
+      <div style="min-width:0">
+        <div class="allocname">${d.name}</div>
+        <div class="allocsub">${d.blurb}</div>
+        ${fx?`<div class="allocfx ${val<1?"bad":""}">${fx}</div>`:""}
+      </div>
+      <div class="alloclvls">${d.levels.map(v=>
+        `<button class="lvlbtn ${v===val?"on":""}" data-alloc="${side}" data-dem="${d.id}" data-val="${v}">${lvlLabel(v,d)}</button>`
+      ).join("")}</div>
+    </div>`;
+  }
+  return h;
+}
+
+function bindAllocButtons(rootId){
+  $(rootId).querySelectorAll("[data-alloc]").forEach(b=>{
+    b.onclick=()=>{ setAlloc(b.dataset.alloc, b.dataset.dem, parseFloat(b.dataset.val)); };
+  });
+}
+
+function setAlloc(side, id, val){
+  if(!S.alloc) S.alloc={power:{},water:{}};
+  if(!S.alloc[side]) S.alloc[side]={};
+  if(side==="water" && id==="drinking" && val===0) val=0.5;  // no off switch
+  S.alloc[side][id]=val;
+  store.save(S); renderAll();
+}
+
+function renderPowerTab(){
+  const el=$("tab-power"); if(!el) return;
+  const r=S.report||{};
+  const alP=(S.alloc&&S.alloc.power)||{};
+  const alv=k=>{const v=alP[k];return (v===0||v===0.5||v===1)?v:1;};
+  // the same budget arithmetic the day tick runs
+  const live = POWER_DEMANDS.filter(d=>allocGateOpen(d.gate));
+  const rows = live.map(d=>{
+    const a = alv(d.id);
+    const active = d.id==="fab" ? !!S.fabProject : true;   // shops only draw mid-project
+    return {d, a, drawNow: active ? d.draw*a : 0, idle: d.id==="fab" && !S.fabProject};
+  });
+  const rawDraw = rows.reduce((s,x)=>s+x.drawNow,0);
+  const reduce = ((S.f||{}).drawReduce||0) + (S.flags.gridTuned?1:0);
+  const budget = Math.max(1, rawDraw - reduce);
+  const wasGen = r.gen!==undefined ? r.gen : 0;
+  const cell = S.res.charge||0;
+  const short = budget > wasGen + cell;
+  let h=`<div class="card" style="border-color:${r.brownout?'var(--rust)':'var(--line)'}">
+    <div class="card-top"><div class="sysname">The power budget</div>
+      <div class="condpct">${budget.toFixed(1)} allocated</div></div>
+    <div class="blurb">What runs, what waits. Cut a thing here and it works less well — or not at all —
+      but the budget shrinks with it, and a smaller budget rides out grey days that would otherwise brown out everything at once.</div>
+    <div class="budgetline"><span>yesterday's generation</span><span>${wasGen.toFixed(1)}</span></div>
+    <div class="budgetline"><span>in the cell now</span><span>${cell.toFixed(1)}${r.cap?` / ${r.cap.toFixed(0)}`:""}</span></div>
+    <div class="budgetline"><span>allocated draw</span><span>${budget.toFixed(1)}${reduce?` (after −${reduce} savings)`:""}</span></div>
+    ${r.powerLoss!==undefined&&r.powerLoss>0.001?`<div class="budgetline"><span>lost in the lines</span><span>${(r.powerLoss*100).toFixed(0)}%</span></div>
+    <div class="outline-note">The line run on the workshop bench tightens this, one board at a time.</div>`:""}
+    ${r.brownout?`<div class="warnline">Brownout yesterday. Everything ran at its lowest tier, whatever the settings below say.</div>`
+      : short?`<div class="warnline">Allocated more than yesterday's generation and the cell together. Another day like yesterday browns out.</div>`
+      :`<div class="outline-note" style="margin-top:6px">The budget clears on a day like yesterday.</div>`}
+  </div>`;
+  h+=`<div class="card">${allocRows(POWER_DEMANDS,"power")||'<div class="blurb">Nothing here draws power yet.</div>'}</div>`;
+  el.innerHTML=h;
+  bindAllocButtons("tab-power");
+}
+
+function renderWaterTab(){
+  const el=$("tab-water"); if(!el) return;
+  const r=S.report||{}; const wp=r.waterParts||{};
+  const alW=(S.alloc&&S.alloc.water)||{};
+  const alw=k=>{const v=alW[k];return (v===0||v===0.5||v===1)?v:1;};
+  const drinkNeed=S.people.reduce((a,p)=>a+(canWork(p)?0.5:0.3),0);
+  const drinkUse=drinkNeed*(alw("drinking")>=1?1:0.7);
+  const gardenFull=wp.gardenFull!==undefined?wp.gardenFull:0;
+  const gardenUse=gardenFull*alw("irrigation");
+  const out=drinkUse+gardenUse+(alw("cooking")>0?1:0)+alw("cleaning");
+  const wasIn=r.waterIn!==undefined?r.waterIn:0;
+  const tank=S.res.water||0;
+  const short = out > wasIn + tank;
+  let h=`<div class="card" style="border-color:${(r.thirst||0)>0?'var(--rust)':'var(--line)'}">
+    <div class="card-top"><div class="sysname">The water budget</div>
+      <div class="condpct">${out.toFixed(1)} allocated</div></div>
+    <div class="blurb">Every liter goes somewhere. Cut a use here and whatever depended on it suffers for it —
+      but in a dry stretch, choosing what goes thirsty beats letting the shortfall choose for you.</div>
+    <div class="budgetline"><span>in the tanks now</span><span>${tank.toFixed(1)} / ${waterCapEff().toFixed(0)}</span></div>
+    <div class="budgetline"><span>yesterday's intake</span><span>${wasIn.toFixed(1)}</span></div>
+    ${r.waterLoss!==undefined&&r.waterLoss>0.001?`<div class="budgetline"><span>seeping from the mains</span><span>${(r.waterLoss*100).toFixed(0)}% of the piped share</span></div>
+    <div class="outline-note">The water mains on the workshop bench tighten this, one junction at a time.</div>`:""}
+    <div class="budgetline"><span>allocated use</span><span>${out.toFixed(1)}</span></div>
+    <div class="budgetline"><span style="padding-left:12px">· drinking</span><span>${drinkUse.toFixed(1)}</span></div>
+    <div class="budgetline"><span style="padding-left:12px">· gardens (${wp.perBed!==undefined?wp.perBed.toFixed(1):"?"}/bed)</span><span>${gardenUse.toFixed(1)}</span></div>
+    <div class="budgetline"><span style="padding-left:12px">· cooking</span><span>${(alw("cooking")>0?1:0).toFixed(1)}</span></div>
+    <div class="budgetline"><span style="padding-left:12px">· cleaning</span><span>${alw("cleaning").toFixed(1)}</span></div>
+    ${(r.thirst||0)>0?`<div class="warnline">The tanks came up short yesterday. People went thirsty.</div>`
+      : short?`<div class="warnline">Allocated more than the tanks and a day like yesterday can cover. Something will go short.</div>`
+      :`<div class="outline-note" style="margin-top:6px">The budget clears on a day like yesterday.</div>`}
+  </div>`;
+  h+=`<div class="card">${allocRows(WATER_DEMANDS,"water")}</div>`;
+  el.innerHTML=h;
+  bindAllocButtons("tab-water");
+}
+
+function renderAll(){ renderHeader(); renderVillage(); renderBeyond(); renderWorks(); renderPowerTab(); renderWaterTab(); renderPeople(); renderJournal(); if(typeof syncNavTop==="function") syncNavTop(); }
 
 
 
-export { bestSpecific, practiceLabel, renderAll, skillDots };
+
+
+
+
+
+
+
+
+export { bestSpecific, practiceLabel, renderAll, setAlloc, skillDots };

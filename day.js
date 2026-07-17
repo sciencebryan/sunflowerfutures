@@ -1,11 +1,21 @@
 import { S } from "./state.js";
-import { CHILD_NAMES, CHILD_NOTES, CROPS, ELDER, FABS, FAB_RATE, PRESERVE, SEASONS, SEASON_LEN, canRoad, canWork, dayOfSeason, generateFallbackChildName, rollWeather, scaledWeather, season, seasonIdx, seasonNote, yearOf } from "./seasons.js";
-import { BATTERY_UNIT, DAY_MS, MAX_FOREST_PLOTS, OFFLINE_CAP, PROJECTS, RESTORE_IN, SOLAR_UNIT, SYS, TRAITS, TURBINE_UNIT, VISUALS, addRes, addRestore, built, decayOf, foodCap, stepRestoration, waterCapEff } from "./defs.js";
-import { Cap, JOB_PRACTICE, PRACTICE_BROAD_CAP, PRACTICE_BROAD_DECAY, PRACTICE_BROAD_GROWTH, PRACTICE_SPECIFIC_CAP, PRACTICE_SPECIFIC_DECAY, PRACTICE_SPECIFIC_GROWTH, byId, clamp, decayPractice, eff, effStat, growPractice, hasHave, isAre, mult, objp, pick, poss, practiceOf, subj, wbFloor, working } from "./helpers.js";
+import { ELDER, canRoad, canWork, dayOfSeason, generateFallbackChildName, rollWeather, scaledWeather, season, seasonIdx, seasonNote, yearOf } from "./seasons.js";
+import { AQUA_STAGNANT_WEAR, BATTERY_UNIT, CANNING_DRAW, CROPS, DAY_MS, FABS, FAB_DRAW, FAB_RATE, JOB_PRACTICE, LOSS_DECAY, MAX_FOREST_PLOTS, NO_CLEANING_SICK, OFFLINE_CAP, POLLINATOR_YIELD, POWER_LOSS_BASE, PRACTICE_BROAD_CAP, PRACTICE_BROAD_DECAY, PRACTICE_BROAD_GROWTH, PRACTICE_SPECIFIC_CAP, PRACTICE_SPECIFIC_DECAY, PRACTICE_SPECIFIC_GROWTH, PRESERVE, PROJECTS, RESTORE_IN, SEASONS, SEASON_LEN, SOLAR_UNIT, SYS, TURBINE_UNIT, WATER_LOSS_BASE, WITHER_CHANCE, YIELD_SOIL_FLOOR, YIELD_TEND_MAX, YIELD_TEND_SCALE } from "./data-economy.js";
+import { Cap, byId, clamp, decayPractice, eff, effStat, growPractice, hasHave, isAre, mult, objp, pick, poss, practiceOf, subj, wbFloor, working } from "./helpers.js";
+import { TRAITS, VISUALS, addRes, addRestore, built, decayOf, foodCap, stepRestoration, waterCapEff } from "./defs.js";
 import { tickExpeditions } from "./expeditions.js";
+import { CHILD_NAMES, CHILD_NOTES, FV } from "./data-events.js";
 import { bestSpecific, practiceLabel, renderAll } from "./render.js";
 import { maybeSpawnEvent, tickDepartures, tickDinnerBonds, tickRelationships, tickVillageSpiritsStreak } from "./events.js";
 import { store } from "./store.js";
+
+
+
+
+
+
+
+
 
 /* ================= one day of the world ================= */
 /* =========================================================================
@@ -299,17 +309,50 @@ function simulateDay(){
     genWhy.push(`${n} panel${n>1?"s":""} ${g.toFixed(1)} (${S.sys.solar.cond.toFixed(0)}%${wx.solar!==1?`, ${wx.id}`:""})`);
   }
   if(built("turbine")){ const n=S.turbines||1; const g=TURBINE_UNIT*n*mult(S.sys.turbine.cond)*wx.wind; gen+=g; genWhy.push(`${n} turbine${n>1?"s":""} ${g.toFixed(1)} (${S.sys.turbine.cond.toFixed(0)}%${wx.wind!==1?", good wind":""})`); }
-  const rawDraw = SYS.filter(d=>built(d.id)).reduce((a,d)=>a+d.draw,0);
+  // --- allocation: the player's power triage (Power tab) ---
+  // every demand at full reproduces the old fixed draw exactly; cutting a
+  // demand trims the budget and that system runs at the tier described in
+  // POWER_DEMANDS.fx. A brownout still forces everything to its old
+  // brownout tier regardless of allocation.
+  const alP=(S.alloc&&S.alloc.power)||{};
+  const alv=(k)=>{ const v=alP[k]; return (v===0||v===0.5||v===1)?v:1; };
+  const pumpAl    = built("catchment")  ? alv("pump")    : 0;
+  const aquaAl    = built("aquaponics") ? alv("aqua")    : 0;
+  const commonsAl = built("commons")    ? alv("commons") : 0;
+  const canningAl = F.canning           ? alv("canning") : 0;
+  const fabAl     = S.fabProject        ? alv("fab")     : 0;
+  const sysDraw=id=>SYS.find(d=>d.id===id).draw;
+  const rawDraw = sysDraw("catchment")*pumpAl + sysDraw("aquaponics")*aquaAl
+                + sysDraw("commons")*commonsAl
+                + CANNING_DRAW*canningAl + FAB_DRAW*fabAl;
   const draw = Math.max(1, rawDraw - ((S.f||{}).drawReduce||0) - (F.gridTuned?1:0));
+  // transmission loss: the lines bleed a share of everything generated.
+  // Solving line-run benches (S.puz.wires) shrinks it toward zero.
+  const powerLoss = POWER_LOSS_BASE * Math.pow(LOSS_DECAY, (S.puz&&S.puz.wires)||0);
+  if(gen>0 && powerLoss>0){ genWhy.push(`lines lose ${(powerLoss*100).toFixed(0)}%`); }
+  gen = gen*(1-powerLoss);
   const cap = (built("battery") ? (F.batteryRecond?1.857:1)*BATTERY_UNIT*(S.batteries||1)*mult(S.sys.battery.cond) : 0);   // bank surplus to ride out calm/storm days
   let brownout=false;
   const avail = gen + S.res.charge;
   if(avail < draw){ brownout=true; S.res.charge=0; }
   else S.res.charge = clamp(avail - draw, 0, cap);
+  // effective tiers: what each demand actually gets today. Brownout forces
+  // the old brownout behavior (pump on gravity, tanks slow, commons dark,
+  // canning cold, shops on hand power) — allocation can only cut further.
+  const pumpEff    = brownout ? 0 : pumpAl;
+  const aquaEff    = brownout ? Math.min(aquaAl,0.5) : aquaAl;
+  const commonsLit = !brownout && commonsAl>0;
+  const canningOn  = !brownout && canningAl>0;
+  const fabPowered = !brownout && (S.fabProject ? fabAl>0 : true);
 
   // --- water ---
   const irr = built("irrigation") ? mult(S.sys.irrigation.cond) : 0;
-  const wIn = (built("catchment") ? 14*mult(S.sys.catchment.cond)*(brownout?0.5:1)*(F.sealedTanks?1.2:1) : 3) + wx.rain;
+  const pumpFactor = pumpEff>=1 ? 1 : pumpEff>=0.5 ? 0.75 : 0.5;
+  // transmission loss: the mains seep a share of everything the catchment
+  // pipes carry. Rain into the tanks and hand-hauled water skip the pipes.
+  // Solving water-main benches (S.puz.pipes) shrinks it toward zero.
+  const waterLoss = WATER_LOSS_BASE * Math.pow(LOSS_DECAY, (S.puz&&S.puz.pipes)||0);
+  const wIn = (built("catchment") ? 14*mult(S.sys.catchment.cond)*pumpFactor*(F.sealedTanks?1.2:1)*(1-waterLoss) : 3) + wx.rain;
   let gardenWater = irr>0.75 ? 2.5 : 4;
   if(F.dripRetrofit) gardenWater=Math.max(1.5,gardenWater-1);
   if(F.keyline) gardenWater=Math.max(1,gardenWater-0.8);
@@ -318,11 +361,26 @@ function simulateDay(){
   // each forest plot costs only a quarter of a bed's water
   const wateredBeds = S.beds.reduce((a,b)=> a + (b.crop?1:0), 0)
                     + (S.forest||[]).reduce((a,p)=> a + (p.crop?0.25:0), 0);
-  const wOut = S.people.reduce((a,p)=>a+(canWork(p)?0.5:0.3),0) + gardenWater*wateredBeds + 2;
+  // --- allocation: the player's water triage (Water tab) ---
+  // the old flat 2/day base use is split into cooking (1) and cleaning (1);
+  // at full allocation the total is exactly what it was.
+  const alW=(S.alloc&&S.alloc.water)||{};
+  const alw=(k)=>{ const v=alW[k]; return (v===0||v===0.5||v===1)?v:1; };
+  const drinkAl = alw("drinking")>=1 ? 1 : 0.5;   // no off switch on drinking
+  const cookAl  = alw("cooking")>0 ? 1 : 0;
+  const cleanAl = alw("cleaning");
+  const irrAl   = alw("irrigation");
+  const drinkNeed = S.people.reduce((a,p)=>a+(canWork(p)?0.5:0.3),0);
+  const drinkUse  = drinkNeed*(drinkAl===1?1:0.7);   // rationing saves 3/10
+  const wOut = drinkUse + gardenWater*wateredBeds*irrAl + 1*cookAl + 1*cleanAl;
   let thirst=0;
   let w = S.res.water + wIn - wOut;
   if(w<0){ thirst = Math.min(1, -w/wOut); w=0; }
   S.res.water = clamp(w,0,waterCapEff());
+  // people feel voluntary rationing as a mild chronic thirst; the crops don't
+  // (drought below keys off real shortage, not the ration) — but a real
+  // shortage on top of rationing bites at the shortage level, not both.
+  const thirstFelt = Math.max(thirst, drinkAl<1 ? 0.25 : 0);
 
   // --- food ---
   let aquaFood = 0;
@@ -331,8 +389,12 @@ function simulateDay(){
     for(const t of working("aquatend")){
       aquaBase += (effStat(t,"green","aquatend") + (t.trait==="Green-thumb"?1.5:0))*0.9*eff(t);
     }
-    aquaFood = aquaBase*mult(S.sys.aquaponics.cond)*(brownout?0.7:1);
-    S._aquaWhy=[`tending ${aquaBase.toFixed(1)}`,`condition ×${mult(S.sys.aquaponics.cond).toFixed(2)}`].concat(brownout?["brownout ×0.5"]:[]).join(" · ");
+    const aquaFactor = aquaEff>=1 ? 1 : aquaEff>=0.5 ? 0.7 : 0.35;
+    if(aquaEff===0){ S.sys.aquaponics.cond = clamp(S.sys.aquaponics.cond - AQUA_STAGNANT_WEAR, 0, 100); }
+    aquaFood = aquaBase*mult(S.sys.aquaponics.cond)*aquaFactor;
+    S._aquaWhy=[`tending ${aquaBase.toFixed(1)}`,`condition ×${mult(S.sys.aquaponics.cond).toFixed(2)}`]
+      .concat(aquaFactor<1?[brownout?`brownout ×${aquaFactor}`:`pumps ${aquaEff===0?"off":"slow"} ×${aquaFactor}`]:[])
+      .concat(aquaEff===0?["still water is souring the system"]:[]).join(" · ");
   }
   // ---- the beds: a crop is planted, tended, and only then harvested ----
   const tenders = working("garden");
@@ -351,6 +413,19 @@ function simulateDay(){
   // behave as decent average soil, not silently NaN the whole growth formula
   const fertilityMult = f => 0.6 + 0.4*clamp(Number.isFinite(f)?f:75, 0, 100)/100;
   const feedDelta = feed => feed==="legume" ? 15 : feed==="heavy" ? -12 : -4;   // light/undefined = -4
+
+  // What a bed actually sets, decided ONCE on the day it comes ready and never
+  // revisited — a stand left waiting on hands doesn't keep fattening. Yield is
+  // a function of how well the bed was grown (tending banked beyond what the
+  // crop needed, and the richness of the ground), not of how fast: the day it
+  // ripens is settled by crop.minDays. See MATURITY & YIELD in data-economy.
+  const yieldOf = (bed, crop, polR, fo) => {
+    const tendRatio = crop.work>0 ? bed.growth/crop.work : 1;
+    const tend = 1 + YIELD_TEND_MAX*(1 - Math.exp(-Math.max(0, tendRatio-1)/YIELD_TEND_SCALE));
+    const soil = YIELD_SOIL_FLOOR + (1-YIELD_SOIL_FLOOR)*clamp(Number.isFinite(bed.fertility)?bed.fertility:75,0,100)/100;
+    const bloom = 1 + POLLINATOR_YIELD*(polR/100);
+    return Math.max(0, crop.yield*tend*soil*bloom*(F.contourBeds?1.15:1) - (fo.nibble||0));
+  };
   const PEREN_PICK_DAYS = [6, 12, 18, 24];   // a perennial bears on these days of its harvest season
 
   // The kitchen garden (S.beds, annuals) and the food forest (S.forest,
@@ -374,7 +449,10 @@ function simulateDay(){
   for(const bed of S.beds){
     if(!bed.crop) continue;
     const crop=CROPS[bed.crop];
-    if(crop.perennial) continue;   // defensive: perennials belong to the forest now
+    // defensive, and symmetric with the food-forest loop below: a bed holding
+    // something with no crop def (a meadow, an old save, a future marker crop)
+    // must not take the annual path — and must not throw on the way past.
+    if(!crop || crop.perennial) continue;
     if(sn.grow===0){
       if(crop.hardy){ continue; }
       if(!F.coldFrames){
@@ -382,19 +460,31 @@ function simulateDay(){
         bed.crop=null; bed.growth=0; bed.days=0; bed.ready=false; bed.stored=0; bed.fertility=clamp((bed.fertility??75)-2,10,100); continue;
       }
     }
+    if(irrAl===0 && Math.random()<WITHER_CHANCE){
+      lines.push(`With the irrigation shut off, the ${crop.name.toLowerCase()} in bed ${S.beds.indexOf(bed)+1} died where it stood.`);
+      bed.crop=null; bed.growth=0; bed.days=0; bed.ready=false; bed.stored=0;
+      bed.fertility=clamp((bed.fertility??75)-2,10,100); continue;
+    }
     const perBed = tenders.length ? tendPts/Math.max(1,annualPlanted) : 0;
-    const water = 0.75+0.45*irr;
+    // allocation throttles what the beds actually receive: full ×1 (unchanged),
+    // half ×0.675, off ×0.35 (rain and dew only)
+    const water = (0.75+0.45*irr)*(0.35+0.65*irrAl);
     // a healed water table softens drought stress; a valley full of pollinators
     // lifts fruit set across every bed (the standing bloom, not any one crop's bonus).
     const aqR = (S.restore && S.restore.aquifer) || 0;
     const polR = (S.restore && S.restore.pollinator) || 0;
     const drought = 1 - 0.55*thirst*(1 - 0.5*(aqR/100));
-    const pollinatorLift = 1 + 0.20*(polR/100);   // up to +20% yield at full bloom
     const seasonRate = sn.grow===0 ? 0.25 : sn.grow;
-    bed.growth += (0.6 + perBed*0.55) * water * drought * seasonRate * fertilityMult(bed.fertility) * (fo.gardenBonus||1) * (F.keyline?1.12:1) * pollinatorLift;
+    // tending, water, season and soil set the PACE toward crop.work; falling
+    // behind here means a longer season, not a smaller one (the weeds win time
+    // before they win bulk). The pollinator bloom is not a pace effect — it
+    // lives in yieldOf, where its comment always claimed it did.
+    bed.growth += (0.6 + perBed*0.55) * water * drought * seasonRate * fertilityMult(bed.fertility) * (fo.gardenBonus||1) * (F.keyline?1.12:1);
     bed.days++;
-    if(bed.growth >= crop.work){
-      bed.stored = Math.max(0, crop.yield*(F.contourBeds?1.15:1) - (fo.nibble||0));
+    // BOTH gates: the work has to be in, and the days have to have passed.
+    // !bed.ready freezes the yield on the first qualifying day.
+    if(!bed.ready && bed.growth >= crop.work && bed.days >= (crop.minDays||0)){
+      bed.stored = yieldOf(bed, crop, polR, fo);
       bed.ready = true;
     }
   }
@@ -510,7 +600,7 @@ function simulateDay(){
   // --- preservation: hands turn fresh food into food that keeps ---
   const preservers = working("preserve");
   if(preservers.length){
-    const method = F.canning && !brownout ? PRESERVE.canning
+    const method = canningOn ? PRESERVE.canning
                  : F.crocks   ? PRESERVE.fermenting
                  : F.dryRacks ? PRESERVE.drying : null;
     if(method){
@@ -598,7 +688,7 @@ function simulateDay(){
     // finished fabs produce, slowly, forever, without anyone leaving the valley
     for(const def of FABS){
       if(!S.fabs[def.id]) continue;
-      const r = FAB_RATE[def.gives] * (brownout?0.6:1);
+      const r = FAB_RATE[def.gives] * (fabPowered?1:0.6);
       addRes(def.gives, r);
     }
   }
@@ -814,10 +904,13 @@ function simulateDay(){
     p._yjob=p.job;
     if(p.trait==="Restless" && p.streak>=3 && p.job!==null) d-=3;
     d += aura;
+    // cut household water is felt at home: cold sparse meals (cooking off),
+    // nothing washed (cleaning half/off)
+    if(p.status!=="away") d -= (cookAl===0?1:0) + (cleanAl===0.5?0.5:cleanAl===0?1.5:0);
     // hunger AND thirst compound: the first lean day is bearable, the fifth is not
     const hungerBite = hunger>0 ? (3 + 2*Math.min(4,S.hungerDays))*hunger : 0;
-    const thirstBite = thirst>0 ? (3 + 2*Math.min(4,S.thirstDays))*thirst : 0;
-    const strain = hungerBite + thirstBite + (brownout?2:0);
+    const thirstBite = thirstFelt>0 ? (3 + 2*Math.min(4,S.thirstDays))*thirstFelt : 0;
+    const strain = hungerBite + thirstBite + (commonsLit?0:2);
     d -= (p.status==="spent"||standstill) ? strain*0.5 : strain;
     p.wb = clamp(p.wb+d, wbFloor(p), 100);
     if(p.status==="spent" && p.wb>=30){ p.status="ok"; recovered.push(p); }
@@ -833,6 +926,16 @@ function simulateDay(){
     if(sick){ sick.status="down"; sick.downDays=2; const wasJob=sick.job; sick.job=null;
       const stillTended = wasJob && wasJob!=="away" && working(wasJob).length>0;
       lines.push(`${sick.name} woke feverish and was sent to rest${wasJob&&wasJob!=="away"&&!stillTended?`; the ${jobName(wasJob).toLowerCase()} went untended`:""}.`);
+    }
+  }
+  // with cleaning water shut off entirely, sickness finds the village faster —
+  // a second, separate roll that only exists while the tap is closed
+  if(cleanAl===0){
+    const home=S.people.filter(p=>p.status==="ok");
+    if(home.length && Math.random()<NO_CLEANING_SICK){
+      const sick=pick(home);
+      sick.status="down"; sick.downDays=2; sick.job=null;
+      lines.push(`${sick.name} took sick. Unwashed dishes, unwashed hands — with the cleaning water shut off, it was a matter of time.`);
     }
   }
 
@@ -941,7 +1044,7 @@ function simulateDay(){
   // add new stuff here 
   if (S.day > 5) { // e.g., let them settle in for a few days first
     tickRelationships(); 
-    tickDinnerBonds(hunger, S.sys.commons.cond); //
+    if(cookAl>0) tickDinnerBonds(hunger, S.sys.commons.cond); // no one bonds over a cold, silent dinner
 //    checkForHearthConflicts(lines); 
   }
 
@@ -987,7 +1090,7 @@ function simulateDay(){
   }
 
   if(hunger>0){ S.hungerDays++; } else { S.hungerDays=0; }
-  if(thirst>0){ S.thirstDays++; } else { S.thirstDays=0; }
+  if(thirstFelt>0){ S.thirstDays++; } else { S.thirstDays=0; }
   if(hunger>0){
     const avgWb = S.people.length ? S.people.reduce((a,p)=>a+p.wb,0)/S.people.length : 100;
     const low = avgWb < 55;
@@ -1002,6 +1105,9 @@ function simulateDay(){
   if(thirst>=0.34) lines.push(S.thirstDays>=4
     ? "Day "+S.thirstDays+" with the cisterns nearly dry. People are short with each other, and no one's washing much."
     : "The water ran short and everyone felt it — dry throats, short tempers, a hard day.");
+  else if(thirst===0 && thirstFelt>0) lines.push(S.thirstDays>=3
+    ? "Day "+S.thirstDays+" on the water ration. Everyone understands why. Nobody has to like it."
+    : "Water's on ration — by choice, this time. Cups measured, kettle watched.");
   else if(thirst>0) lines.push(S.thirstDays>=3
     ? "Day "+S.thirstDays+" of thin water. Nobody's said it outright yet, but everyone's rationing on their own."
     : "The cisterns ran low. People drank a little less and watched the sky.");
@@ -1011,7 +1117,7 @@ function simulateDay(){
   for(const p of recovered) lines.push(`${p.name} is back on ${poss(p)} feet.`);
   const failing = worstSys && worstCond<35;
   if(failing) lines.push(`The ${worstSys.name.toLowerCase()} is failing. Someone should be on it.`);
-  if(!brownout && hunger===0 && thirst===0 && Math.random()<(failing?0.14:0.32)){
+  if(commonsLit && hunger===0 && thirst===0 && Math.random()<(failing?0.14:0.32)){
     const base=[
       "An ordinary day. They are harder to come by than they sound.",
       "Someone fixed the squeak in the commons door without being asked.",
@@ -1021,74 +1127,16 @@ function simulateDay(){
     if(byId("ora") && byId("ora").status!=="away") base.push("Ora left the last tomato on the vine. For luck, she said.");
     if(byId("theo") && byId("theo").status!=="away") base.push("Theo raced the sunset up the water tower and won.");
     if(byId("kav") && byId("kav").status!=="away") base.push("Kav's weather log gained a page. Xe says the sky owes us one.");
-    const FV={
-      meadow:["The old highway is gold with grass. Somebody walked the median just to do it.",
-              "Six lanes of little bluestem, going nowhere in particular."],
-      mall:["Something silver moved in the mall atrium. Fish, or the light.",
-            "The mall's skylights still work, which is the strangest thing about the mall."],
-      orchard:["Someone counted the parking-lot trees again. Still forty. Still forty.",
-               "The orchard rows run straight where the parking lines used to. Nobody planned that; it just happened."],
-      tower:["The water tower caught the last of the light, and everyone looked up without deciding to.",
-             "You can see the tower from every roof. Nobody gets lost here — and nobody misses us, either.",
-             "Pressure in the lines all day and not a watt spent on it. The tower does the work standing still."],
-      greenhouse:["Rain on the car-glass roofs, a sound like applause.",
-                  "The greenhouse panes are a hundred windshields. It's beautiful. It shouldn't be."],
-      rail:["They walked the rail line to the bend and back. The rails go somewhere. Nobody's been.",
-            "The rails are still bright on top. Something keeps them polished, and it isn't trains.",
-            "Pulled a dozen spikes off the ballast. Good steel, and the grade walks itself."],
-      vines:["The bittersweet took another few feet of the old high line. Beautiful. Impassable. Both.",
-             "Marisol cut bittersweet for pack frames. The vine gives that much, at least, for what it takes."],
-      mush:[(byId("halla")&&byId("halla").status!=="away")
-              ? "The shaded logs were furred with new caps. Halla would know which. Halla always knows which."
-              : "The shaded logs were furred with new caps. Nobody was quite sure which were which, and ate carefully anyway.",
-            "Dinner smelled like the forest floor, in the way that means good."],
-      river:["The river ran high and brown and loud. It has opinions about where it lives now.",
-             "The floodplain is the river's again, and the river is easy in it."],
-      deer:["Deer in the gymnasium again. Nobody chases them out anymore. It's their gym.",
-            "There are hoofprints on the free-throw line."],
-      library:["Someone read aloud in the library at dusk. No one remembered starting the habit.",
-               "The library roof holds. It will keep holding. This is not negotiable, apparently."],
-      paths:["The path to the gardens is worn a hand deeper than last year. Feet remember.",
-             "Every path here was made by somebody deciding, over and over, to go that way."],
-      barrels:["Every gutter ran into a barrel, and every barrel sang a different note.",
-               "The barrels were full by noon and nobody had to say anything about it."],
-      bridge:["Somebody proposed fixing the bridge again. The long way around won, again.",
-              "The long way around is four miles and worth it in October."],
-      graffiti:["The moss took another letter off the overpass. Soon it will say something new.",
-                "Whatever that wall used to shout, it murmurs now."],
-      laundry:["Laundry between the dead streetlights, bright as signal flags.",
-               "Sheets snapping in the wind all afternoon. Cheerful racket."],
-      chapel:["The chapel is cool and dry and smells like a thousand summers of seed.",
-              (byId("marisol")&&byId("marisol").status!=="away")
-                ? "Marisol sorted seed in the chapel with the door open, humming, off-key."
-                : "Someone sorted seed in the chapel with the door open, and left it better labeled than before."],
-      bees:["The courthouse hives were loud with foraging. First real flow of the season.",
-            "Bees on the courthouse steps, conducting the only business there anymore."],
-      stars:["The whole sky was out. Someone dragged a mattress up to look. Nobody worked late.",
-             "All the stars are back — the ones the old light hid. There are so many more than anyone said."],
-      bikes:[(byId("ilya")&&byId("ilya").status!=="away")
-               ? "Ilya trued a wheel by ear, spinning it, listening, tapping. Fixed before he could explain how."
-               : "Somebody trued a wheel by ear, spinning it, listening, tapping. Fixed before they could explain how.",
-             "Four bicycles went out and four came back, which is not always how it goes.",
-             "Another bearing gone. The bicycles are a promise the village keeps re-making."],
-      reservoir:["The reservoir's down enough to see the old foundations. A town under the town.",
-                 "Whoever they were, down there under the water, they built square."],
-      goats:["A cemetery goat got into the beds again. Ora negotiated. The goat won.",
-             "The goats keep the cemetery better than anyone did before."],
-      turbinehum:["The turbine hummed all night. Some sleep worse for it; most sleep better.",
-                  "You stop hearing the turbine after a month. Then one still night it stops, and you wake."],
-      solarfound:["Someone kept that one rack of panels clean for years before anyone else showed up. It still works.",
-                  "The panel rack faces the wrong way for a proper array, but it catches the morning light, and that's enough."],
-      antenna:["Kav ran the radio an hour after dark. Static, and once — xe swears — a chord.",
-               "Nobody's answered the antenna in years. Kav still checks. That's the whole story."],
-      fireweed:["The burn scar was pink to the horizon with fireweed. The ground remembers how to come back.",
-                "Fireweed all up the burn. It only grows where something went badly first."]
-    };
     const pool=[...base];
     for(const id of (S.founding&&S.founding.visuals||[])){
       const v=VISUALS.find(x=>x.id===id);
       const ls=v&&v.fx.journal&&FV[v.fx.journal];
-      if(ls) pool.push(...ls,...ls);
+      if(!ls) continue;
+      // FV entries are plain strings or {who, present, absent} variants
+      // (see data-events.js) — resolve by whether that character is here today
+      const resolved=ls.map(e=>typeof e==="string"?e
+        :((byId(e.who)&&byId(e.who).status!=="away")?e.present:e.absent));
+      pool.push(...resolved,...resolved);
     }
     lines.push(pick(pool));
   }
@@ -1125,6 +1173,8 @@ function simulateDay(){
   }
 
   S.report={gen,draw,cap,foodIn,foodOut,waterIn:wIn,waterOut:wOut,brownout,thirst, preserveWhy:S._preserveWhy||"", pressWhy:S._pressWhy||"",
+    waterParts:{drink:drinkUse, garden:gardenWater*wateredBeds*irrAl, gardenFull:gardenWater*wateredBeds, cook:1*cookAl, clean:1*cleanAl, perBed:gardenWater},
+    powerLoss, waterLoss,
     genWhy:genWhy.join(" · ")||"nothing built that makes power", gardenWhy:gWhy.join(" · "), aquaWhy:S._aquaWhy||"", gardenFood, aquaFood, woodWhy:S._woodWhy||""};
 
 
@@ -1195,6 +1245,16 @@ function endDayNow(){
   S.lastTick=Date.now();
   store.save(S); renderAll();
 }
+
+
+
+
+
+
+
+
+
+
 
 
 export { assignPhrase, catchUp, endDayNow, jobName, jobSkill, simulateDay, workDef, workName };

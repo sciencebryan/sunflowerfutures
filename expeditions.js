@@ -1,7 +1,16 @@
 import { S } from "./state.js";
 import { Cap, byId, clamp, effStat, isAre, siteDef, siteName, subj, wbFloor } from "./helpers.js";
-import { INJURY_PER_DAY, SITE_DEF, addRes, foodCap } from "./defs.js";
-import { CROPS, discoverRandomCrop, discoveryLine, lockedCrops, season } from "./seasons.js";
+import { CROPS, INJURY_PER_DAY, SITE_DEF } from "./data-economy.js";
+import { discoverRandomCrop, discoveryLine, lockedCrops, season } from "./seasons.js";
+import { addRes, foodCap } from "./defs.js";
+
+
+
+
+
+
+
+
 
 /* ================= expeditions ================= */
 function tickExpeditions(lines){
@@ -134,6 +143,14 @@ function tickExpeditions(lines){
     }
   }
 }
+
+
+
+
+
+
+
+
 
 
 export { tickExpeditions };

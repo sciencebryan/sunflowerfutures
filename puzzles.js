@@ -1,46 +1,13 @@
-/* ============================================================
-   PUZZLES — circuit salvage & watershed
-   Solve to unlock: puzzles are keys, not faucets.
-   ============================================================ */
+import { PATCH_SHAPES, PATCH_VARIANTS, SEEDLINGS, SEED_COMPANION, SEED_RIVAL } from "./data-puzzles.js";
 
-/* ---------- CIRCUIT SALVAGE ----------
-   A dead board. Route current from the source to each load.
-   Current SUMS on shared cells. Every cell has a rating.
-   Over the rating, it burns. Parallel routes cost you cells.
-   Later levels: capacity is insufficient. Choose who goes dark. */
 
-const CIRCUIT_LEVELS = [
-  { n:1, w:5, h:3, src:[0,1], srcMax:9, teach:"Trace a line from the bus to the pump, around the dead cells.",
-    loads:[{p:[4,1],amps:4,name:"pump",req:true}], caps:null, blocked:[[2,0],[2,2]] },
-  { n:2, w:5, h:4, src:[0,1], srcMax:12, teach:"The middle is thin here. Each row of it holds only so much — put each load on its own.",
-    loads:[{p:[4,0],amps:4,name:"lights",req:true},{p:[4,3],amps:5,name:"pump",req:true}],
-    caps:{"2,0":4,"2,1":4,"2,2":5,"2,3":5}, blocked:[[0,0],[0,3],[1,0],[1,3],[3,1],[3,2],[4,1],[4,2]] },
-  { n:3, w:6, h:4, src:[0,1], srcMax:16, teach:"Two can share a row, if what they carry together still fits it.",
-    loads:[{p:[5,0],amps:3,name:"lights",req:true},{p:[5,1],amps:3,name:"aerator",req:true},{p:[5,3],amps:5,name:"pump",req:true}],
-    caps:{"2,0":6,"2,1":6,"2,2":6,"2,3":5}, blocked:[[1,2]] },
-  { n:4, w:7, h:4, src:[0,1], srcMax:12, teach:"Not everything you could power is worth trying to power. Some paths just don't exist, no matter the budget.",
-    loads:[{p:[6,1],amps:6,name:"pump",req:true},{p:[6,3],amps:4,name:"aerator",req:true},
-           {p:[6,2],amps:4,name:"heater",req:false},{p:[2,0],amps:2,name:"lights",req:false}],
-    caps:{"3,1":6,"3,3":6}, blocked:[[3,0],[3,2]] },
-  { n:5, w:7, h:5, src:[0,2], srcMax:20, teach:"Four loads, one crossing. Every row has to earn its keep.",
-    loads:[{p:[6,0],amps:3,name:"lights",req:true},{p:[6,1],amps:3,name:"aerator",req:true},
-           {p:[6,3],amps:4,name:"heater",req:true},{p:[6,4],amps:4,name:"pump",req:true}],
-    caps:{"3,0":6,"3,1":6,"3,2":8,"3,3":6,"3,4":6}, blocked:[] },
-  { n:6, w:6, h:4, src:[0,0], srcMax:14, teach:"A thin board. Everything wants through the middle.",
-    loads:[{p:[5,0],amps:3,name:"lights",req:true},{p:[5,2],amps:4,name:"pump",req:true},{p:[5,3],amps:3,name:"aerator",req:true}],
-    caps:{"2,0":4,"2,1":4,"2,2":5,"2,3":5,"3,1":6}, blocked:[[1,1],[4,1]] },
-  // --- the relay. A relay sits in a doorway the current MUST pass through, and it
-  //     only wakes if enough amps cross it at once — so routing through it isn't a
-  //     trick, it's the single path to the loads on the far side. ---
-  { n:7, w:6, h:4, src:[0,1], srcMax:15,
-    teach:"New part: a relay (the amber cell). Nothing reaches past it until enough current wakes it — and once it's awake, the current still has to go somewhere the board allows.",
-    loads:[{p:[5,0],amps:4,name:"lights",req:true},{p:[5,3],amps:5,name:"pump",req:true}],
-    caps:{"2,1":10,"3,0":5,"3,3":6}, blocked:[[2,0],[2,2],[2,3]], junctions:{"2,1":8} },
-  { n:8, w:7, h:5, src:[0,2], srcMax:19,
-    teach:"The relay again, and a load that would be nice to have. Wake the door, then decide what you can still afford.",
-    loads:[{p:[6,0],amps:4,name:"lights",req:true},{p:[6,4],amps:5,name:"pump",req:true},{p:[6,2],amps:6,name:"heater",req:false}],
-    caps:{"3,2":11,"3,0":5,"3,4":6}, blocked:[[3,1],[3,3]], junctions:{"3,2":9} }
-];
+
+
+
+
+
+
+
 
 function circuitCap(L,x,y){
   if(L.blocked.some(b=>b[0]===x&&b[1]===y)) return 0;
@@ -95,45 +62,6 @@ function circuitCheck(L, paths){
           solved: over.length===0 && total<=L.srcMax && missing.length===0 && coldJunctions.length===0};
 }
 
-/* ---------- WATERSHED ----------
-   Rain falls. Water runs downhill. Beds want a range — too much
-   drowns them. A channel that carries too much scours the land,
-   and the scour is still there next season. */
-
-const WATER_PIECES = {
-  channel:{name:"Channel", blurb:"Cuts a run. Sends all its water one way, downhill. Scours if overloaded."},
-  swale:  {name:"Swale",   blurb:"On contour. Drinks 4, passes the rest."},
-  cistern:{name:"Cistern", blurb:"Holds up to 8 for the dry weeks."},
-  berm:   {name:"Berm",    blurb:"Raises the ground 3. Water goes around."}
-};
-
-function vly(W,H,drop){ const e=[]; const mid=(H-1)/2;
-  for(let y=0;y<H;y++){ const r=[]; for(let x=0;x<W;x++) r.push(Math.round((W+drop) - x + Math.abs(y-mid)*2)); e.push(r); } return e; }
-
-const WATER_LEVELS = [
-  { n:1, w:5, h:4, rain:1, teach:"Water runs downhill and spreads. A channel sends it all one way instead.",
-    elev:vly(5,4,7), beds:[{p:[4,0],min:7,max:15}], budget:{channel:3}, cisternTarget:0 },
-  { n:2, w:5, h:4, rain:2, teach:"A berm raises the ground. Water goes around it — or stays where you want it.",
-    elev:vly(5,4,7), beds:[{p:[4,0],min:7,max:15},{p:[4,3],min:7,max:15}], budget:{channel:4,berm:4}, cisternTarget:0 },
-  { n:3, w:6, h:4, rain:6, teach:"Too much water drowns a bed. A swale drinks four and passes the rest.",
-    elev:vly(6,4,7), beds:[{p:[5,0],min:9,max:11}], budget:{channel:4,berm:3,swale:2}, cisternTarget:0 },
-  { n:4, w:6, h:4, rain:4, teach:"Two beds, one supply. Neither may go thirsty, neither may drown.",
-    elev:vly(6,4,7), beds:[{p:[5,0],min:10,max:15},{p:[5,3],min:10,max:15}], budget:{channel:5,berm:4,swale:2}, cisternTarget:0 },
-  { n:5, w:6, h:5, rain:4, teach:"Store what the beds don't need. The dry weeks are coming.",
-    elev:vly(6,5,7), beds:[{p:[5,0],min:7,max:14}], budget:{channel:4,berm:3,swale:2,cistern:2}, cisternTarget:8 },
-  { n:6, w:7, h:5, rain:6, scour:true, teach:"A storm year. A channel carrying more than 9 scours the soil away. Slow the water before you move it.",
-    elev:vly(7,5,7), beds:[{p:[6,0],min:8,max:14},{p:[6,4],min:8,max:14}],
-    budget:{channel:6,berm:5,swale:4,cistern:2}, cisternTarget:10 },
-  { n:7, w:6, h:5, rain:5, scour:true, teach:"Tighter windows now. Every bed wants nearly exactly what it gets.",
-    elev:vly(6,5,7), beds:[{p:[5,0],min:9,max:12},{p:[5,4],min:9,max:12}],
-    budget:{channel:5,berm:4,swale:3,cistern:2}, cisternTarget:8 },
-  { n:8, w:7, h:4, rain:6, scour:true, teach:"A wide shallow slope and a lot of rain. Nothing wants to stay where you put it.",
-    elev:vly(7,4,7), beds:[{p:[6,0],min:10,max:14},{p:[6,3],min:10,max:14},{p:[3,0],min:6,max:10}],
-    budget:{channel:6,berm:5,swale:4,cistern:2}, cisternTarget:10 },
-  { n:9, w:7, h:5, rain:7, scour:true, teach:"The last season. Three beds, a flood year, and soil that remembers every mistake.",
-    elev:vly(7,5,7), beds:[{p:[6,0],min:9,max:13},{p:[6,4],min:9,max:13},{p:[0,0],min:6,max:11}],
-    budget:{channel:7,berm:6,swale:5,cistern:3}, cisternTarget:12 }
-];
 
 const SCOUR_LIMIT=9;   // a channel carrying more than this scours
 
@@ -204,59 +132,11 @@ function waterSim(L, placed){
   };
 }
 
-/* ================= seed frame (third puzzle) =================
-   A sorting/germination frame. Each cell has a light value (0-3) from where
-   it sits under the eaves. Each seed type wants a light range. Some seeds are
-   companions (must sit next to at least one of their partner) and some are
-   rivals (must never sit orthogonally adjacent). Fill every marked slot,
-   honour light, companions, and rivals. Constraint satisfaction — a different
-   shape of thinking from routing (circuit) or flow (water).             */
-
-const SEEDLINGS = {
-  bean:   {name:"Beans",   glyph:"◗", light:[2,3]},
-  corn:   {name:"Corn",    glyph:"↑", light:[2,3]},
-  squash: {name:"Squash",  glyph:"❍", light:[1,3]},
-  root:   {name:"Roots",   glyph:"▼", light:[0,2]},
-  herb:   {name:"Herbs",   glyph:"✦", light:[1,3]},
-  bramble:{name:"Bramble", glyph:"※", light:[0,2]}
-};
-
-/* companion / rival pairs (order-independent) */
-const SEED_COMPANION = [["bean","corn"],["squash","corn"],["herb","root"]];
-const SEED_RIVAL     = [["bean","herb"],["bramble","corn"],["bramble","squash"],["root","bramble"]];
 
 function pairHas(list,a,b){ return list.some(p=>(p[0]===a&&p[1]===b)||(p[0]===b&&p[1]===a)); }
 function areCompanions(a,b){ return pairHas(SEED_COMPANION,a,b); }
 function areRivals(a,b){ return pairHas(SEED_RIVAL,a,b); }
 
-/* Levels: `slots` are the cells to fill, each {p:[x,y], light}. `supply` is
-   how many of each seed you have. Solvable states honour every constraint. */
-const SEED_LEVELS = [
-  { n:1, w:3, h:2, teach:"Every seed wants the right light. Match each to a cell it can live in.",
-    slots:[{p:[2,0],light:2},{p:[0,1],light:0},{p:[1,1],light:3},{p:[2,1],light:2}],
-    supply:{bean:1, root:1, herb:1, bramble:1} },
-  { n:2, w:3, h:2, teach:"You have a seed to spare \u2014 light alone won't tell you where each goes.",
-    slots:[{p:[2,1],light:0},{p:[1,0],light:1},{p:[1,1],light:3},{p:[0,0],light:2}],
-    supply:{root:1, bramble:1, herb:2, bean:1} },
-  { n:3, w:3, h:3, teach:"Bramble crowds out corn and squash. Never seat them side by side.",
-    slots:[{p:[0,1],light:1},{p:[2,2],light:1},{p:[1,0],light:2},{p:[1,2],light:3},{p:[2,0],light:3}],
-    supply:{bramble:2, squash:1, herb:1, bean:2} },
-  { n:4, w:3, h:3, teach:"Beans and corn lean on each other. Set friends as neighbours.",
-    slots:[{p:[1,1],light:0},{p:[2,1],light:2},{p:[0,0],light:0},{p:[0,2],light:2},{p:[1,2],light:2},{p:[2,0],light:1}],
-    supply:{bramble:4, root:1, squash:1, bean:1} },
-  { n:5, w:4, h:3, teach:"Herbs want roots beside them; beans can't abide herbs. Both at once.",
-    slots:[{p:[2,0],light:3},{p:[1,1],light:3},{p:[2,2],light:3},{p:[0,0],light:2},{p:[3,0],light:3},{p:[2,1],light:0}],
-    supply:{herb:1, squash:4, bean:2, root:1} },
-  { n:6, w:4, h:3, teach:"A fuller frame. Light, friends, and rivals all pulling at the same cells.",
-    slots:[{p:[3,0],light:2},{p:[0,1],light:1},{p:[0,2],light:1},{p:[1,0],light:1},{p:[3,1],light:2},{p:[1,2],light:3},{p:[1,1],light:2}],
-    supply:{herb:2, root:4, bramble:2, bean:1} },
-  { n:7, w:4, h:3, teach:"Bramble everywhere it isn't welcome. Thread the friendly seeds around it.",
-    slots:[{p:[0,2],light:1},{p:[1,0],light:1},{p:[1,1],light:2},{p:[1,2],light:2},{p:[0,1],light:0},{p:[3,0],light:3},{p:[3,1],light:1},{p:[2,1],light:3}],
-    supply:{bramble:4, bean:4, herb:2} },
-  { n:8, w:4, h:4, teach:"The seed library's hardest frame. Every rule, every cell, all agreeing.",
-    slots:[{p:[1,1],light:3},{p:[2,3],light:3},{p:[0,3],light:0},{p:[3,1],light:2},{p:[3,0],light:2},{p:[1,0],light:2},{p:[0,0],light:0},{p:[2,2],light:2},{p:[1,2],light:3}],
-    supply:{squash:2, bramble:3, bean:2, root:3, herb:1} },
-];
 
 function seedSlotAt(L,x,y){ return L.slots.find(s=>s.p[0]===x&&s.p[1]===y); }
 function seedAdj(a,b){ return Math.abs(a[0]-b[0])+Math.abs(a[1]-b[1])===1; }
@@ -317,29 +197,7 @@ function seedCheck(L, placed){
            wrongLight, rivalPairs, lonely, used, solved };
 }
 
-/* ============================================================
-   SIGNAL — tuning the antenna
-   Additive field placement. Each node broadcasts +1 signal to its own cell
-   and the four cells orthogonally next to it; overlapping fields add. Every
-   receiver must land on its exact target — no more, no less — inside a hard
-   node budget. A genuinely different shape of thinking from the other three:
-   not routing, not flow, not supply-and-adjacency, but overlapping coverage
-   under an exact-match constraint.
-   ============================================================ */
-const SIGNAL_LEVELS = [
-  { n:1, w:4, h:3, teach:"The valley radio. A node broadcasts +1 to itself and the four cells around it. Match the receiver exactly.",
-    receivers:[{x:2,y:1,v:1}], blocked:[], budget:1 },
-  { n:2, w:4, h:4, teach:"Fields add. This receiver needs 2 — two nodes have to reach it.",
-    receivers:[{x:1,y:1,v:2}], blocked:[[1,1]], budget:2 },
-  { n:3, w:5, h:4, teach:"Two voices now, and a strut in the way — nodes can't sit on a receiver or a blocked cell.",
-    receivers:[{x:1,y:1,v:2},{x:3,y:2,v:1}], blocked:[[1,1],[3,2],[2,2]], budget:3 },
-  { n:4, w:5, h:5, teach:"The static is thick here. A lot of signal into a tight space.",
-    receivers:[{x:2,y:2,v:4}], blocked:[[2,2],[0,0],[4,4]], budget:4 },
-  { n:5, w:6, h:5, teach:"Long distance tuning. A node in the right spot can serve two receivers at once.",
-    receivers:[{x:1,y:2,v:2},{x:3,y:2,v:2},{x:5,y:0,v:1}], blocked:[[1,1],[3,1]], budget:4 },
-  { n:6, w:7, h:5, teach:"The last frequency. Every node has to pull double duty to reach this far.",
-    receivers:[{x:1,y:2,v:2},{x:3,y:2,v:3},{x:5,y:2,v:2}], blocked:[[3,1]], budget:5 }
-];
+
 function signalCheck(L, placed){
   const map={};
   for(const k of Object.keys(placed)){
@@ -357,69 +215,7 @@ function signalCheck(L, placed){
   return {map, recStatus, used, solved};
 }
 
-/* ============================================================
-   PATCHWORK — insulation & sealing
-   Polyomino packing. Cover every leak cell with a supply of fixed-shape
-   patches; nothing may overlap another patch or a load-bearing strut. A
-   spatial-fit puzzle, unlike anything else on the bench.
-   ============================================================ */
-const PATCH_SHAPES = {
-  p1:{name:"1×1 patch", pts:[[0,0]]},
-  h2:{name:"2×1 strip",  pts:[[0,0],[1,0]]},
-  v2:{name:"1×2 strip",  pts:[[0,0],[0,1]]},
-  h3:{name:"3×1 strip",  pts:[[0,0],[1,0],[2,0]]},
-  v3:{name:"1×3 strip",  pts:[[0,0],[0,1],[0,2]]},
-  sq:{name:"2×2 tarp",   pts:[[0,0],[1,0],[0,1],[1,1]]},
-  corner:{name:"Corner", pts:[[0,0],[1,0],[0,1]]},
-  tee:{name:"T-patch",   pts:[[0,0],[1,0],[2,0],[1,1]]},
-  tee2:{name:"L T-patch", pts:[[0,1],[1,0],[1,1],[1,2]]},
-  tee3:{name:"U T-patch", pts:[[0,1],[1,0],[1,1],[2,1]]},
-  tee4:{name:"R T-patch", pts:[[0,0],[0,1],[1,1],[0,2]]},
-  corner2:{name:"UR Corner", pts:[[0,0],[1,0],[1,1]]},
-  corner3:{name:"LL Corner", pts:[[0,0],[0,1],[1,1]]},
-  corner4:{name:"LR Corner", pts:[[0,1],[1,0],[1,1]]}
-};
 
-
-// add this near your other data structures
-const PATCH_VARIANTS = {
-  h2: ['h2', 'v2'],
-  v2: ['v2', 'h2'],
-  h3: ['h3', 'v3'],
-  v3: ['v3', 'h3'],
-  tee: ['tee', 'tee2', 'tee3', 'tee4'],
-  tee2: ['tee2', 'tee3', 'tee4', 'tee'],
-  tee3: ['tee3', 'tee4', 'tee', 'tee2'],
-  tee4: ['tee4', 'tee', 'tee2', 'tee3'],
-  corner: ['corner', 'corner2', 'corner3', 'corner4'],
-  corner2: ['corner2', 'corner3', 'corner4', 'corner'],
-  corner3: ['corner3', 'corner4', 'corner', 'corner2'],
-  corner4: ['corner4', 'corner', 'corner2', 'corner3'],
-  p1: ['p1'],
-  sq: ['sq']
-};
-
-
-const PATCH_LEVELS = [
-  { n:1, leftoverGoal: 1, w:4, h:3, teach:"The catchment tank has a crack. Cover the gap completely — patches can't overlap.",
-    leaks:[[1,1],[2,1]], blocked:[[0,0],[3,2]], supply:{h2:1, p1:1} },
-  { n:2, leftoverGoal: 2, w:4, h:4, teach:"Struts, the dark cells, are load-bearing. You can't patch over them.",
-    leaks:[[1,1],[1,2],[2,2]], blocked:[[0,1],[2,1],[3,1]], supply:{corner:1, v2:1, p1:1} },
-  { n:3, leftoverGoal: 2, w:5, h:4, teach:"A shattered greenhouse pane. Every hole sealed, nothing hangs off the frame.",
-    leaks:[[1,1],[2,1],[3,1],[2,2],[2,3]], blocked:[[0,0],[4,0],[0,3],[4,3]], supply:{h3:1, v2:1, p1:2} },
-  { n:4, leftoverGoal: 0, w:5, h:5, teach:"The commons roof. Not pretty — tight.",
-    leaks:[[1,1],[2,1],[3,1],[1,2],[2,2],[3,2],[1,3],[2,3],[3,3],[1,4]], blocked:[[4,1],[4,4]], supply:{sq:1, v3:2} },
-  { n:5, leftoverGoal: 0, w:6, h:4, teach:"The old pipes. Long runs, awkward gaps, rust in the way.",
-    leaks:[[0,1],[1,1],[2,1],[3,1],[4,1],[5,1],[2,2],[3,2],[2,3],[3,3],[1,2]], blocked:[[1,0],[5,3]], supply:{h3:2, sq:1, p1:1} },
-  { n:6, leftoverGoal: 4, w:6, h:5, teach:"The worst draft in the sickbed. Every scrap of patch, no gaps left.",
-    leaks:[[1,1],[2,1],[4,1],[1,2],[2,2],[3,2],[4,2],[1,3],[2,3],[4,3]], blocked:[[3,1],[3,3]], supply:{sq:2, h2:3, corner:1} },
-  { n:7, leftoverGoal: 0, w:4, h:4, teach:"silly geese", leaks:[[1,1],[1,2],[2,1],[2,2],[1,0],[2,0]], blocked:[], supply:{tee:2, }},
-  { n:8, leftoverGoal: 3, w:6, h:6, teach:"silly geese", leaks:[[1,1],[2,1],[3,1],[4,1],[1,2],[2,2],[3,2],[4,2],[1,3],[2,3],[3,3],[4,3],[1,4],[2,4],[3,4],[4,4]], blocked:[], supply:{sq:1, h3:5}},
-  { n:9, leftoverGoal: 1, w:6, h:6, teach:"silly geese", leaks:[[1,1],[2,1],[3,1],[4,1],[1,2],[2,2],[3,2],[4,2],[1,3],[2,3],[3,3],[4,3],[1,4],[2,4],[3,4],[4,4]], blocked:[], supply:{tee:4, p1:1}},
-  { n:10, leftoverGoal: 2, w:6, h:4, teach:"silly geese", leaks:[[3,1],[2,2],[3,2],[4,2],[1,3],[2,3],[3,3],[4,3],[5,3]], blocked:[], supply:{tee:1, corner:2, v2:1}},
-  { n:11, leftoverGoal: 3, w:6, h:6, teach:"silly geese", leaks:[[1,1],[2,1],[1,2],[2,2],[3,2],[2,3],[3,3],[4,3],[2,4]], blocked:[], supply:{tee:1, corner:2, sq:1}}
-
-];
 function patchCheck(L, placed){
   const map={}, used={};
   placed.forEach(p=>{
@@ -466,26 +262,7 @@ function patchCheck(L, placed){
   return {map, used, overlaps, onBlocked, leaksUncovered, solved, savedSquares};
 }
 
-/* ============================================================
-   FOCUS — heliostat calibration
-   Laser-reflection routing. Toggle mirrors between / and \ to bounce a beam
-   of light from the source to the collector around ruined struts, inside a
-   hard mirror budget. A path-tracing puzzle — closest in feel to circuit
-   salvage, but the beam bounces instead of branching, and every cell only
-   ever holds one piece of state.
-   ============================================================ */
-const FOCUS_LEVELS = [
-  { n:1, w:4, h:4, teach:"The old heliostat field. Bounce the light from the sun tracker (☀) to the boiler (▣).",
-    src:{x:0,y:3,dir:"E"}, target:{x:3,y:0}, blocked:[], budget:2 },
-  { n:2, w:5, h:4, teach:"Tap a mirror to cycle it. Routing around a block costs more glass than routing along open ground.",
-    src:{x:0,y:2,dir:"E"}, target:{x:4,y:2}, blocked:[[2,2]], budget:3 },
-  { n:3, w:5, h:5, teach:"Work around the ruined struts. The light has to pass clear.",
-    src:{x:1,y:4,dir:"N"}, target:{x:3,y:4}, blocked:[[1,2],[3,2],[2,1]], budget:3 },
-  { n:4, w:6, h:5, teach:"A longer throw. Light loses nothing over distance, but glass is short.",
-    src:{x:0,y:0,dir:"S"}, target:{x:5,y:0}, blocked:[[2,3],[3,3],[2,2],[3,2]], budget:4 },
-  { n:5, w:6, h:6, teach:"The final array. Two clean bends, if you find the right corner.",
-    src:{x:0,y:1,dir:"E"}, target:{x:5,y:4}, blocked:[[4,1],[1,3],[0,4],[4,3]], budget:3 }
-];
+
 // A level may declare a single `src`/`target` (the original format) or plural
 // `srcs`/`targets`. A target is {x, y} — a boiler, which absorbs the beam —
 // or {x, y, pass:true} — a lens, which must be lit but lets the beam run on.
@@ -526,65 +303,118 @@ function focusCheck(L, placed){
   return {beams, pts:beams[0], hit, hitTarget:hitAll, used, solved};
 }
 
+
+
+
+
+
+/* ---------- the water mains (pipes): rotate-only, junctions, many sinks ---------- */
+// tile openings at rotation 0, as N=0 E=1 S=2 W=3
+const PIPE_OPEN = { I:[0,2], L:[0,1], T:[0,1,3], X:[0,1,2,3], S:[0], K:[0] };
+const DIRDX=[0,1,0,-1], DIRDY=[-1,0,1,0];
+
+function pipeOpenings(type, rot){ return PIPE_OPEN[type].map(d=>(d+rot)%4); }
+
+// L: {w,h,cells} (row-major, null or type letters); rots: row-major rotation array.
+// Water flows from every source; an opening facing a wall, an empty cell, or a
+// closed face SPILLS (a leak) if it's on the pressurized network.
+function pipesCheck(L, rots){
+  const idx=(x,y)=>y*L.w+x;
+  const open=L.cells.map((t,i)=> (t&&t!==".")?pipeOpenings(t,rots[i]||0):null);
+  const srcs=[], sinks=[];
+  L.cells.forEach((t,i)=>{ if(t==="S") srcs.push(i); if(t==="K") sinks.push(i); });
+  if(!srcs.length) return {seen:new Set(), leaks:0, fed:[], sinks, solved:false};
+  // BFS through mutually-open faces
+  const seen=new Set(srcs);
+  const q=[...srcs];
+  while(q.length){
+    const i=q.pop(); const x=i%L.w, y=(i/L.w)|0;
+    for(const d of open[i]){
+      const nx=x+DIRDX[d], ny=y+DIRDY[d];
+      if(nx<0||ny<0||nx>=L.w||ny>=L.h) continue;
+      const j=idx(nx,ny);
+      if(!open[j]) continue;
+      if(!open[j].includes((d+2)%4)) continue;
+      if(!seen.has(j)){ seen.add(j); q.push(j); }
+    }
+  }
+  // leaks: any open face on a REACHED tile that isn't answered by the neighbour
+  let leaks=0;
+  for(const i of seen){
+    const x=i%L.w, y=(i/L.w)|0;
+    for(const d of open[i]){
+      const nx=x+DIRDX[d], ny=y+DIRDY[d];
+      const j=(nx<0||ny<0||nx>=L.w||ny>=L.h)?-1:idx(nx,ny);
+      if(j<0 || !open[j] || !open[j].includes((d+2)%4)) leaks++;
+    }
+  }
+  const fed=sinks.filter(i=>seen.has(i));
+  return { seen, leaks, fed, sinks,
+           solved: fed.length===sinks.length && leaks===0 };
+}
+
+/* ---------- the line run (wires): place & rotate, 8 nodes, colors ---------- */
+// nodes clockwise from top-left: 0 TL, 1 TR, 2 right-upper, 3 right-lower,
+// 4 BR, 5 BL, 6 left-lower, 7 left-upper. 90° cw: n -> (n+2)%8.
+// abutting pairs: east neighbour 2<->7 and 3<->6; south neighbour 4<->1 and 5<->0.
+function wireRot(n, rot){ return (n + 2*rot) % 8; }
+
+// L: {w,h,blocks,srcs,sinks,inv}; placed: {"x,y":{inv,rot}}
+// srcs/sinks: {x,y,node,c} — terminals on occupied endpoint cells.
+// Wires conduct only where same-coloured ends meet across a cell edge.
+function wiresCheck(L, placed){
+  const ends=new Map();   // "x,y,node" -> color
+  const links=[];         // [keyA, keyB] intra-tile wire spans
+  const key=(x,y,n)=>`${x},${y},${n}`;
+  for(const [pos,pl] of Object.entries(placed||{})){
+    const [x,y]=pos.split(",").map(Number);
+    const tile=L.inv[pl.inv]; if(!tile) continue;
+    for(const w of tile.wires){
+      const a=wireRot(w.a,pl.rot||0), b=wireRot(w.b,pl.rot||0);
+      ends.set(key(x,y,a), w.c); ends.set(key(x,y,b), w.c);
+      links.push([key(x,y,a), key(x,y,b)]);
+    }
+  }
+  for(const t of [...L.srcs,...L.sinks]) ends.set(key(t.x,t.y,t.node), t.c);
+  // union-find over endpoint keys
+  const par=new Map();
+  const find=k=>{ let r=k; while(par.get(r)!==undefined&&par.get(r)!==r) r=par.get(r); par.set(k,r); return r; };
+  const union=(a,b)=>{ const ra=find(a), rb=find(b); if(ra!==rb) par.set(ra,rb); };
+  for(const k of ends.keys()) par.set(k,k);
+  for(const [a,b] of links) union(a,b);
+  // cross-edge conduction where colors match; mismatches recorded, not conducted
+  const AB=[[1,0,[[2,7],[3,6]]],[0,1,[[4,1],[5,0]]]];
+  const mismatches=[];
+  const cellHasAnything=(x,y)=> placed[`${x},${y}`]
+    || L.srcs.some(t=>t.x===x&&t.y===y) || L.sinks.some(t=>t.x===x&&t.y===y);
+  for(let y=0;y<L.h;y++) for(let x=0;x<L.w;x++){
+    if(!cellHasAnything(x,y)) continue;
+    for(const [dx,dy,pairs] of AB){
+      const nx=x+dx, ny=y+dy;
+      if(nx>=L.w||ny>=L.h||!cellHasAnything(nx,ny)) continue;
+      for(const [m,th] of pairs){
+        const ka=key(x,y,m), kb=key(nx,ny,th);
+        const ca=ends.get(ka), cb=ends.get(kb);
+        if(ca===undefined||cb===undefined) continue;
+        if(ca===cb) union(ka,kb);
+        else mismatches.push({at:[x,y],with:[nx,ny],colors:[ca,cb]});
+      }
+    }
+  }
+  // every sink must be fed by SOME source of its own color — two black
+  // circuits may land on either black load, the current doesn't care
+  const sinkFed = L.sinks.map(k =>
+    L.srcs.some(s => s.c===k.c && find(key(s.x,s.y,s.node))===find(key(k.x,k.y,k.node))));
+  const fedByColor={};
+  L.sinks.forEach((k,i)=>{ fedByColor[k.c]=(fedByColor[k.c]??true)&&sinkFed[i]; });
+  return { sinkFed, fedByColor, mismatches,
+           solved: sinkFed.every(Boolean) };
+}
+
+
 /* ============================================================
    PICROSS / SPECTRAL SCANS
    ============================================================ */
-
-// The library of puzzle layouts (1 = filled, 0 = empty)
-const PICROSS_LEVELS = [
-  {
-    n: 1, 
-    teach: "Resolve LIDAR interference to map the heavy tool cache.",
-    parts: 5,
-    rewardText: "You recovered a cache of heavy tools! +5 parts.",
-    grid: [
-      [0,0,0,0,0,0,1,1,1,0,0,1,1,1,0,0],
-      [0,0,0,0,0,1,1,0,0,0,1,1,1,0,0,0],
-      [0,0,0,1,1,1,0,0,0,0,1,1,0,0,0,0],
-      [0,0,1,1,1,1,0,0,0,0,1,1,0,0,0,1],
-      [0,0,1,1,1,1,1,0,0,0,1,1,1,1,1,1],
-      [1,1,1,1,1,1,1,0,0,1,1,1,1,1,1,0],
-      [1,1,1,0,0,1,1,1,1,1,1,1,1,1,0,0],
-      [1,1,0,0,0,0,1,1,1,1,1,0,0,0,0,0],
-      [0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0],
-      [0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0],
-      [0,0,0,0,1,1,1,1,0,1,1,1,0,0,0,0],
-      [0,0,0,1,1,1,1,0,0,0,1,1,1,0,0,0],
-      [0,0,1,1,1,1,0,0,0,0,0,1,1,1,0,0],
-      [0,1,1,1,1,0,0,0,0,0,0,0,1,1,1,0],
-      [1,1,0,1,0,0,0,0,0,0,0,0,0,1,1,1],
-      [1,1,1,0,0,0,0,0,0,0,0,0,0,0,1,1]
-       
-
-    ]
-  },
- {
-    n:2, 
-    teach: "Do some stuff",
-    parts:5,
-    rewardText: "You got some stuff.",
-    grid: [
- [0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0],
-[0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,0],
-[0,0,1,1,0,0,0,1,1,0,0,0,1,1,0,0],
-[0,0,1,1,1,1,0,0,0,0,0,0,1,1,0,0],
-[0,0,1,0,0,1,1,1,1,1,1,1,1,1,0,0],
-[0,0,1,0,0,0,0,0,0,0,0,0,0,1,0,0],
-[0,0,1,1,1,0,0,0,0,0,0,0,1,1,0,0],
-[0,0,1,0,1,1,1,1,1,1,1,1,1,1,0,0],
-[0,0,1,0,0,0,0,0,0,0,1,0,0,1,0,0],
-[0,0,1,0,0,0,0,0,0,1,1,0,0,1,0,0],
-[0,0,1,0,0,0,0,0,1,1,0,0,0,1,0,0],
-[0,0,1,0,0,0,0,1,1,0,0,0,0,1,0,0],
-[0,0,1,0,0,0,1,1,0,0,0,0,0,1,0,0],
-[0,0,1,1,0,0,1,0,0,0,0,0,0,1,0,0],
-[0,0,0,0,1,1,1,0,0,0,0,1,1,0,0,0],
-[0,0,0,0,0,0,1,1,1,1,1,1,0,0,0,0]
-       ]
- }
-];
-
-// Generates the number clues for the top and sides based on a target grid
 function generatePicrossClues(grid) {
   const extract = (line) => {
     const runs = [];
@@ -604,4 +434,6 @@ function generatePicrossClues(grid) {
   return { rowClues, colClues };
 }
 
-export { CIRCUIT_LEVELS, FOCUS_LEVELS, PATCH_LEVELS, PATCH_SHAPES, PATCH_VARIANTS, SEEDLINGS, SEED_COMPANION, SEED_LEVELS, SEED_RIVAL, SIGNAL_LEVELS, WATER_LEVELS, WATER_PIECES, cKey, circuitAdj, circuitCap, circuitCheck, focusCheck, focusSrcs, focusTargets, patchCheck, seedCheck, seedSlotAt, signalCheck, waterSim, PICROSS_LEVELS, generatePicrossClues };
+
+
+export { cKey, circuitAdj, circuitCap, circuitCheck, focusCheck, focusSrcs, focusTargets, patchCheck, pipesCheck, seedCheck, seedSlotAt, signalCheck, waterSim, wireRot, wiresCheck, generatePicrossClues };
