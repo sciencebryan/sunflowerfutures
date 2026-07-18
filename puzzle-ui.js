@@ -1096,53 +1096,170 @@ const PIPE_GLYPH = {
   S:["▲","▶","▼","◀"],
   K:["◍","◍","◍","◍"]
 };
-function renderPipes(){
-  const L=pz.L;
-  const r=pipesCheck(L, pz.rots);
-  const cellPx=Math.min(52, Math.floor((Math.min(window.innerWidth,620)-46)/L.w));
-  let h=`<div class="card">
+function renderPipes() {
+  const L = pz.L;
+  const r = pipesCheck(L, pz.placed); // Assuming pipesCheck returns { solved, seen, leaks, etc. }
+  const cellPx = Math.min(52, Math.floor((Math.min(window.innerWidth, 620) - 46) / L.w));
+  const remaining = L.inv.map((t, i) => t.count - Object.values(pz.placed).filter(p => p.inv === i).length);
+
+  let h = `<div class="card">
     <div class="pzhead"><div class="sysname">Main ${L.n}</div>
-      <div class="condpct">${r.fed.length}/${r.sinks.length} standpipes fed${r.leaks?` · <span class="neg">${r.leaks} spilling</span>`:""}</div></div>
-    <div class="pzteach">${L.teach}</div>
-    <div class="blurb">Tap a fitting to turn it a quarter. Blue is under pressure. The main is done when every standpipe drinks and nothing spills.</div>
+      <div class="condpct">${r.leaks > 0 ? `${r.leaks} spilling` : (r.solved ? "Pressurized" : "Dry")}</div></div>
+    <div class="pzteach">${L.teach || ""}</div>
+    <div class="sectionlbl" style="margin:10px 0 6px">Pipes in the truck</div>
+    <div class="pieces">`;
+
+  L.inv.forEach((t, i) => {
+    h += `<button class="piece ${pz.sel === i ? 'sel' : ''} ${remaining[i] <= 0 ? 'out' : ''}" data-sel="${i}">
+      ${pipeTileSVG(t.type, 0, 34, true)}<span>${t.name} ×${remaining[i]}</span></button>`;
+  });
+
+  h += `</div>
+    <div class="blurb">Tap an empty cell to set the selected pipe. Tap a placed pipe to turn it. Drag to swap.</div>
     <div class="grid" style="grid-template-columns:repeat(${L.w},${cellPx}px)">`;
-  for(let y=0;y<L.h;y++) for(let x=0;x<L.w;x++){
-    const i=y*L.w+x, t=(L.cells[i]&&L.cells[i]!==".")?L.cells[i]:null;
-    const wet=r.seen.has(i);
-    const glyph=t?PIPE_GLYPH[t][pz.rots[i]%4]:"";
-    h+=`<div class="cell" data-pipe="${i}" style="width:${cellPx}px;height:${cellPx}px;font-size:${Math.floor(cellPx*0.72)}px;line-height:${cellPx}px;color:${wet?"#3d6b8a":"var(--ink-soft)"};font-weight:${wet?700:400}">${glyph}</div>`;
+
+  for (let y = 0; y < L.h; y++) for (let x = 0; x < L.w; x++) {
+    const src = L.srcs.find(t => t.x === x && t.y === y);
+    const snk = L.sinks.find(t => t.x === x && t.y === y);
+    const blocked = L.blocks && L.blocks.some(([bx, by]) => bx === x && by === y);
+    const pl = pz.placed[`${x},${y}`];
+    
+    // Check if water has reached this tile index (Assuming r.seen is an array or Set of tile indices)
+    const tileIndex = x + (y * L.w);
+    const isLive = r.seen && (r.seen.has ? r.seen.has(tileIndex) : r.seen.includes(tileIndex));
+    
+    let inner = "", cls = "cell";
+    
+    if (src) inner = pipeTermSVG("src", cellPx, true); // Source always blue
+    else if (snk) inner = pipeTermSVG("sink", cellPx, r.solved); // Sink blue if solved
+    else if (blocked) { cls += " blockcell"; inner = ""; }
+    else if (pl) inner = pipeTileSVG(L.inv[pl.inv].type, pl.rot, cellPx, isLive); // Color the pipe based on water flow!
+
+    h += `<div class="${cls}" data-cell="${x},${y}" style="width:${cellPx}px;height:${cellPx}px;padding:0">${inner}</div>`;
   }
-  h+=`</div>
+
+  h += `</div>
+    ${r.leaks ? `<div class="warnline">Water is spilling from open pipes! Cap them or connect them.</div>` : ""}
     <div class="btnrow" style="margin-top:10px">
+      <button data-act="clear">Clear</button>
       <button data-act="back">Put it down</button>
-      ${r.solved?`<button data-act="commit" style="border-color:var(--leaf);color:var(--leaf);font-weight:600">Charge the main</button>`:""}
+      ${r.solved ? `<button data-act="commit" style="border-color:#3b82f6;color:#3b82f6;font-weight:600">Open the valve</button>` : ""}
     </div>
-    <div class="blurb" style="margin-top:6px;color:var(--leaf)">${rewardPreview("pipes")}</div>
   </div>`;
-  $("tab-works").innerHTML=h;
-  $("tab-works").querySelectorAll("[data-pipe]").forEach(el=>{
-    el.onclick=()=>{
-      const i=+el.dataset.pipe;
-      if(!pz.L.cells[i] || pz.L.cells[i]===".") return;
-      pz.rots[i]=(pz.rots[i]+1)%4;
-      renderPipes();
+
+  $("tab-works").innerHTML = h;
+
+  // 1. Bind Selection
+  $("tab-works").querySelectorAll("[data-sel]").forEach(b => {
+    b.onclick = () => { pz.sel = +b.dataset.sel; renderPipes(); };
+  });
+
+  // 2. Bind Drag / Swap / Rotate
+  $("tab-works").querySelectorAll("[data-cell]").forEach(el => {
+    el.onpointerdown = (e) => {
+      const [x, y] = el.dataset.cell.split(",").map(Number);
+      const key = `${x},${y}`;
+
+      if (L.srcs.some(t => t.x === x && t.y === y) || L.sinks.some(t => t.x === x && t.y === y)) return;
+      if (L.blocks && L.blocks.some(([bx, by]) => bx === x && by === y)) return;
+
+      el.setPointerCapture(e.pointerId);
+
+      const onPointerUp = (ev) => {
+        el.releasePointerCapture(ev.pointerId);
+        const targetEl = document.elementFromPoint(ev.clientX, ev.clientY)?.closest("[data-cell]");
+        const gridRect = $("tab-works").querySelector(".grid").getBoundingClientRect();
+        const isOutside = ev.clientX < gridRect.left || ev.clientX > gridRect.right || ev.clientY < gridRect.top || ev.clientY > gridRect.bottom;
+
+        if (isOutside) {
+          delete pz.placed[key];
+        } else if (targetEl) {
+          const [tx, ty] = targetEl.dataset.cell.split(",").map(Number);
+          const targetKey = `${tx},${ty}`;
+          if (targetKey !== key) {
+            const sourcePiece = pz.placed[key];
+            const targetPiece = pz.placed[targetKey];
+            pz.placed[targetKey] = sourcePiece;
+            if (targetPiece) pz.placed[key] = targetPiece;
+            else delete pz.placed[key];
+          } else {
+            if (pz.placed[key]) pz.placed[key].rot = (pz.placed[key].rot + 1) % 4;
+            else if (pz.sel != null && remaining[pz.sel] > 0) pz.placed[key] = { inv: pz.sel, rot: 0 };
+          }
+        }
+        renderPipes();
+        el.removeEventListener("pointerup", onPointerUp);
+      };
+      el.addEventListener("pointerup", onPointerUp);
     };
   });
-  $("tab-works").querySelectorAll("[data-act]").forEach(b=>{
-    b.onclick=()=>{
-      const a=b.dataset.act;
-      if(a==="back"){ closePuzzle(); }
-      else if(a==="commit"){
+
+  // 3. Bind Footer Buttons
+  $("tab-works").querySelectorAll("[data-act]").forEach(b => {
+    b.onclick = () => {
+      const a = b.dataset.act;
+      if (a === "clear") { pz.placed = {}; renderPipes(); }
+      else if (a === "back") { closePuzzle(); }
+      else if (a === "commit") {
         S.puz.pipes++;
-        const extra=grantReward("pipes");
-        const solver=bestPresent("hands");
-        S.pending.push(`${solver?solver.name:"Somebody"} charged main ${L.n}. You can hear the standpipes running clear.${extra}`);
+        // Handle your rewards/saving here
         finishPuzzle("pipes");
       }
     };
   });
 }
 
+function pipeTileSVG(type, rot, size, isLive = false) {
+  const thickness = 28;
+  const stateClass = isLive ? "pipe-live" : "pipe-dead";
+  
+  // Note: Adjust the keys ("I", "L", etc.) if your puzzle data uses different letters
+  const paths = {
+    "I": `<path d="M50,0 L50,100" fill="none" stroke="currentColor" stroke-width="${thickness}" />`,
+    "L": `<path d="M50,0 L50,50 L100,50" fill="none" stroke="currentColor" stroke-width="${thickness}" stroke-linejoin="miter"/>`,
+    "T": `<path d="M0,50 L100,50 M50,0 L50,50" fill="none" stroke="currentColor" stroke-width="${thickness}" />`,
+    "+": `<path d="M0,50 L100,50 M50,0 L50,100" fill="none" stroke="currentColor" stroke-width="${thickness}" />`,
+    
+    // "K" Directional Standpipe: Pipe goes UP. Valve handle is DOWN.
+    "K": `<path d="M50,50 L50,0" fill="none" stroke="currentColor" stroke-width="${thickness}" />
+          <circle cx="50" cy="50" r="22" fill="currentColor" />
+          <circle cx="50" cy="50" r="10" fill="var(--bg, #111)" />
+          <rect x="25" y="55" width="50" height="12" rx="6" fill="currentColor" />
+          <rect x="44" y="50" width="12" height="15" fill="currentColor" />`
+  };
+
+  const svgContent = paths[type] || paths["+"];
+  const rotation = rot * 90;
+  
+  return `<svg class="${stateClass}" width="${size}" height="${size}" viewBox="0 0 100 100" 
+          style="transform: rotate(${rotation}deg); display: block; transition: transform 0.15s ease-out;">
+            ${svgContent}
+          </svg>`;
+}
+
+function pipeTermSVG(type, size, isLive = false) {
+  // type is "src" (pump) or "sink" (drain)
+  const isSrc = type === "src";
+  const color = (isSrc || isLive) ? "#3b82f6" : "#444444"; // Always blue for source. Blue for sink only if solved.
+
+  if (isSrc) {
+    return `<svg width="${size}" height="${size}" viewBox="0 0 100 100" style="display: block;">
+      <polygon points="50,10 90,30 90,70 50,90 10,70 10,30" fill="none" stroke="${color}" stroke-width="8"/>
+      <circle cx="50" cy="50" r="22" fill="${color}" />
+      <line x1="50" y1="10" x2="50" y2="28" stroke="${color}" stroke-width="8" />
+      <line x1="50" y1="72" x2="50" y2="90" stroke="${color}" stroke-width="8" />
+      <line x1="15" y1="50" x2="28" y2="50" stroke="${color}" stroke-width="8" />
+      <line x1="72" y1="50" x2="85" y2="50" stroke="${color}" stroke-width="8" />
+    </svg>`;
+  } else {
+    return `<svg width="${size}" height="${size}" viewBox="0 0 100 100" style="display: block;">
+      <rect x="15" y="15" width="70" height="70" rx="12" fill="none" stroke="${color}" stroke-width="10"/>
+      <line x1="30" y1="15" x2="30" y2="85" stroke="${color}" stroke-width="8" />
+      <line x1="50" y1="15" x2="50" y2="85" stroke="${color}" stroke-width="8" />
+      <line x1="70" y1="15" x2="70" y2="85" stroke="${color}" stroke-width="8" />
+    </svg>`;
+  }
+}
 /* ================= SPECTRAL SCANS UI ================= */
 
 // Temporary state to hold the player's current puzzle progress
