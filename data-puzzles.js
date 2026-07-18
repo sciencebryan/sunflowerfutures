@@ -343,6 +343,17 @@ const PIPES_LEVELS = [
           1,0,2,3,0,
           0,0,0,0,0,
           0,0,0,0,0],
+   start:[0,0,0,0,0, 0,0,1,0,0, 0,0,1,0,0, 0,1,0,0,0]},
+   {n:7, teach:"The whole quarter at once: a cross at the heart, tees on the arms, four standpipes. The main is only done when nothing anywhere spills.",
+   w:5, h:4,
+   cells:[".","K",".","K",".",
+          "S","T","L","T","K",
+          ".","T","L","T","L",
+          ".","L","K","K","."],
+   sol:  [0,2,0,2,0,
+          1,0,2,3,0,
+          0,0,0,0,0,
+          0,0,0,0,0],
    start:[0,0,0,0,0, 0,0,1,0,0, 0,0,1,0,0, 0,1,0,0,0]}
 ];
 
