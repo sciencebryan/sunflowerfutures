@@ -1098,50 +1098,51 @@ const PIPE_GLYPH = {
 };
 function renderPipes() {
   const L = pz.L;
-  const r = pipesCheck(L, pz.placed); // Assuming pipesCheck returns { solved, seen, leaks, etc. }
+  
+  // Safety check: ensure rotation array exists and matches the grid size
+  if (!pz.rots || pz.rots.length !== L.cells.length) {
+    pz.rots = new Array(L.cells.length).fill(0);
+  }
+
+  // Now we safely pass the rots array to your check function!
+  const r = pipesCheck(L, pz.rots); 
   const cellPx = Math.min(52, Math.floor((Math.min(window.innerWidth, 620) - 46) / L.w));
-  const remaining = L.inv.map((t, i) => t.count - Object.values(pz.placed).filter(p => p.inv === i).length);
 
   let h = `<div class="card">
-    <div class="pzhead"><div class="sysname">Main ${L.n}</div>
-      <div class="condpct">${r.leaks > 0 ? `${r.leaks} spilling` : (r.solved ? "Pressurized" : "Dry")}</div></div>
+    <div class="pzhead">
+      <div class="sysname">Main ${L.n}</div>
+      <div class="condpct">${r.leaks > 0 ? `${r.leaks} spilling` : (r.solved ? "Pressurized" : "Dry")}</div>
+    </div>
     <div class="pzteach">${L.teach || ""}</div>
-    <div class="sectionlbl" style="margin:10px 0 6px">Pipes in the truck</div>
-    <div class="pieces">`;
-
-  L.inv.forEach((t, i) => {
-    h += `<button class="piece ${pz.sel === i ? 'sel' : ''} ${remaining[i] <= 0 ? 'out' : ''}" data-sel="${i}">
-      ${pipeTileSVG(t.type, 0, 34, true)}<span>${t.name} ×${remaining[i]}</span></button>`;
-  });
-
-  h += `</div>
-    <div class="blurb">Tap an empty cell to set the selected pipe. Tap a placed pipe to turn it. Drag to swap.</div>
+    <div class="blurb">Tap a pipe to turn it. Direct the water to every standpipe.</div>
     <div class="grid" style="grid-template-columns:repeat(${L.w},${cellPx}px)">`;
 
-  for (let y = 0; y < L.h; y++) for (let x = 0; x < L.w; x++) {
-    const src = L.srcs.find(t => t.x === x && t.y === y);
-    const snk = L.sinks.find(t => t.x === x && t.y === y);
-    const blocked = L.blocks && L.blocks.some(([bx, by]) => bx === x && by === y);
-    const pl = pz.placed[`${x},${y}`];
-    
-    // Check if water has reached this tile index (Assuming r.seen is an array or Set of tile indices)
-    const tileIndex = x + (y * L.w);
-    const isLive = r.seen && (r.seen.has ? r.seen.has(tileIndex) : r.seen.includes(tileIndex));
-    
-    let inner = "", cls = "cell";
-    
-    if (src) inner = pipeTermSVG("src", cellPx, true); // Source always blue
-    else if (snk) inner = pipeTermSVG("sink", cellPx, r.solved); // Sink blue if solved
-    else if (blocked) { cls += " blockcell"; inner = ""; }
-    else if (pl) inner = pipeTileSVG(L.inv[pl.inv].type, pl.rot, cellPx, isLive); // Color the pipe based on water flow!
+  // Draw the grid using L.cells directly
+  for (let y = 0; y < L.h; y++) {
+    for (let x = 0; x < L.w; x++) {
+      const i = y * L.w + x;
+      const type = L.cells[i];
+      const isLive = r.seen && (r.seen.has ? r.seen.has(i) : r.seen.includes(i));
+      
+      let inner = "", cls = "cell";
+      
+      if (type === "S") {
+        inner = pipeTermSVG("src", cellPx, true); // Source is always blue
+      } else if (type === "K") {
+        inner = pipeTileSVG("K", pz.rots[i], cellPx, isLive); // Standpipes can rotate
+      } else if (type && type !== ".") {
+        inner = pipeTileSVG(type, pz.rots[i], cellPx, isLive); // Standard pipes
+      } else {
+        cls += " blockcell"; // Empty space
+      }
 
-    h += `<div class="${cls}" data-cell="${x},${y}" style="width:${cellPx}px;height:${cellPx}px;padding:0">${inner}</div>`;
+      h += `<div class="${cls}" data-idx="${i}" style="width:${cellPx}px;height:${cellPx}px;padding:0">${inner}</div>`;
+    }
   }
 
   h += `</div>
     ${r.leaks ? `<div class="warnline">Water is spilling from open pipes! Cap them or connect them.</div>` : ""}
     <div class="btnrow" style="margin-top:10px">
-      <button data-act="clear">Clear</button>
       <button data-act="back">Put it down</button>
       ${r.solved ? `<button data-act="commit" style="border-color:#3b82f6;color:#3b82f6;font-weight:600">Open the valve</button>` : ""}
     </div>
@@ -1149,78 +1150,44 @@ function renderPipes() {
 
   $("tab-works").innerHTML = h;
 
-  // 1. Bind Selection
-  $("tab-works").querySelectorAll("[data-sel]").forEach(b => {
-    b.onclick = () => { pz.sel = +b.dataset.sel; renderPipes(); };
-  });
-
-  // 2. Bind Drag / Swap / Rotate
-  $("tab-works").querySelectorAll("[data-cell]").forEach(el => {
-    el.onpointerdown = (e) => {
-      const [x, y] = el.dataset.cell.split(",").map(Number);
-      const key = `${x},${y}`;
-
-      if (L.srcs.some(t => t.x === x && t.y === y) || L.sinks.some(t => t.x === x && t.y === y)) return;
-      if (L.blocks && L.blocks.some(([bx, by]) => bx === x && by === y)) return;
-
-      el.setPointerCapture(e.pointerId);
-
-      const onPointerUp = (ev) => {
-        el.releasePointerCapture(ev.pointerId);
-        const targetEl = document.elementFromPoint(ev.clientX, ev.clientY)?.closest("[data-cell]");
-        const gridRect = $("tab-works").querySelector(".grid").getBoundingClientRect();
-        const isOutside = ev.clientX < gridRect.left || ev.clientX > gridRect.right || ev.clientY < gridRect.top || ev.clientY > gridRect.bottom;
-
-        if (isOutside) {
-          delete pz.placed[key];
-        } else if (targetEl) {
-          const [tx, ty] = targetEl.dataset.cell.split(",").map(Number);
-          const targetKey = `${tx},${ty}`;
-          if (targetKey !== key) {
-            const sourcePiece = pz.placed[key];
-            const targetPiece = pz.placed[targetKey];
-            pz.placed[targetKey] = sourcePiece;
-            if (targetPiece) pz.placed[key] = targetPiece;
-            else delete pz.placed[key];
-          } else {
-            if (pz.placed[key]) pz.placed[key].rot = (pz.placed[key].rot + 1) % 4;
-            else if (pz.sel != null && remaining[pz.sel] > 0) pz.placed[key] = { inv: pz.sel, rot: 0 };
-          }
-        }
+  // 1. Bind Tapping (Rotation only, no dragging!)
+  $("tab-works").querySelectorAll("[data-idx]").forEach(el => {
+    el.onpointerdown = () => {
+      const i = parseInt(el.dataset.idx);
+      const type = L.cells[i];
+      
+      // Only rotate actual pipes and the K standpipe. (Don't rotate S or empty blocks).
+      if (type && type !== "." && type !== "S") {
+        pz.rots[i] = (pz.rots[i] + 1) % 4;
         renderPipes();
-        el.removeEventListener("pointerup", onPointerUp);
-      };
-      el.addEventListener("pointerup", onPointerUp);
+      }
     };
   });
 
-  // 3. Bind Footer Buttons
+  // 2. Bind Footer Buttons
   $("tab-works").querySelectorAll("[data-act]").forEach(b => {
     b.onclick = () => {
       const a = b.dataset.act;
-      if (a === "clear") { pz.placed = {}; renderPipes(); }
-      else if (a === "back") { closePuzzle(); }
+      if (a === "back") { closePuzzle(); }
       else if (a === "commit") {
         S.puz.pipes++;
-        // Handle your rewards/saving here
-        finishPuzzle("pipes");
+        // Replace with your actual reward/commit logic
+        finishPuzzle("pipes"); 
       }
     };
   });
 }
-
 function pipeTileSVG(type, rot, size, isLive = false) {
   const thickness = 28;
   const stateClass = isLive ? "pipe-live" : "pipe-dead";
   
-  // Note: Adjust the keys ("I", "L", etc.) if your puzzle data uses different letters
   const paths = {
     "I": `<path d="M50,0 L50,100" fill="none" stroke="currentColor" stroke-width="${thickness}" />`,
     "L": `<path d="M50,0 L50,50 L100,50" fill="none" stroke="currentColor" stroke-width="${thickness}" stroke-linejoin="miter"/>`,
     "T": `<path d="M0,50 L100,50 M50,0 L50,50" fill="none" stroke="currentColor" stroke-width="${thickness}" />`,
-    "+": `<path d="M0,50 L100,50 M50,0 L50,100" fill="none" stroke="currentColor" stroke-width="${thickness}" />`,
+    "X": `<path d="M0,50 L100,50 M50,0 L50,100" fill="none" stroke="currentColor" stroke-width="${thickness}" />`,
     
-    // "K" Directional Standpipe: Pipe goes UP. Valve handle is DOWN.
+    // "K" Directional Standpipe
     "K": `<path d="M50,50 L50,0" fill="none" stroke="currentColor" stroke-width="${thickness}" />
           <circle cx="50" cy="50" r="22" fill="currentColor" />
           <circle cx="50" cy="50" r="10" fill="var(--bg, #111)" />
@@ -1228,7 +1195,8 @@ function pipeTileSVG(type, rot, size, isLive = false) {
           <rect x="44" y="50" width="12" height="15" fill="currentColor" />`
   };
 
-  const svgContent = paths[type] || paths["+"];
+  // Default to "X" (the cross) if an unknown type is passed
+  const svgContent = paths[type] || paths["X"];
   const rotation = rot * 90;
   
   return `<svg class="${stateClass}" width="${size}" height="${size}" viewBox="0 0 100 100" 
@@ -1236,7 +1204,6 @@ function pipeTileSVG(type, rot, size, isLive = false) {
             ${svgContent}
           </svg>`;
 }
-
 function pipeTermSVG(type, size, isLive = false) {
   // type is "src" (pump) or "sink" (drain)
   const isSrc = type === "src";
