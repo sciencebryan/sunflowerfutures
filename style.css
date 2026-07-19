@@ -657,3 +657,25 @@ font-size: 14px;
 
 @keyframes fade-in { to { opacity: 1; } }
 @keyframes pop-in { to { transform: scale(1); } }
+
+@keyframes grow-stalk {
+  0% { transform: scaleY(0); }
+  100% { transform: scaleY(1); }
+}
+
+@keyframes bloom-sunflower {
+  0% { transform: scale(0) rotate(-30deg); opacity: 0; }
+  60% { transform: scale(1.2) rotate(10deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+.puzzle-celebration {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none; /* Crucial: lets the user click the Awesome button */
+  z-index: 50; /* Sits behind the modal (which is z-index: 100) */
+  overflow: visible; 
+}
