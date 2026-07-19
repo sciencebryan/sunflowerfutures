@@ -695,3 +695,28 @@ font-size: 14px;
   z-index: 50; /* Sits behind the modal (which is z-index: 100) */
   overflow: visible; 
 }
+
+/* The structural separator line */
+.mini-daytrack {
+  width: 100%;
+  height: 3px; /* Match the thickness of your current black line */
+  background: #1a1a1a; /* Your solid ink/dark separator color */
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  overflow: hidden;
+}
+
+/* The actual time tracker bar hidden inside the line */
+.mini-dayfill {
+  height: 100%;
+  width: 0%;
+  background-color: #111625;
+  opacity: 0; /* Perfectly invisible when the header is wide open */
+  transition: width 1s linear, background-color 1s linear, opacity 0.2s ease;
+}
+
+/* When the header shrinks, fade the color into the separator line! */
+header.mini .mini-dayfill {
+  opacity: 1;
+}
