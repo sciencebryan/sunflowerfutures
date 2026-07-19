@@ -588,3 +588,72 @@ font-size: 14px;
   color: #3b82f6; 
   filter: drop-shadow(0px 0px 4px rgba(59, 130, 246, 0.6)); 
 }
+
+/* Darkens the background and blurs the puzzle slightly */
+.victory-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100; 
+  opacity: 0;
+  animation: fade-in 0.3s forwards;
+}
+
+/* The actual popup box */
+.victory-modal {
+  background: var(--bg, #1a1a1a); /* Fallback to dark gray if --bg isn't set */
+  border: 2px solid #22c55e;
+  border-radius: 12px;
+  padding: 24px;
+  width: 90%;
+  max-width: 400px;
+  text-align: center;
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
+  transform: scale(0.8);
+  animation: pop-in 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+.victory-modal h2 {
+  margin: 0 0 10px 0;
+  color: #22c55e;
+}
+
+/* The box that holds the rewards */
+.victory-rewards {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  padding: 12px 12px 12px 30px;
+  margin: 15px 0;
+  text-align: left;
+}
+
+.victory-rewards li {
+  margin-bottom: 6px;
+  color: #e5e5e5;
+}
+
+.victory-btn {
+  margin-top: 10px;
+  width: 100%;
+  font-size: 1.1em;
+  padding: 12px;
+  background: transparent;
+  border: 2px solid #22c55e;
+  color: #22c55e;
+  border-radius: 6px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.victory-btn:hover {
+  background: #22c55e;
+  color: #000;
+}
+
+@keyframes fade-in { to { opacity: 1; } }
+@keyframes pop-in { to { transform: scale(1); } }
