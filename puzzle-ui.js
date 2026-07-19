@@ -212,7 +212,7 @@ function showPuzzleComplete(rewardsArray, onContinue) {
   const overlay = document.createElement("div");
   overlay.className = "victory-overlay";
 
-  // Build the list of rewards from your array
+  // Build the list of rewards
   let rewardsHTML = "";
   if (rewardsArray && rewardsArray.length > 0) {
     const listItems = rewardsArray.map(r => `<li>${r}</li>`).join("");
@@ -222,12 +222,16 @@ function showPuzzleComplete(rewardsArray, onContinue) {
         ${listItems}
       </ul>`;
   } else {
-    // Fallback if there are no specific rewards this time
     rewardsHTML = `<p style="color: #a3a3a3; margin: 15px 0;">Great job getting everything connected!</p>`;
   }
 
+  // Inject the sunflowers and the modal into the overlay
   overlay.innerHTML = `
-    <div class="victory-modal">
+    <!-- The sunflowers sprout in the background of the overlay -->
+    ${sunflowerCelebration()}
+    
+    <!-- The modal box sits on top -->
+    <div class="victory-modal" style="position: relative; z-index: 100;">
       <h2>System Online!</h2>
       ${rewardsHTML}
       <button class="victory-btn">Awesome</button>
@@ -236,13 +240,11 @@ function showPuzzleComplete(rewardsArray, onContinue) {
 
   document.body.appendChild(overlay);
 
-  // When they click the button, remove the modal and run the callback
   overlay.querySelector(".victory-btn").onclick = () => {
     overlay.remove();
     if (onContinue) onContinue();
   };
 }
-
 // after a commit: save and refresh, then roll straight into the next level
 // of the same bench problem — unless that was the last one.
 function finishPuzzle(kind) {
@@ -340,6 +342,39 @@ function grantReward(kind){
   if(bits.length) parts.push(`the village is ${bits.join(" and ")} better off`);
   if(crops.length) parts.push(`there ${crops.length>1?"are":"are"} ${crops.join(" and ")} to plant now`);
   return parts.length?` And ${parts.join(", and ")}.`:"";
+}
+
+function sunflowerCelebration() {
+  let html = `<div class="puzzle-celebration">`;
+  const flowers = [
+    [5,  45, 0.1], [22, 85, 0.3], [48, 55, 0.2], [75, 95, 0.5], [92, 40, 0.4] 
+  ];
+
+  let petals = '';
+  for (let i = 0; i < 12; i++) {
+    petals += `<ellipse cx="50" cy="22" rx="7" ry="20" fill="#fbbf24" transform="rotate(${i * 30} 50 50)" />`;
+  }
+
+  const headSVG = `
+    <svg viewBox="0 0 100 100" width="100%" height="100%">
+      ${petals}
+      <circle cx="50" cy="50" r="22" fill="#78350f" />
+      <circle cx="50" cy="50" r="16" fill="none" stroke="#522504" stroke-width="3" stroke-dasharray="2 4" />
+    </svg>
+  `;
+
+  flowers.forEach(([left, height, delay]) => {
+    html += `
+      <div style="position: absolute; bottom: 0; left: ${left}%; height: ${height}%; width: 8px;">
+        <div style="width: 100%; height: 100%; background: #16a34a; border-radius: 4px; transform-origin: bottom center; transform: scaleY(0); animation: grow-stalk 0.6s ease-out ${delay}s forwards;"></div>
+        <div style="position: absolute; top: 0; left: 50%; width: 70px; height: 70px; margin-top: -35px; margin-left: -35px; opacity: 0; animation: bloom-sunflower 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) ${delay + 0.3}s forwards;">
+          ${headSVG}
+        </div>
+      </div>
+    `;
+  });
+
+  return html + `</div>`;
 }
 
 /* ---------- circuit UI ---------- */
