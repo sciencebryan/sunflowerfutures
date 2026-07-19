@@ -346,15 +346,19 @@ function grantReward(kind){
 
 function sunflowerCelebration() {
   let html = `<div class="puzzle-celebration">`;
-  const flowers = [
-    [5,  45, 0.1], [22, 85, 0.3], [48, 55, 0.2], [75, 95, 0.5], [92, 40, 0.4] 
-  ];
 
+  // 1. Dynamic Density: Target one flower roughly every 60 pixels of screen width
+  const screenWidth = window.innerWidth;
+  const numFlowers = Math.max(4, Math.floor(screenWidth / 60)); // Ensure at least 4 show up
+  const segmentWidth = 100 / numFlowers; // Divide the screen into even percentage chunks
+
+  // Dynamically generate the 12 petals once to save string space
   let petals = '';
   for (let i = 0; i < 12; i++) {
     petals += `<ellipse cx="50" cy="22" rx="7" ry="20" fill="#fbbf24" transform="rotate(${i * 30} 50 50)" />`;
   }
 
+  // The core SVG for the flower head
   const headSVG = `
     <svg viewBox="0 0 100 100" width="100%" height="100%">
       ${petals}
@@ -363,18 +367,41 @@ function sunflowerCelebration() {
     </svg>
   `;
 
-  flowers.forEach(([left, height, delay]) => {
+  // Build the garden organically
+  for (let i = 0; i < numFlowers; i++) {
+    // Left Placement: Put it in its assigned segment, plus a random jitter so it's not a rigid grid
+    const jitter = Math.random() * (segmentWidth * 0.6); 
+    const left = (i * segmentWidth) + jitter;
+    
+    // Height: Randomize between 40% and 95% of the container height
+    const height = Math.floor(Math.random() * 56) + 40; 
+    
+    // Timing: Make them all grow simultaneously 
+    // Stalks start immediately (0s), heads pop slightly after (0.3s)
+    const stalkDelay = 0;
+    const headDelay = 0.3;
+
     html += `
       <div style="position: absolute; bottom: 0; left: ${left}%; height: ${height}%; width: 8px;">
-        <div style="width: 100%; height: 100%; background: #16a34a; border-radius: 4px; transform-origin: bottom center; transform: scaleY(0); animation: grow-stalk 0.6s ease-out ${delay}s forwards;"></div>
-        <div style="position: absolute; top: 0; left: 50%; width: 70px; height: 70px; margin-top: -35px; margin-left: -35px; opacity: 0; animation: bloom-sunflower 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) ${delay + 0.3}s forwards;">
+        
+        <!-- The Stalk -->
+        <div style="width: 100%; height: 100%; background: #16a34a; border-radius: 4px; 
+                    transform-origin: bottom center; transform: scaleY(0); 
+                    animation: grow-stalk 0.6s ease-out ${stalkDelay}s forwards;"></div>
+        
+        <!-- The Head -->
+        <div style="position: absolute; top: 0; left: 50%; width: 70px; height: 70px; 
+                    margin-top: -35px; margin-left: -35px; opacity: 0; 
+                    animation: bloom-sunflower 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) ${headDelay}s forwards;">
           ${headSVG}
         </div>
+        
       </div>
     `;
-  });
+  }
 
-  return html + `</div>`;
+  html += `</div>`;
+  return html;
 }
 
 /* ---------- circuit UI ---------- */
