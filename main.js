@@ -63,10 +63,41 @@ window.addEventListener("orientationchange", syncNavTop);
 setInterval(()=>{
   if(!S) return;
   syncNavTop();
-  const frac=(Date.now()-S.lastTick)/DAY_MS;
-  if(frac>=1){ const n=catchUp(); if(n>0){ store.save(S); renderAll(); } }
-  $("dayFill").style.width = `${clamp(frac*100,0,100)}%`;
-},1000);
+  
+  const frac = (Date.now() - S.lastTick) / DAY_MS;
+  
+  if(frac >= 1){ 
+    const n = catchUp(); 
+    if(n > 0){ store.save(S); renderAll(); } 
+  }
+  
+  // 1. Calculate the percentage of the day passed
+  const pct = clamp(frac * 100, 0, 100);
+  
+  // 2. Determine the solid sky color based on the current percentage
+  let color = "#111625"; // Default Night
+  if (pct < 8) {
+    color = "#111625";       // Midnight Deep Blue
+  } else if (pct < 12) {
+    color = "#cc5a37";       // Quick Dawn Horizon Orange
+  } else if (pct < 20) {
+    color = "#e2b13c";       // Golden Sunrise Yellow
+  } else if (pct < 80) {
+    color = "#4c7286";       // Crisp Sky Blue (Midday)
+  } else if (pct < 88) {
+    color = "#d95d39";       // Quick Sunset Fire Crimson
+  } else if (pct < 93) {
+    color = "#2a1e35";       // Deep Twilight Purple
+  } else {
+    color = "#111625";       // Night Returns
+  }
+
+  // 3. Apply the width and the background color to the DOM element
+  const dayFillEl = $("dayFill");
+  dayFillEl.style.width = `${pct}%`;
+  dayFillEl.style.backgroundColor = color;
+  
+}, 1000);
 
 
 // 2. Handle User Registration
