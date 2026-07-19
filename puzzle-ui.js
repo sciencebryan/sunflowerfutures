@@ -208,13 +208,110 @@ function openPuzzle(kind){
 }
 function closePuzzle(){ pz=null; renderWorks(); }
 
-// after a commit: save and refresh, then roll straight into the next level
-// of the same bench problem — unless that was the last one.
-function finishPuzzle(kind){
-  pz=null; store.save(S); renderAll();
-  if(S.puz[kind] < PUZ_META[kind].levels.length) openPuzzle(kind);
+function showPuzzleComplete(rewardsArray, onContinue) {
+  const overlay = document.createElement("div");
+  overlay.className = "victory-overlay";
+
+  // Build the list of rewards from your array
+  let rewardsHTML = "";
+  if (rewardsArray && rewardsArray.length > 0) {
+    const listItems = rewardsArray.map(r => `<li>${r}</li>`).join("");
+    rewardsHTML = `
+      <div style="font-size: 0.9em; color: #a3a3a3; text-align: left; padding-left: 5px;">You earned:</div>
+      <ul class="victory-rewards">
+        ${listItems}
+      </ul>`;
+  } else {
+    // Fallback if there are no specific rewards this time
+    rewardsHTML = `<p style="color: #a3a3a3; margin: 15px 0;">Great job getting everything connected!</p>`;
+  }
+
+  overlay.innerHTML = `
+    <div class="victory-modal">
+      <h2>System Online!</h2>
+      ${rewardsHTML}
+      <button class="victory-btn">Awesome</button>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  // When they click the button, remove the modal and run the callback
+  overlay.querySelector(".victory-btn").onclick = () => {
+    overlay.remove();
+    if (onContinue) onContinue();
+  };
 }
 
+// after a commit: save and refresh, then roll straight into the next level
+// of the same bench problem — unless that was the last one.
+function finishPuzzle(kind) {
+  const meta = PUZ_META[kind];
+  const n = S.puz[kind];
+  const r = meta.reward[n]; // Pull the specific rewards for this level
+  const L = pz.L || meta.levels[n]; // Get the current level data
+
+  // 1. Build the list of rewards for the Victory Modal
+  const myRewards = [];
+  
+  // If the PUZ_META reward block has a description, use it
+  if (r && r.desc) {
+    myRewards.push(r.desc);
+  }
+  
+  // If the level itself has raw rewards (like Picross parts or rewardText)
+  if (L.rewardText) myRewards.push(L.rewardText);
+  if (L.parts && (!r || !r.parts)) myRewards.push(`Recovered +${L.parts} parts`);
+
+  // 2. Show the modal
+  showPuzzleComplete(myRewards, () => {
+    
+    // ==========================================
+    // STATE MUTATION (Happens AFTER clicking "Awesome")
+    // ==========================================
+    
+    // A. Apply the specific PUZ_META rewards (from your original grantReward logic)
+    if (r) {
+      for (const [k, v] of Object.entries(r)) {
+        if (k === "desc") continue;
+        
+        if (k === "flag") {
+          S.flags[v] = true;
+          // Special logic for watershed terraces
+          if (v === "terraces") {
+            S.beds.push({crop: null, growth: 0, days: 0, ready: false, stored: 0, fertility: 75, plantedDay: 0});
+          }
+        } 
+        else if (k === "crop") {
+          S.crops = S.crops || {};
+          S.crops[v] = true;
+        } 
+        else {
+          // Standard resource increments (parts, seeds)
+          S.res[k] = (S.res[k] || 0) + v;
+        }
+      }
+    }
+
+    // B. Apply base level rewards (for modules like Picross that define parts on the level itself)
+    if (L.parts && (!r || !r.parts)) {
+      S.res.parts = (S.res.parts || 0) + L.parts;
+    }
+
+    // C. Advance the puzzle progress counter
+    S.puz[kind]++;
+
+    // D. Clean up, save to database, and re-render the screen
+    pz = null; 
+    store.save(S); 
+    renderAll();
+    
+    // E. Roll straight into the next level of this bench problem, if one exists
+    if (S.puz[kind] < meta.levels.length) {
+      openPuzzle(kind);
+    }
+  });
+}
 function rewardPreview(kind){
   const meta=PUZ_META[kind];
   const n = S.puz[kind];
