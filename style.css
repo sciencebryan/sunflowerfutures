@@ -67,22 +67,11 @@
   overflow: hidden;
 }
 
-/* Instead of solid ink, the loader travels through the full sky cycle */
 .dayfill {
   height: 100%;
-  width: 0%; /* Driven by your loop */
-  background: linear-gradient(to right,
-    #111625 0%,   /* 0%: Midnight Deep Blue */
-    #cc5a37 8%,   /* 8%: Quick Dawn Horizon Orange */
-    #e2b13c 12%,  /* 12%: Golden Sunrise Yellow */
-    #4c7286 20%,  /* 20%: Crisp Sky Blue (using your --water variable) */
-    #4c7286 80%,  /* 80%: Crisp Sky Blue held through peak hours */
-    #d95d39 88%,  /* 88%: Quick Sunset Fire Crimson */
-    #2a1e35 93%,  /* 93%: Deep Twilight Purple */
-    #111625 100%  /* 100%: Night Returns */
-  );
-  background-size: 100% 100%; /* Keeps the entire gradient mapped to the current fill width */
-  transition: width 1s linear;
+  width: 0%; /* Driven by main.js */
+  background-color: #111625; /* Starts entirely black/night */
+  transition: width 1s linear, background-color 1s linear; 
 }
 
 /*  .daytrack { flex: 1; height: 4px; background: var(--line); overflow: hidden; }
