@@ -93,9 +93,19 @@ setInterval(()=>{
   }
 
   // 3. Apply the width and the background color to the DOM element
+
   const dayFillEl = $("dayFill");
-  dayFillEl.style.width = `${pct}%`;
-  dayFillEl.style.backgroundColor = color;
+  if (dayFillEl) {
+    dayFillEl.style.width = `${pct}%`;
+    dayFillEl.style.backgroundColor = color;
+  }
+
+  // 4. Update the condensed separator line progress bar
+  const miniDayFillEl = $("miniDayFill");
+  if (miniDayFillEl) {
+    miniDayFillEl.style.width = `${pct}%`;
+    miniDayFillEl.style.backgroundColor = color;
+  }
   
 }, 1000);
 
