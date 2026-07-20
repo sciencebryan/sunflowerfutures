@@ -38,8 +38,8 @@ function renderHeader() {
 
   if (daywxEl) {
     daywxEl.innerHTML = `
-      <span style="opacity: 0.5;">yesterday</span> 
-      &nbsp;⟶&nbsp; 
+       
+       
       <b>${sn.name}, day ${dayOfSeason(S.day)} — ${S.weather}</b> 
       &nbsp;⟶&nbsp; 
       <span style="opacity: 0.5;">${tomorrowWx} tomorrow</span>
