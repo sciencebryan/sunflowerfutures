@@ -724,17 +724,29 @@ header.mini .mini-dayfill {
 /* =========================================
    SKY AND ATMOSPHERE
 ========================================= */
+
 .sky-container {
   position: absolute;
   top: 0; left: 0; right: 0;
   height: 95px; 
   overflow: hidden;
+  z-index: 1; /* Temporarily bring it to the very front */
+  background: #ff00ff !important; /* Bright magenta so it's impossible to miss */
+}
+
+
+
+/*.sky-container {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 95px; 
+  overflow: hidden;
   z-index: 0; 
-  transition: height 0.3s ease, background 1.5s ease-in-out;
+  transition: height 0.3s ease, background 1.5s ease-in-out;*/
   
   /* Vertical fade for the sky background itself */
-  background: linear-gradient(to top, #fdfbf7 0%, #89b4c4 100%);
-}
+ /* background: linear-gradient(to top, #fdfbf7 0%, #89b4c4 100%);
+}*/
 
 header.mini .sky-container {
   height: 0px;
@@ -760,17 +772,30 @@ header.mini .sky-container {
 /* =========================================
    RUINS SILHOUETTE 
 ========================================= */
+
+
+/* Temporarily give the skyline a solid block color instead of an image */
 .skyline-ruins {
   position: absolute;
   bottom: 0; 
   left: 0;
   width: 100%;
   height: 45px; 
-  background-image: url('ny-skyline.png'); /* SWAP THIS PATH */
+  background-color: #000000; /* Solid black bar to test positioning */
+  z-index: 2;
+}
+/*
+.skyline-ruins {
+  position: absolute;
+  bottom: 0; 
+  left: 0;
+  width: 100%;
+  height: 45px; 
+  background-image: url('ny-skyline.png'); 
   background-size: contain; 
   background-repeat: repeat-x;
   z-index: 1;
-}
+}*/
 
 /* =========================================
    WEATHER ANIMATIONS
@@ -785,7 +810,7 @@ header.mini .sky-container {
 
 .rain-overlay {
   inset: 0;
-  background-image: url('rain-pixel.png'); /* SWAP THIS PATH */
+  background-image: url('rain-pixel.png'); 
   background-repeat: repeat;
   animation: rainfall 0.35s linear infinite;
 }
@@ -797,7 +822,7 @@ header.mini .sky-container {
 .cloud-1, .cloud-2 {
   width: 48px; 
   height: 16px;
-  background-image: url('cloud-pixel.png'); /* SWAP THIS PATH */
+  background-image: url('cloud-pixel.png'); 
   background-size: cover;
   animation: drift 35s linear infinite;
 }
