@@ -1,3 +1,231 @@
+  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,400;1,600&family=Courier+Prime:ital,wght@0,400;0,700;1,400&display=swap');
+
+  :root {
+    --paper: #E6E4D3;
+    --paper-deep: #DCD9BD;
+    --ink: #21281A;
+    --ink-soft: #4F5844;
+    --leaf: #44622F;
+    --moss: #7D8E6C;
+    --sun: #B88124;
+    --water: #4C7286;
+    --rust: #924624;
+    --card: #F0EFE6; /* Slightly lighter for better contrast */
+    --line: #B9B79E;
+    --serif: "Cormorant Garamond", Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: "Courier Prime", ui-monospace, "SF Mono", monospace;
+  }
+  
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  
+  html {
+    background: var(--paper);
+    background-image: 
+      radial-gradient(ellipse 120% 60% at 50% -10%, rgba(125,142,108,.15), transparent 70%),
+      repeating-linear-gradient(0deg, rgba(0,0,0,0.015) 0px, rgba(0,0,0,0.015) 1px, transparent 1px, transparent 4px);
+    background-attachment: fixed;
+    color: var(--ink);
+  }
+  
+  body {
+    font-family: var(--sans); 
+    max-width: 1200px; /* Expanded for desktop */
+    margin: 0 auto; 
+    min-height: 100vh;
+    padding: 0 16px;
+    line-height: 1.6;
+  }
+  
+  button {
+    font-family: var(--serif); color: var(--ink); background: none; border: none; cursor: pointer;
+    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  button:active:not(:disabled) { transform: scale(0.98) translateY(1px); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(80%); }
+
+  header {
+    position: sticky; top: 0; z-index: 30; background: var(--paper);
+    border-bottom: 2px solid var(--ink);
+    padding: 14px 0 12px;
+  }
+  
+  .masthead { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .title { font-family: var(--serif); font-weight: 700; font-size: 28px; letter-spacing: 0.02em; text-transform: uppercase; }
+  .title small { font-family: var(--mono); font-weight: 400; font-size: 13px; color: var(--moss); margin-left: 10px; }
+  .daywx { font-family: var(--serif); font-style: italic; font-weight: 600; font-size: 18px; color: var(--ink-soft); }
+  
+  .neg { color: var(--rust); } .pos { color: var(--leaf); }
+  
+  .daybar { display: flex; align-items: center; gap: 16px; margin-top: 14px; }
+
+.daytrack {
+  flex: 1;
+  height: 6px; /* Slightly thicker for color visibility */
+  background: var(--line);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.dayfill {
+  height: 100%;
+  width: 0%; /* Driven by main.js */
+  background-color: #111625; /* Starts entirely black/night */
+  transition: width 1s linear, background-color 1s linear; 
+}
+
+/*  .daytrack { flex: 1; height: 4px; background: var(--line); overflow: hidden; }
+  .dayfill { height: 100%; background: var(--ink); transition: width 1s linear; } */
+  
+  /* Stamped, analog button feel */
+  .endday {
+    font-family: var(--mono); font-weight: 700; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 8px 20px; border: 1.5px solid var(--ink); 
+    color: var(--ink); background: var(--paper); 
+    box-shadow: 3px 3px 0 var(--ink);
+  }
+  .endday:active { box-shadow: 0px 0px 0 var(--ink); transform: translate(3px, 3px); }
+
+  nav { display: flex; border-bottom: 1px solid var(--line); background: var(--paper); position: sticky; top: var(--navtop,0px); z-index: 29; padding-top: 8px; flex-wrap: wrap; }
+  nav button {
+    flex: 1; padding: 12px 16px; font-family: var(--serif); font-size: 16px; font-weight: 600;
+    letter-spacing: 0.05em; color: var(--moss); border-bottom: 3px solid transparent; position: relative; min-width: 80px;
+  }
+  nav button:hover { color: var(--ink); }
+  nav button.on { color: var(--ink); border-bottom-color: var(--ink); font-weight: 700; }
+  nav button .evdot { position: absolute; top: 12px; right: 12px; width: 6px; height: 6px; border-radius: 50%; background: var(--rust); }
+
+  main { padding: 32px 0 90px; }
+  
+  /* --- The Desktop Grid Magic --- */
+  main section {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 24px;
+    align-items: start;
+  }
+  
+  /* Elements that should span full width */
+  .sectionlbl, .banner, .legend, .chips {
+    grid-column: 1 / -1;
+  }
+  /* --- HUD: vitals grid + ledger lines --- */
+  .hud-vitals {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    margin-top: 14px;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+  .stat { padding: 8px 12px 9px; min-width: 0; border-left: 1px solid var(--line); }
+  .stat:first-child { border-left: none; padding-left: 0; }
+  .stat .lbl {
+    display: block; font-family: var(--mono); font-weight: 700; font-size: 12px;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-soft);
+  }
+  .stat .val {
+    display: block; font-family: var(--mono); font-size: 18px; font-weight: 700;
+    margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .stat .val small { font-size: 12px; font-weight: 400; color: var(--ink-soft); }
+  .stat .delta {
+    display: block; font-family: var(--mono); font-size: 11px; color: var(--ink-soft);
+    margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  .hud-line {
+    display: flex; flex-wrap: wrap; gap: 2px 18px; padding: 7px 0;
+    border-bottom: 1px solid var(--line); font-family: var(--mono);
+  }
+  .hud-line .item { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+  .hud-line .lbl { font-size: 11px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-soft); }
+  .hud-line .val { font-size: 14px; font-weight: 700; color: var(--ink); }
+  .hud-line .val.dim { color: var(--ink-soft); font-weight: 400; opacity: 0.7; }
+  /* Analog Cards */
+  .card {
+    background: var(--card); 
+    border: none;
+    border-radius: 2px; /* Less bubbly, more paper-stack */
+    padding: 20px; 
+    box-shadow: 0 4px 12px rgba(33,40,26,0.06), 0 1px 2px rgba(33,40,26,0.08);
+    position: relative;
+    display: flex; flex-direction: column; height: 100%;
+  }
+  .card.grey { opacity: 0.7; background: var(--paper-deep); box-shadow: none; border: 1px dashed var(--line); }
+  
+  .card-top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; border-bottom: 1px solid var(--line); padding-bottom: 8px; margin-bottom: 12px; }
+  .sysname { font-family: var(--serif); font-size: 22px; font-weight: 700; letter-spacing: 0.01em; }
+  .condpct { font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--moss); }
+  .blurb { font-family: var(--serif); font-size: 16px; line-height: 1.5; color: var(--ink-soft); flex-grow: 1; }
+
+
+  .ledger {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    padding: 12px 0;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    font-family: var(--mono);
+    font-size: 13px;
+  }
+
+
+  .ledger-item { 
+    display: flex; 
+    align-items: baseline; 
+    gap: 4px; 
+    white-space: nowrap;
+  }
+  .ledger-item b { 
+    color: var(--ink); 
+    font-size: 15px; 
+  }
+  .ledger-item b small { 
+    font-size: 10px; 
+    color: var(--ink-soft); 
+    font-weight: 400; 
+  }
+  .ledger-item span { 
+    color: var(--ink-soft); 
+    font-size: 11px; 
+    text-transform: uppercase; 
+    letter-spacing: 0.04em;
+  }
+  /* Refined Progress Bars */
+  .cbar { height: 6px; margin: 16px 0; background: var(--line); position: relative; border-radius: 3px; overflow: hidden; }
+  .cbar .fill {
+    position: absolute; inset: 0; right: auto; 
+    transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .c-good { background-color: var(--leaf); }
+  .c-mid { background-color: var(--sun); }
+  .c-bad { background-color: var(--rust); }
+  .c-sun { background-color: var(--sun); }
+
+  .sysmeta { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .rolerow { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; padding-top: 12px; border-top: 1px dashed var(--line); }
+  .outline-note { font-size: 12px; font-family: var(--mono); color: var(--ink-soft); }
+  
+
+.task-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 0;
+  border-bottom: 1px dashed var(--line);
+  gap: 16px;
+}
+
+.task-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.task-name {
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 18px;
 @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,400;1,600&family=Courier+Prime:ital,wght@0,400;0,700;1,400&display=swap');
 
 :root {
@@ -25,9 +253,13 @@ html {
     radial-gradient(ellipse 120% 60% at 50% -10%, rgba(125,142,108,.15), transparent 70%),
     repeating-linear-gradient(0deg, rgba(0,0,0,0.015) 0px, rgba(0,0,0,0.015) 1px, transparent 1px, transparent 4px);
   background-attachment: fixed;
-  color: var(--ink);
+color: var(--ink);
 }
 
+.task-desc {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-soft);
 body {
   font-family: var(--sans); 
   max-width: 1200px;
@@ -37,6 +269,9 @@ body {
   line-height: 1.6;
 }
 
+.task-controls {
+  display: flex;
+  gap: 8px;
 button {
   font-family: var(--serif); color: var(--ink); background: none; border: none; cursor: pointer;
   transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
@@ -44,50 +279,370 @@ button {
 button:active:not(:disabled) { transform: scale(0.98) translateY(1px); }
 button:disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(80%); }
 
+.task-btn {
+  padding: 10px 20px;
+  border: 1px solid var(--ink);
 /* =========================================
    HEADER & HUD
 ========================================= */
 header {
-  position: relative; /* CRITICAL FIX: Anchors the skybox and mini-bar on mobile */
-  background: var(--paper);
+background: var(--paper);
+  font-family: var(--mono);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.task-btn:hover {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.task-btn:disabled {
+  border-color: var(--line);
+  color: var(--line);
+  cursor: not-allowed;
   border-bottom: 2px solid var(--ink);
   padding: 14px 0 12px;
 }
+  /* Keeper Badges */
+  .keeper {
+    display: inline-flex; align-items: center; gap: 8px; font-family: var(--serif); font-size: 15px; font-weight: 600;
+    border: 1px solid var(--line); padding: 6px 14px; background: var(--paper); border-radius: 20px;
+  }
+  .keeper.filled { border-color: var(--leaf); background: rgba(68,98,47,0.08); }
+  .keeper .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--moss); }
+  .keeper.empty .dot { background: var(--rust); }
+  .keeper .role { font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-soft); }
+  
+  .warnline { font-size: 15px; color: var(--rust); margin-top: 12px; font-style: italic; font-family: var(--serif); font-weight: 600; padding-left: 12px; border-left: 3px solid var(--rust); }
 
+  /* Event Cards */
+  .evcard { border: none; background: #FAF5E6; box-shadow: 4px 6px 0 rgba(184,129,36,0.15), 0 0 0 1px var(--sun); transform: rotate(-0.5deg); }
+  .evtitle { font-family: var(--serif); font-size: 24px; font-weight: 700; color: var(--rust); border-bottom: 2px solid var(--rust); padding-bottom: 8px; margin-bottom: 12px; }
+  .evtext { font-family: var(--serif); font-style: italic; font-size: 18px; line-height: 1.6; color: var(--ink); margin-bottom: 20px; }
+  
+  .evopt {
+    width: 100%; text-align: left; padding: 12px 16px; border: 1px solid var(--ink); 
+    background: var(--paper); box-shadow: 3px 3px 0 var(--ink); margin-bottom: 12px;
+  }
+  .evopt:active { box-shadow: 0px 0px 0 var(--ink); transform: translate(3px, 3px); }
+  .evopt .l1 { font-family: var(--serif); font-weight: 700; font-size: 17px; }
+  .evopt .l2 { font-family: var(--mono); font-size: 12px; color: var(--moss); margin-top: 4px; }
+
+  /* People Cards */
+  .pcard { text-align: left; text-decoration: none; cursor: pointer; transition: transform 0.1s; }
+  .pcard:hover { transform: translateY(-2px); box-shadow: 0 8px 16px rgba(33,40,26,0.08); }
+  .pname { font-family: var(--serif); font-size: 22px; font-weight: 700; }
+  .pn { font-family: var(--serif); font-style: italic; font-size: 15px; color: var(--moss); font-weight: 400; margin-left: 8px; }
+  .trait { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--paper); background: var(--ink); padding: 2px 8px; border-radius: 12px; vertical-align: middle; margin-left: 8px; }
+  .skills { font-family: var(--mono); font-size: 13px; color: var(--ink-soft); margin-top: 12px; line-height: 1.6; }
+  
+  .wbwrap { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+  .wbtrack { flex: 1; height: 4px; background: var(--line); }
+  .wbfill { height: 100%; background: var(--leaf); transition: width 0.3s ease; }
+  .wbnum { font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--ink); width: 32px; text-align: right; }
+
+  .passign { font-family: var(--serif); font-size: 15px; margin-top: 16px; border-top: 1px dashed var(--line); padding-top: 12px; }
+  .flavor { font-family: var(--serif); font-style: italic; font-size: 15px; color: var(--ink-soft); margin-top: 12px; }
+
+  /* People-card extras */
+  .status-badge {
+    display: inline-block; margin-left: 8px; padding: 1px 8px; vertical-align: middle;
+    font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+    color: var(--rust); border: 1px solid var(--rust); border-radius: 12px; background: transparent;
+  }
+  .status-badge.away { color: var(--moss); border-color: var(--moss); }
+  .mem {
+    font-family: var(--serif); font-style: italic; font-size: 14px; color: var(--moss);
+    margin-top: 8px; padding-left: 10px; border-left: 2px solid var(--line); line-height: 1.5;
+  }
+
+  .bannerx {
+    font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 0.05em;
+    text-transform: uppercase; text-decoration: underline; cursor: pointer; margin-left: 8px; white-space: nowrap;
+  }
+  .chip { border: 1px solid var(--line); background: var(--paper); }
+  
+  .legend { font-family: var(--serif); font-size: 16px; color: var(--ink-soft); line-height: 1.6; padding: 16px; background: transparent; border-left: 4px solid var(--moss); margin-bottom: 24px; max-width: 600px; }
+  .legend b { font-family: var(--mono); font-size: 13px; color: var(--ink); text-transform: uppercase; }
+
+  /* Journal styling */
+  #tab-journal {
+    max-width: 700px;
+    margin: 0 auto;
+  }
+  .jentry { 
+    margin-bottom: 48px; 
+    border: none;
+    padding: 0;
+  }
+  .jday { 
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 4px;
+    color: var(--ink);
+    font-weight: 700;
+  }
+  .jlines { font-family: var(--serif); font-size: 20px; color: var(--ink); }
+  /* Action Buttons & Sheets */
+  .scrim { position: fixed; inset: 0; background: rgba(33,40,26,0.6); z-index: 40; display: none; backdrop-filter: blur(2px); }
+  .scrim.open { display: block; }
+  
+  .sheet {
+    position: fixed; left: 50%; bottom: 0; z-index: 41; 
+    width: 100%; max-width: 640px; margin-left: -320px; 
+    background: var(--paper); border: 2px solid var(--ink); border-bottom: none; 
+    padding: 24px 24px calc(24px + env(safe-area-inset-bottom)); 
+    max-height: 85vh; overflow: auto; 
+    transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 0 -10px 40px rgba(0,0,0,0.2);
+  }
+  @media (max-width: 640px) { .sheet { margin-left: 0; left: 0; } }
+  .sheet.open { transform: translateY(0); }
+  .sheet h3 { font-family: var(--serif); font-size: 26px; font-weight: 700; margin-bottom: 8px; }
+  .sheet .sub { font-family: var(--serif); font-size: 16px; color: var(--moss); margin-bottom: 20px; line-height: 1.5; }
+
+  /* Sheet option rows (assign / sow / expedition party / etc.) */
+  .opt {
+    display: flex; justify-content: space-between; align-items: center; gap: 14px;
+    width: 100%; text-align: left;
+    padding: 12px 14px; margin-bottom: 10px;
+    border: 1px solid var(--line); background: var(--card);
+  }
+  .opt > span:first-child { min-width: 0; }
+  .opt:hover:not(:disabled) { border-color: var(--ink); }
+  .opt .l1 { font-family: var(--serif); font-weight: 700; font-size: 17px; color: var(--ink); }
+  .opt .l2 { font-family: var(--mono); font-size: 11px; color: var(--ink-soft); margin-top: 2px; line-height: 1.45; }
+  .opt .r {
+    flex: none; font-family: var(--mono); font-size: 11px; line-height: 1.5;
+    color: var(--moss); text-align: right; white-space: nowrap;
+  }
+  .opt.current { border-color: var(--leaf); border-left: 3px solid var(--leaf); background: rgba(68,98,47,0.08); }
+  .opt.dim { opacity: 0.55; }
+
+  .confirm {
+    display: block; width: 100%; margin-top: 6px; padding: 13px 16px;
+    font-family: var(--mono); font-weight: 700; font-size: 13px;
+    letter-spacing: 0.05em; text-transform: uppercase;
+    background: var(--leaf); color: var(--paper);
+    border: 1.5px solid var(--ink); box-shadow: 3px 3px 0 var(--ink);
+  }
+  .confirm:active:not(:disabled) { box-shadow: 0 0 0 var(--ink); transform: translate(3px, 3px); }
+  
+  .banner { background: transparent; border-left: 4px solid var(--leaf); padding: 12px 16px; font-family: var(--serif); font-size: 17px; margin-bottom: 24px; line-height: 1.5; background: rgba(68,98,47,0.05); }
+  .sectionlbl { font-family: var(--mono); font-size: 13px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink); margin: 32px 0 16px; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+  
+  /* Buttons */
+  .go {
+    font-family: var(--mono); font-weight: 700; font-size: 12px; letter-spacing: 0.05em; text-transform: uppercase;
+    padding: 8px 16px; border: 1.5px solid var(--ink); color: var(--ink); background: transparent; 
+  }
+  .go:hover:not(:disabled) { background: var(--ink); color: var(--paper); }
+  .go.ready { background: var(--leaf); color: var(--paper); border-color: var(--leaf); }
+  
+  /* Cost Chips */
+  .costchips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .cost { font-family: var(--mono); font-size: 12px; border: 1px solid var(--line); padding: 4px 8px; color: var(--moss); }
+  .cost.short { color: var(--rust); border-color: var(--rust); font-weight: 700; background: rgba(146,70,36,0.05); }
+
+  /* --- Puzzle boards (Works tab) --- */
+  .pzhead { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; border-bottom: 1px solid var(--line); padding-bottom: 8px; margin-bottom: 10px; }
+  .pzteach { font-family: var(--serif); font-size: 16px; line-height: 1.5; color: var(--ink-soft); margin-bottom: 6px; }
+  .loadlist { font-family: var(--mono); font-size: 12px; color: var(--ink-soft); line-height: 1.7; }
+
+  .pieces { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 12px; }
+  .piece {
+    font-family: var(--mono); font-size: 12px; padding: 7px 11px;
+    border: 1px solid var(--line); background: var(--paper); color: var(--ink);
+  }
+  .piece.sel { border-color: var(--ink); box-shadow: 2px 2px 0 var(--ink); font-weight: 700; background: var(--card); }
+  .piece.out { opacity: 0.45; }
+
+.grid { display: grid; gap: 3px; margin: 10px 0 4px; user-select: none; -webkit-user-select: none; touch-action: none; }  
+.cell {
+    position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    border: 1px solid var(--line); background: var(--paper); overflow: hidden;
+    font-family: var(--mono); font-size: 12px; color: var(--ink); cursor: pointer;
+  }
+  .cell b { font-size: 13px; }
+  .cell .amp, .cell .cap { font-size: 8px; line-height: 1; color: var(--ink-soft); margin-top: 1px; white-space: nowrap; }
+  .cell .elev { position: absolute; top: 1px; left: 2px; font-size: 8px; color: var(--ink-soft); opacity: 0.7; }
+  .cell .glyph { font-size: 17px; line-height: 1; }
+
+  .cell.blk { background: var(--ink-soft); border-color: var(--ink-soft); opacity: 0.5; cursor: default; }
+  .cell.src { background: var(--ink); border-color: var(--ink); color: var(--paper); font-size: 10px; font-weight: 700; letter-spacing: 0.04em; }
+  .cell.on { background: rgba(68,98,47,0.14); border-color: var(--moss); }
+  .cell.over { background: rgba(146,70,36,0.16); border-color: var(--rust); box-shadow: inset 0 0 0 1px var(--rust); }
+  .cell.load { border: 2px solid var(--ink-soft); background: var(--paper-deep); }
+  .cell.load.lit { border-color: var(--leaf); background: rgba(68,98,47,0.16); }
+  .cell.load.over { border-color: var(--rust); background: rgba(146,70,36,0.18); }
+  .cell.jcold { border: 1px dashed var(--sun); background: rgba(184,129,36,0.07); }
+  .cell.jopen { border: 1px solid var(--sun); background: rgba(184,129,36,0.22); }
+  .cell.bed { border: 2px solid var(--leaf); background: rgba(68,98,47,0.10); }
+  .cell.bed.dry { border-color: var(--sun); background: rgba(184,129,36,0.12); }
+  .cell.bed.drown { border-color: var(--water); background: rgba(76,114,134,0.25); }
+
+  .pzstatus {
+    min-height: 22px; margin-top: 10px; padding-left: 10px;
+    font-family: var(--serif); font-size: 15px; font-weight: 600; font-style: italic;
+    color: var(--ink-soft); border-left: 3px solid var(--line);
+  }
+  .pzstatus:empty { border-left-color: transparent; }
+  .pzstatus.good { color: var(--leaf); border-left-color: var(--leaf); }
+  .pzstatus.bad { color: var(--rust); border-left-color: var(--rust); }
+
+  .pzbar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .pzbar button {
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.03em;
+    padding: 8px 12px; border: 1px solid var(--ink-soft); color: var(--ink-soft); background: transparent;
+  }
+  .pzbar button:hover:not(:disabled) { border-color: var(--ink); color: var(--ink); }
+
+  /* Login / Fullscreen Views */
+  #loginScreen { padding: 40px 20px; }
+  #loginScreen .card { box-shadow: 6px 8px 0 rgba(33,40,26,0.15), 0 0 0 2px var(--ink); padding: 40px 30px; }
+
+  footer { padding: 32px 16px 60px; text-align: center; border-top: 1px solid var(--line); margin-top: 40px; }
+  footer button { font-family: var(--mono); font-size: 13px; font-weight: 700; text-transform: uppercase; color: var(--rust); text-decoration: underline; }
+  .protonote { font-family: var(--serif); font-style: italic; font-size: 15px; color: var(--ink-soft); margin-top: 16px; line-height: 1.6; max-width: 600px; margin-left: auto; margin-right: auto; }
+
+  @media (max-width: 768px){
+    body { padding: 0 12px; }
+    main section { grid-template-columns: 1fr; }
+    .title { font-size: 22px; }
+    .daywx { font-size: 15px; }
+    .masthead { flex-direction: column; gap: 0; }
+    .stat { padding: 7px 8px 8px; }
+    .stat .val { font-size: 16px; }
+    .stat .val small { font-size: 11px; }
+    .hud-line { gap: 2px 14px; }
+
+    /* Minimized header while scrolled down: masthead on one line,
+       compact vitals, everything else tucked away */
+    header.mini { padding: 6px 0 7px; }
+    header.mini .hud-line, header.mini .daybar { display: none; }
+    header.mini .masthead { flex-direction: row; align-items: baseline; justify-content: space-between; gap: 10px; }
+    header.mini .title { font-size: 16px; }
+    header.mini .daywx { font-size: 13px; }
+    header.mini .hud-vitals { margin-top: 5px; }
+    header.mini .stat { padding: 4px 8px 5px; }
+    header.mini .stat .lbl { font-size: 10px; }
+    header.mini .stat .val { font-size: 14px; margin-top: 0; }
+  }
+
+  /* --- allocation tabs (Power / Water) --- */
+  .allocrow { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 0; border-bottom:1px dashed var(--line); }
+  .allocrow:last-child { border-bottom:none; }
+  .allocname { font-family: var(--serif); font-weight:600; font-size:15px; }
+  .allocsub { font-size:12px; color: var(--moss); margin-top:2px; }
+  .alloclvls { display:flex; gap:0; flex-shrink:0; }
+  .lvlbtn { padding:5px 11px; font-size:12px; letter-spacing:0.04em; color:var(--moss);
+    border:1px solid var(--line); background:var(--paper); cursor:pointer; }
+  .lvlbtn + .lvlbtn { border-left:none; }
+  .lvlbtn:first-child { border-radius:4px 0 0 4px; }
+  .lvlbtn:last-child { border-radius:0 4px 4px 0; }
+  .lvlbtn.on { background:var(--ink); color:var(--paper); border-color:var(--ink); font-weight:700; }
+  .allocfx { font-size:12px; color:var(--moss); font-style:italic; margin-top:4px; }
+  .allocfx.bad { color:var(--rust); font-style:italic; }
+  .budgetline { display:flex; justify-content:space-between; font-size:13px; padding:3px 0; }
+  .btnrow { display:flex; gap:8px; flex-wrap:wrap; }
+  .btnrow button { padding:8px 14px; border:1px solid var(--line); border-radius:6px; background:var(--paper); color:var(--ink); font-size:13px; cursor:pointer; }
+  .cell.blockcell { background: repeating-linear-gradient(45deg, var(--paper-deep), var(--paper-deep) 4px, var(--line) 4px, var(--line) 6px); }
+
+/* ================= PICROSS PUZZLE ================= */
+.picross-board {
+display: grid;
+grid-template-columns: max-content max-content;
+grid-template-rows: max-content max-content;
+gap: 4px;
+font-family: var(--mono);
+user-select: none; /* Stops text highlighting during fast clicks */
+margin-top: 16px;
+justify-content: center; /* Centers the puzzle in the tab */
 @media (min-width: 768px) {
   header { position: sticky; top: 0; z-index: 100; }
 }
 
+.picross-controls {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+.picross-controls button.active {
+  border-color: var(--sun);
+  background: var(--paper-deep);
+  color: var(--ink);
 .masthead { 
-  position: relative; z-index: 2; 
-  display: flex; align-items: flex-start; justify-content: space-between; 
+  display: flex; align-items: baseline; justify-content: space-between; 
   gap: 16px; flex-wrap: wrap; 
-  padding-top: 10px;
+  position: relative; z-index: 2; 
+  padding-top: 28px; /* Drops text to sit on the skyline */
 }
 
+.top-clues {
+grid-column: 2;
+grid-row: 1;
+display: grid;
+grid-template-columns: repeat(16, 20px);
+gap: 1px;          /* <--- Matches the main grid lines */
+padding: 0 2px;    /* <--- Shifts the clues 2px right to clear the main grid's border */
+align-items: end;
+text-align: center;
+font-size: 11px;
+line-height: 1.1;
+color: var(--ink-soft);
 .masthead .title { 
   font-family: var(--serif); font-weight: 700; font-size: 28px; 
   letter-spacing: 0.02em; text-transform: uppercase; 
-  color: var(--paper); 
-  margin-top: 60px; /* Drops title directly onto the lower skyline art */
+  color: var(--paper); /* Stands out against the dark sky */
 }
 .title small { font-family: var(--mono); font-weight: 400; font-size: 13px; color: var(--moss); margin-left: 10px; }
+.daywx { font-family: var(--serif); font-style: italic; font-weight: 600; font-size: 18px; color: var(--ink-soft); }
 
-.daywx { 
-  font-family: var(--serif); font-style: italic; font-weight: 600; font-size: 18px; 
-  color: var(--ink-soft); 
-  margin-top: 90px; /* Pushes weather completely below the skyline */
+.left-clues {
+grid-column: 1;
+grid-row: 2;
+display: grid;
+grid-template-rows: repeat(16, 20px);
+gap: 1px;          /* <--- Matches the main grid lines */
+padding-top: 2px;  /* <--- Shifts the clues 2px down to clear the main grid's top border */
+padding-right: 8px; 
+align-items: center;
+text-align: right;
+font-size: 11px;
+letter-spacing: 2px;
+color: var(--ink-soft);
 }
+.neg { color: var(--rust); } .pos { color: var(--leaf); }
 
+.puzzle-grid {
+grid-column: 2;
+grid-row: 2;
+display: grid;
+grid-template-columns: repeat(16, 20px);
+grid-template-rows: repeat(16, 20px);
+background: var(--ink); /* Uses your dark green/black variable */
+border: 2px solid var(--ink);
+gap: 1px; /* This creates the grid lines automatically */
+  touch-action: none;
 .hud-vitals {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
   position: relative; z-index: 2;
-  margin-top: 25px; /* Ensures HUD cleanly clears the pushed-down text */
+  margin-top: 35px; /* Pushes HUD safely below the city art */
 }
 
+.puzzle-cell {
+background: var(--paper-deep);
+cursor: pointer;
+display: flex;
+justify-content: center;
+align-items: center;
+}
 .stat { padding: 8px 12px 9px; min-width: 0; border-left: 1px solid var(--line); }
 .stat:first-child { border-left: none; padding-left: 0; }
 .stat .lbl { display: block; font-family: var(--mono); font-weight: 700; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-soft); }
@@ -95,22 +650,97 @@ header {
 .stat .val small { font-size: 12px; font-weight: 400; color: var(--ink-soft); }
 .stat .delta { display: block; font-family: var(--mono); font-size: 11px; color: var(--ink-soft); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
+.puzzle-cell:hover { background: #cfccaf; }
 .hud-line { display: flex; flex-wrap: wrap; gap: 2px 18px; padding: 7px 0; border-bottom: 1px solid var(--line); font-family: var(--mono); }
 .hud-line .item { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
 .hud-line .lbl { font-size: 11px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-soft); }
 .hud-line .val { font-size: 14px; font-weight: 700; color: var(--ink); }
 .hud-line .val.dim { color: var(--ink-soft); font-weight: 400; opacity: 0.7; }
 
+.puzzle-cell.filled { background: var(--rust); } /* Rust red looks great for filled cells */
 /* Day Tracking Bars */
 .daybar { display: flex; align-items: center; gap: 16px; margin-top: 14px; }
 .daytrack { flex: 1; height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
 .dayfill { height: 100%; width: 0%; background-color: #111625; transition: width 1s linear, background-color 1s linear; }
 
-/* Mini Bar is given z-index to guarantee it overlays the border */
-.mini-daytrack { width: 100%; height: 3px; background: #1a1a1a; position: absolute; bottom: 0; left: 0; overflow: hidden; z-index: 10; }
+.puzzle-cell.crossed::after {
+content: "×";
+color: var(--moss);
+font-size: 14px;
+}
+.mini-daytrack { width: 100%; height: 3px; background: #1a1a1a; position: absolute; bottom: 0; left: 0; overflow: hidden; }
 .mini-dayfill { height: 100%; width: 0%; background-color: #111625; opacity: 0; transition: width 1s linear, background-color 1s linear, opacity 0.2s ease; }
+header.mini .mini-dayfill { opacity: 1; }
 
+/* Helper lines: slightly thicker borders every 4 cells to make counting easier */
+.puzzle-cell:nth-child(4n) { border-right: 1px solid var(--moss); }
+.puzzle-cell:nth-child(n+49):nth-child(-n+64),
+.puzzle-cell:nth-child(n+113):nth-child(-n+128),
+.puzzle-cell:nth-child(n+177):nth-child(-n+192) { border-bottom: 1px solid var(--moss); }
+.endday { font-family: var(--mono); font-weight: 700; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; padding: 8px 20px; border: 1.5px solid var(--ink); color: var(--ink); background: var(--paper); box-shadow: 3px 3px 0 var(--ink); }
+.endday:active { box-shadow: 0px 0px 0 var(--ink); transform: translate(3px, 3px); }
 
+/* Empty pipes are dark gray */
+.pipe-dead {
+  color: #444444; 
+}
+nav { display: flex; border-bottom: 1px solid var(--line); background: var(--paper); position: sticky; top: var(--navtop,0px); z-index: 29; padding-top: 8px; flex-wrap: wrap; }
+nav button { flex: 1; padding: 12px 16px; font-family: var(--serif); font-size: 16px; font-weight: 600; letter-spacing: 0.05em; color: var(--moss); border-bottom: 3px solid transparent; position: relative; min-width: 80px; }
+nav button:hover { color: var(--ink); }
+nav button.on { color: var(--ink); border-bottom-color: var(--ink); font-weight: 700; }
+nav button .evdot { position: absolute; top: 12px; right: 12px; width: 6px; height: 6px; border-radius: 50%; background: var(--rust); }
+
+/* Flooded pipes and solved sinks light up blue */
+.pipe-live {
+  color: #3b82f6; 
+  filter: drop-shadow(0px 0px 4px rgba(59, 130, 246, 0.6)); 
+}
+
+/* Darkens the background and blurs the puzzle slightly */
+.victory-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100; 
+  opacity: 0;
+  animation: fade-in 0.3s forwards;
+}
+
+/* The actual popup box */
+.victory-modal {
+  background: var(--bg, #1a1a1a); /* Fallback to dark gray if --bg isn't set */
+  border: 2px solid #22c55e;
+  border-radius: 12px;
+  padding: 24px;
+  width: 90%;
+  max-width: 400px;
+  text-align: center;
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
+  transform: scale(0.8);
+  animation: pop-in 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+.victory-modal h2 {
+  margin: 0 0 10px 0;
+  color: #22c55e;
+}
+
+/* The box that holds the rewards */
+.victory-rewards {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  padding: 12px 12px 12px 30px;
+  margin: 15px 0;
+  text-align: left;
+}
+
+.victory-rewards li {
+  margin-bottom: 6px;
+  color: #e5e5e5;
 /* =========================================
    SKY & WEATHER ANIMATIONS
 ========================================= */
@@ -122,27 +752,61 @@ header {
 }
 header.mini .sky-container { height: 0px; }
 
+.victory-btn {
+  margin-top: 10px;
+  width: 100%;
+  font-size: 1.1em;
+  padding: 12px;
+  background: transparent;
+  border: 2px solid #22c55e;
+  color: #22c55e;
+  border-radius: 6px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s;
+}
 .sky-container.wx-overcast { background: linear-gradient(to top, #cfd3d2 0%, #7d8583 100%); }
 .sky-container.wx-rain { background: linear-gradient(to top, #a1b4bc 0%, #4c7286 100%); }
 
+.victory-btn:hover {
+  background: #22c55e;
+  color: #000;
 .skyline-ruins {
   position: absolute; bottom: 0; left: 0; width: 100%; height: 45px; 
   background-image: url('ny-skyline.png'); background-size: contain; background-repeat: repeat-x; z-index: 1;
 }
 
+@keyframes fade-in { to { opacity: 1; } }
+@keyframes pop-in { to { transform: scale(1); } }
 .weather-layer { position: absolute; pointer-events: none; z-index: 0; opacity: 0; transition: opacity 1.5s ease; }
 
+@keyframes grow-stalk {
+  0% { transform: scaleY(0); }
+  100% { transform: scaleY(1); }
 .rain-overlay {
   inset: 0; background-image: url('rain-pixel.png'); background-repeat: repeat;
   animation: rainfall 0.35s linear infinite;
 }
 .wx-rain .rain-overlay { opacity: 1; }
 
+@keyframes bloom-sunflower {
+  0% { transform: scale(0) rotate(-30deg); opacity: 0; }
+  60% { transform: scale(1.2) rotate(10deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
 @keyframes rainfall {
   0%   { background-position: 0px 0px; }
   100% { background-position: 20px 20px; } /* Corrected down-and-right vector */
 }
 
+.puzzle-celebration {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none; /* Crucial: lets the user click the Awesome button */
+  z-index: 50; /* Sits behind the modal (which is z-index: 100) */
+  overflow: visible; 
 .weather-layer[class*="cloud-"] {
   width: 64px; height: 24px;
   background-image: url('cloud-pixel.png');
@@ -150,42 +814,44 @@ header.mini .sky-container { height: 0px; }
   animation: drift 140s linear infinite; /* Slowed down significantly */
 }
 
-.cloud-group {
+/* The structural separator line */
+.mini-daytrack {
+  width: 100%;
+  height: 3px; /* Match the thickness of your current black line */
+  background: #1a1a1a; /* Your solid ink/dark separator color */
   position: absolute;
-  top: 0; 
+  bottom: 0;
   left: 0;
-  width: 35vw; /* Fills roughly 1/3 of the screen width */
-  height: 45px;
-  pointer-events: none;
-  z-index: 0;
-  opacity: 0; /* Hidden on clear days */
-  transition: opacity 1.5s ease;
-  animation: drift 140s linear infinite;
-}
-.wx-overcast .cloud-group,
-.wx-rain .cloud-group {
-  opacity: 1;
-}
-.cloud-group .cloud {
-  position: absolute;
-  background-image: url('cloud-pixel.png');
-  background-size: contain;
-  background-repeat: no-repeat;
-  opacity: 1; /* Zero transparency */
+  overflow: hidden;
 }
 /* 5 Dense Cloud Layers */
-.cloud-1 { top: 5px;  left: 0%;  width: 80px;  height: 30px; z-index: 1; }
-.cloud-2 { top: -5px; left: 15%; width: 120px; height: 45px; z-index: 2; }
-.cloud-3 { top: 20px; left: 40%; width: 70px;  height: 25px; z-index: 1; }
-.cloud-4 { top: 8px;  left: 60%; width: 110px; height: 40px; z-index: 3; }
-.cloud-5 { top: 2px;  left: 80%; width: 85px;  height: 32px; z-index: 2; }
+.cloud-1 { top: 4px;  animation-delay: 0s;     opacity: 0.8; }
+.cloud-2 { top: 18px; animation-delay: -30s;   opacity: 0.6; }
+.cloud-3 { top: 10px; animation-delay: -60s;   opacity: 0.9; }
+.cloud-4 { top: 28px; animation-delay: -90s;   opacity: 0.5; }
+.cloud-5 { top: 2px;  animation-delay: -115s;  opacity: 0.75; }
 
+/* The actual time tracker bar hidden inside the line */
+.mini-dayfill {
+  height: 100%;
+  width: 0%;
+  background-color: #111625;
+  opacity: 0; /* Perfectly invisible when the header is wide open */
+  transition: width 1s linear, background-color 1s linear, opacity 0.2s ease;
+}
+.wx-overcast .weather-layer[class*="cloud-"],
+.wx-rain .weather-layer[class*="cloud-"] { opacity: 1; }
+
+/* When the header shrinks, fade the color into the separator line! */
+header.mini .mini-dayfill {
+  opacity: 1;
 @keyframes drift {
-  0%   { transform: translateX(-40vw); }
-  100% { transform: translateX(100vw); } 
+  0%   { transform: translateX(-80px); }
+  100% { transform: translateX(100%); } /* Constrained to grid */
 }
 
 /* =========================================
+   SKY AND ATMOSPHERE
    MAIN LAYOUT & CARDS
 ========================================= */
 main { padding: 32px 0 90px; }
@@ -285,6 +951,38 @@ main section { display: grid; grid-template-columns: repeat(auto-fill, minmax(34
 .piece.sel { border-color: var(--ink); box-shadow: 2px 2px 0 var(--ink); font-weight: 700; background: var(--card); }
 .piece.out { opacity: 0.45; }
 
+.sky-container {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 95px; 
+  overflow: hidden;
+  z-index: 0; 
+  transition: height 0.3s ease, background 1.5s ease-in-out;
+  
+  /* Vertical fade for the sky background itself */
+  background: linear-gradient(to top, #fdfbf7 0%, #89b4c4 100%);
+}
+
+header.mini .sky-container {
+  height: 0px;
+}
+
+.sky-container.wx-overcast {
+  background: linear-gradient(to top, #cfd3d2 0%, #7d8583 100%);
+}
+
+.sky-container.wx-rain {
+  background: linear-gradient(to top, #a1b4bc 0%, #4c7286 100%);
+}
+
+.masthead {
+  position: relative;
+  z-index: 1; 
+}
+
+.masthead .title {
+  color: var(--paper); 
+}
 .grid { display: grid; gap: 3px; margin: 10px 0 4px; user-select: none; -webkit-user-select: none; touch-action: none; }  
 .cell { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1px solid var(--line); background: var(--paper); overflow: hidden; font-family: var(--mono); font-size: 12px; color: var(--ink); cursor: pointer; }
 .cell b { font-size: 13px; }
@@ -349,6 +1047,7 @@ main section { display: grid; grid-template-columns: repeat(auto-fill, minmax(34
 .pipe-live { color: #3b82f6; filter: drop-shadow(0px 0px 4px rgba(59, 130, 246, 0.6)); }
 
 /* =========================================
+   RUINS SILHOUETTE 
    MODALS, SCRIMS & CELEBRATIONS
 ========================================= */
 .scrim { position: fixed; inset: 0; background: rgba(33,40,26,0.6); z-index: 40; display: none; backdrop-filter: blur(2px); }
@@ -384,53 +1083,102 @@ main section { display: grid; grid-template-columns: repeat(auto-fill, minmax(34
 .victory-btn:hover { background: #22c55e; color: #000; }
 .puzzle-celebration { position: absolute; bottom: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 50; overflow: visible; }
 
+.skyline-ruins {
+  position: absolute;
+  bottom: 0; 
+  left: 0;
+  width: 100%;
+  height: 45px; 
+  background-image: url('ny-skyline.png'); 
+  background-size: contain; 
+  background-repeat: repeat-x;
+  z-index: 1;
+}
 @keyframes fade-in { to { opacity: 1; } }
 @keyframes pop-in { to { transform: scale(1); } }
 @keyframes grow-stalk { 0% { transform: scaleY(0); } 100% { transform: scaleY(1); } }
 @keyframes bloom-sunflower { 0% { transform: scale(0) rotate(-30deg); opacity: 0; } 60% { transform: scale(1.2) rotate(10deg); opacity: 1; } 100% { transform: scale(1) rotate(0deg); opacity: 1; } }
 
 /* =========================================
+   WEATHER ANIMATIONS
    LOGIN & FOOTER
 ========================================= */
+.weather-layer {
+  position: absolute;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0;
+  transition: opacity 1.5s ease;
+}
+
+.rain-overlay {
+  inset: 0;
+  background-image: url('rain-pixel.png'); 
+  background-repeat: repeat;
+  animation: rainfall 0.35s linear infinite;
+}
+
+.wx-rain .rain-overlay {
+  opacity: 1;
+}
 #loginScreen { padding: 40px 20px; }
 #loginScreen .card { box-shadow: 6px 8px 0 rgba(33,40,26,0.15), 0 0 0 2px var(--ink); padding: 40px 30px; }
 
+.cloud-1, .cloud-2 {
+  width: 48px; 
+  height: 16px;
+  background-image: url('cloud-pixel.png'); 
+  background-size: cover;
+  animation: drift 35s linear infinite;
+}
+
+.cloud-1 { 
+  top: 8px; 
+  animation-delay: 0s; 
+}
 footer { padding: 32px 16px 60px; text-align: center; border-top: 1px solid var(--line); margin-top: 40px; }
 footer button { font-family: var(--mono); font-size: 13px; font-weight: 700; text-transform: uppercase; color: var(--rust); text-decoration: underline; }
 .protonote { font-family: var(--serif); font-style: italic; font-size: 15px; color: var(--ink-soft); margin-top: 16px; line-height: 1.6; max-width: 600px; margin-left: auto; margin-right: auto; }
 
+.cloud-2 { 
+  top: 25px; 
+  left: -80px; 
+  animation-delay: -12s; 
+  opacity: 0.6; 
+}
+
+.wx-overcast .cloud-1, .wx-overcast .cloud-2,
+.wx-rain .cloud-1, .wx-rain .cloud-2 {
+  opacity: 1;
+}
+
+@keyframes drift {
+  0%   { transform: translateX(-60px); }
+  100% { transform: translateX(110vw); }
+}
+
+@keyframes rainfall {
+  0%   { background-position: 0px 0px; }
+  100% { background-position: -20px 20px; }
 /* =========================================
-   MOBILE RESPONSIVENESS & COLLAPSE LOGIC
+   MOBILE RESPONSIVENESS
 ========================================= */
 @media (max-width: 768px){
   body { padding: 0 12px; }
   main section { grid-template-columns: 1fr; }
-  
-  /* Mobile Title Spacing */
-  .masthead { flex-direction: column; gap: 0; padding-top: 15px; }
-  .masthead .title { margin-top: 50px; font-size: 24px; }
-  .daywx { margin-top: 15px; font-size: 15px; }
-  
+  .title { font-size: 22px; }
+  .daywx { font-size: 15px; }
+  .masthead { flex-direction: column; gap: 0; padding-top: 24px; }
   .stat { padding: 7px 8px 8px; }
   .stat .val { font-size: 16px; }
   .stat .val small { font-size: 11px; }
   .hud-line { gap: 2px 14px; }
 
-  /* -----------------------------------------
-     MOBILE-ONLY COLLAPSE RULES 
-  ----------------------------------------- */
-  .sky-container { transition: none; } /* Instantly snaps on scroll so syncNavTop() doesn't miscalculate and float your tabs */
-  
   header.mini { padding: 6px 0 7px; }
-  header.mini .sky-container { height: 0px; }
   header.mini .hud-line, header.mini .daybar { display: none; }
-  header.mini .mini-dayfill { opacity: 1; }
-  
-  /* Reverts the text layout and color so it's readable when the sky vanishes */
   header.mini .masthead { flex-direction: row; align-items: baseline; justify-content: space-between; gap: 10px; padding-top: 0px; }
-  header.mini .masthead .title { margin-top: 0; font-size: 16px; color: var(--ink); }
-  header.mini .daywx { margin-top: 0; font-size: 13px; }
-  
+  header.mini .title { font-size: 16px; }
+  header.mini .daywx { font-size: 13px; }
   header.mini .hud-vitals { margin-top: 5px; }
   header.mini .stat { padding: 4px 8px 5px; }
   header.mini .stat .lbl { font-size: 10px; }
