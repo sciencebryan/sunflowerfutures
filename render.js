@@ -26,15 +26,31 @@ function renderHeader() {
   const sn = season();
   const r = S.report;
   
-  // 1. Weather and Date
+  // Weather and Date
   $("daywx").textContent = `${sn.name}, day ${dayOfSeason(S.day)} — ${S.weather}`;
+  // Update the sky background based on current weather
+  const skyBox = document.getElementById("skyBox");
+  if (skyBox) {
+    skyBox.className = "sky-container wx-" + S.weather;
+  }
+  const tomorrowWx = S.forecast ? S.forecast : "clear";
+  const daywxEl = document.getElementById("daywx");
 
-
+  if (daywxEl) {
+    daywxEl.innerHTML = `
+      <span style="opacity: 0.5;">yesterday</span> 
+      &nbsp;⟶&nbsp; 
+      <b>${sn.name}, day ${dayOfSeason(S.day)} — ${S.weather}</b> 
+      &nbsp;⟶&nbsp; 
+      <span style="opacity: 0.5;">${tomorrowWx} tomorrow</span>
+    `;
+  }
   // Vitals: Food / Water / Power — value line, then a small colored delta line
   const foodChange = (r.foodIn - r.foodOut);
   const waterNet = (r.waterIn - r.waterOut);
   const powerNet = (r.gen - r.draw);
   const cap = r.cap || 0;
+
 
   const delta = v => `<span class="delta"><span class="${v >= 0 ? 'pos' : 'neg'}">${v >= 0 ? '+' : ''}${v.toFixed(1)}</span></span>`;
   const foodBreakdown = S.preserved > 0
