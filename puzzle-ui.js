@@ -512,7 +512,7 @@ function renderCircuit(){
       else if(a==="clear"){ pz.paths={}; renderCircuit(); }
       else if(a==="back"){ closePuzzle(); }
       else if(a==="commit"){
-        S.puz.circuit++;
+        
         const extra=grantReward("circuit");
         {
           const solvers=[byId("nadia"),byId("ilya")].filter(p=>p&&p.status!=="away");
@@ -633,7 +633,7 @@ function renderWater(){
       if(a==="clear"){ pz.placed={}; renderWater(); }
       else if(a==="back"){ closePuzzle(); }
       else if(a==="commit"){
-        S.puz.water++;
+       
         addRestore("aquifer", RESTORE_IN.waterLevel);   // slowing and sinking water heals the water table
         const extra=grantReward("water");
         {
@@ -756,7 +756,7 @@ function renderSeed(){
       if(a==="clear"){ pz.placed={}; renderSeed(); }
       else if(a==="back"){ closePuzzle(); }
       else if(a==="commit"){
-        S.puz.seed++;
+        
         const extra=grantReward("seed");
         S.pending.push(`The seed frame is sorted — every drawer labelled, every companion noted.${extra}`);
         finishPuzzle("seed");
@@ -832,7 +832,7 @@ function renderSignal(){
       if(a==="clear"){ pz.placed={}; renderSignal(); }
       else if(a==="back"){ closePuzzle(); }
       else if(a==="commit"){
-        S.puz.radio++;
+        
         const extra=grantReward("radio");
         S.pending.push(`The frequency locked in clean and stayed there.${extra}`);
         finishPuzzle("radio");
@@ -1008,7 +1008,7 @@ $("tab-works").querySelectorAll("[data-px]").forEach(el => {
       if(a==="clear"){ pz.placed=[]; renderPatch(); }
       else if(a==="back"){ closePuzzle(); }
       else if(a==="commit"){
-        S.puz.patch++;
+        
         let extra=grantReward("patch");
         const targetGoal = L.leftoverGoal || 0;
         const margin = r.savedSquares - targetGoal;
@@ -1099,7 +1099,7 @@ function renderFocus(){
       if(a==="clear"){ pz.placed={}; renderFocus(); }
       else if(a==="back"){ closePuzzle(); }
       else if(a==="commit"){
-        S.puz.focus++;
+        
         const extra=grantReward("focus");
         S.pending.push(`The array is aligned. Sunlight hits the boiler squarely.${extra}`);
         finishPuzzle("focus");
@@ -1236,7 +1236,7 @@ function renderWires() {
       if (a === "clear") { pz.placed = {}; renderWires(); }
       else if (a === "back") { closePuzzle(); }
       else if (a === "commit") {
-        S.puz.wires++;
+      
         const extra = grantReward("wires");
         const solver = bestPresent("hands");
         S.pending.push(`${solver ? solver.name : "Somebody"} energized run ${L.n}, and the meter barely dips now.${extra}`);
@@ -1329,8 +1329,7 @@ function renderPipes() {
       const a = b.dataset.act;
       if (a === "back") { closePuzzle(); }
       else if (a === "commit") {
-        S.puz.pipes++;
-        // Replace with your actual reward/commit logic
+       
         finishPuzzle("pipes"); 
       }
     };
@@ -1527,7 +1526,7 @@ function checkPicrossWin() {
     
     // Apply reward (e.g., if level yields parts)
     if (L.parts) S.res.parts += L.parts;
-    
+    //should probably update this so it uses finishpuzzle() oh well
     // Advance progress
     S.puz.picross++;
     closePuzzle();
