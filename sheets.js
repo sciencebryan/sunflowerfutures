@@ -26,13 +26,13 @@ $("scrim").onclick=closeSheet;
    time, when S is still null, so it must not read game state eagerly. */
 const SHEET_META = {
   garden:{name:"The gardens", sub:()=>{const n=gardenSlots(); return n===1?"One pair of hands can work the beds. Uses green.":`Choose up to ${n} tenders. Uses green.`;}, multi:true},
-  aquatend:{name:"Aquaponics — tender", sub:()=>"Someone to feed the fish and mind the beds. Output rises with green.", multi:false},
+  aquatend:{name:"Aquaponics — tender", sub:()=>"Someone to feed the fish and mind the plants. Output rises with green.", multi:false},
   cook:{name:"The hearth", sub:()=>"A cook lifts everyone's spirits daily and stretches the stores. Uses care.", multi:false},
   care:{name:"The sickbed", sub:()=>"The laid-up and the spent mend faster. Uses care.", multi:false},
   project:{name:"", sub:()=>"Choose who works on it. Uses hands.", multi:false},
-  preserve:{name:"Putting food by", sub:()=>"Drying, fermenting, canning. Turns fresh food into food that keeps. Two can work at it. Uses care.", multi:true, cap:2},
-  press:{name:"Pressing oil", sub:()=>"Standing at the crank, turning set-aside sunflower seed into oil. Slow work. Uses hands.", multi:false},
-  fab:{name:"Fabrication", sub:()=>"Building the thing that ends a trip. Uses hands.", multi:false},
+  preserve:{name:"Putting food by", sub:()=>"Drying, fermenting, canning. Turns fresh food into stored food. Two can work at it. Uses care.", multi:true, cap:2},
+  press:{name:"Pressing oil", sub:()=>"Standing at the crank, turning set-aside sunflower seed into oil. Uses hands.", multi:false},
+  fab:{name:"Fabrication", sub:()=>"Building something to make us more self-sustaining. Uses hands.", multi:false},
   woodcut:{name:"Chopping wood", sub:()=>"Gathering deadwood for the winter fires. Hard work. Uses wild.", multi:true, cap:3}
 };
 
@@ -41,7 +41,7 @@ function openSystemSheet(jobId){
   const sysDef=SYS.find(s=>s.id===jobId);
   const name = meta ? (jobId==="project"&&S.project ? workName() : meta.name)
              : sysDef ? sysDef.name : "—";
-  const sub = meta ? meta.sub() : "Choose a keeper. Good hands slow the wear. Uses hands.";
+  const sub = meta ? meta.sub() : "Choose a maintainer. Uses hands. A higher rating means faster repair.";
   const multi = meta ? meta.multi : false;
   const sk = jobSkill(jobId);
   const crew=S.people.filter(p=>p.job===jobId);
@@ -80,7 +80,7 @@ function openSystemSheet(jobId){
   });
 }
 
-const SOIL_WORD = f => f>=80?"rich soil":f>=55?"good soil":f>=30?"tired soil":"soil worn thin";
+const SOIL_WORD = f => f>=80?"rich soil":f>=55?"good soil":f>=30?"tired soil":"barren soil";
 
 function openSowSheet(i, isForest){
   isForest = !!isForest;
@@ -93,8 +93,8 @@ function openSowSheet(i, isForest){
 
   // a meadow plot: no crop menu, just the choice to return it to production
   if(isForest && bed.meadow){
-    let mh=`<h3>Wildflower meadow</h3><div class="sub">This plot is given over to goldenrod, milkweed, and aster. It feeds no one at the table, but the whole valley's bloom depends on ground like this.</div>
-      <button class="opt" data-crop="__unmeadow"><span class="l1">Turn it back to bare ground</span><span class="r">the bloom fades</span></button>`;
+    let mh=`<h3>Wildflower meadow</h3><div class="sub">This plot is full of goldenrod, milkweed, aster, other wildflowers. It's not a food source for people, but it attracts and feeds pollinators that pollinate the entire valley.</div>
+      <button class="opt" data-crop="__unmeadow"><span class="l1">Turn it back to bare ground</span><span class="r">the pollinators will leave</span></button>`;
     openSheet(mh);
     $("sheet").querySelectorAll("[data-crop]").forEach(b=>{
       b.onclick=()=>{
@@ -106,15 +106,15 @@ function openSowSheet(i, isForest){
     return;
   }
 
-  let h=`<h3>${isForest?"Plant in the food forest":"Sow bed "+(i+1)}</h3><div class="sub">${sn.name}. ${isForest?"Perennials — planted once, they bear for years.":seasonNote(sn)+" Seeds come out of the store; the harvest comes back when it's ready, and only if someone is tending."}</div>
-    <div class="sub" style="margin-top:4px">${isForest?'<span style="color:var(--sun)">PERENNIAL</span> plantings take years to bear, then give freely with no tending.':'<span style="color:var(--water)">HARDY</span> crops survive winter frost. <span style="color:var(--sun)">Legumes</span> feed the soil back; heavy feeders draw it down.'} This ${place}: <b>${soil}</b> (${(bed.fertility??75).toFixed(0)}).</div>`;
+  let h=`<h3>${isForest?"Plant in the food forest":"Sow bed "+(i+1)}</h3><div class="sub">${sn.name}. ${isForest?"Perennials — they don't have to be replanted but take time to reach maturity.":seasonNote(sn)+" Seeds come out of seed storage; food is harvested when the plant is mature as long as someone is tending the garden bed."}</div>
+    <div class="sub" style="margin-top:4px">${isForest?'<span style="color:var(--sun)">PERENNIAL</span> plantings take years to bear, but require no regular care.':'<span style="color:var(--water)">HARDY</span> crops survive winter frost without a cold frame or greenhouse. <span style="color:var(--sun)">Legumes</span> increase soil fertility; other crops decrease it.'} This ${place}: <b>${soil}</b> (${(bed.fertility??75).toFixed(0)}).</div>`;
 
   // an established planting locks the plot -- no accidental overwrite of years of growth
   if(curCrop && curCrop.perennial){
     const ageYears = (S.day - bed.plantedDay) / (SEASON_LEN*4);
     const estFrac = clamp(ageYears/curCrop.matureYears, 0.15, 1);
     const status = estFrac>=1 ? "fully established" : `${Math.max(1,Math.ceil(ageYears))} of ${curCrop.matureYears} years toward full bearing`;
-    h+=`<div class="sub" style="margin:8px 0">This plot holds <b>${curCrop.name.toLowerCase()}</b> — ${status}. It bears in ${curCrop.harvestSeason}, and asks for no tending the rest of the year.</div>
+    h+=`<div class="sub" style="margin:8px 0">This plot holds <b>${curCrop.name.toLowerCase()}</b> — ${status}. It bears in ${curCrop.harvestSeason}, and requires no regular care.</div>
       <button class="opt" data-crop="__digout"><span class="l1">Dig it out</span><span class="r">loses everything invested here</span></button>`;
     openSheet(h);
     $("sheet").querySelectorAll("[data-crop]").forEach(b=>{
@@ -161,7 +161,7 @@ function openSowSheet(i, isForest){
   // retire ground from production and give it back to the wild.
   if(isForest && !bed.crop){
     h+=`<button class="opt" data-crop="__meadow"><span><span class="l1">Wildflower meadow <span style="font-size:9px;color:var(--leaf)">POLLINATOR</span></span>
-      <div class="l2">Goldenrod, milkweed, aster, wild bergamot — no harvest, but the bloom brings back the bees, and the whole valley's gardens set heavier for it.</div></span>
+      <div class="l2">Goldenrod, milkweed, aster, wild bergamot — no food for us to harvest, but the flowers bring pollinators, and our gardens produce more because of it.</div></span>
       <span class="r">4 seed<br>gives no food</span></button>`;
   }
   if(bed.crop) h+=`<button class="opt" data-crop="__clear"><span class="l1">${isForest?"Dig it out":"Turn it under"}</span><span class="r">start again</span></button>`;
@@ -178,7 +178,7 @@ function openSowSheet(i, isForest){
         // and harvest loops skip it, and it feeds the valley's pollinators.
         bed.crop="__meadow"; bed.meadow=true; bed.growth=0; bed.days=0; bed.ready=false; bed.stored=0; bed.plantedDay=S.day; bed.matured=true;
         addRestore("pollinator", RESTORE_IN.meadowPlot);
-        S.pending.push(`A forest plot was given over to wildflowers. It will feed no one at the table — and the whole valley will be the better fed for it.`);
+        S.pending.push(`A forest plot was seeded with wildflowers. Hopefully, it will attract and sustain more pollinators.`);
       }
       else{
         const c=CROPS[id];
@@ -189,8 +189,8 @@ function openSowSheet(i, isForest){
         if(isForest && c.native) addRestore("mycosphere", RESTORE_IN.nativePlant);
         S.pending.push(c.perennial
           ? (c.native
-              ? `The food forest gained ${c.name.toLowerCase()} — native stock, and the ground is better for it already.`
-              : `The food forest gained ${c.name.toLowerCase()}. It will be years before it gives much back.`)
+              ? `The food forest gained ${c.name.toLowerCase()} — a native plant, familiar to the local wildlife.`
+              : `The food forest gained ${c.name.toLowerCase()}. It will be some time before we get any food from it.`)
           : `Bed ${i+1} sown with ${c.name.toLowerCase()}.`);
       }
       store.save(S); closeSheet(); renderAll();
@@ -202,10 +202,10 @@ function openPersonSheet(pid){
   const p=S.people.find(x=>x.id===pid);
   if(p.status==="away"){
     const ex=S.expeditions.find(e=>e.party.includes(p.id));
-    openSheet(`<h3>${p.name}</h3><div class="sub">Out at ${ex?exWhere(ex):"—"}. Back in ${ex?ex.daysLeft:"?"} days. The village waits.</div>`);
+    openSheet(`<h3>${p.name}</h3><div class="sub">Out at ${ex?exWhere(ex):"—"}. Back in ${ex?ex.daysLeft:"?"} days.</div>`);
     return;
   }
-  if(!canWork(p)){ openSheet(`<h3>${p.name}</h3><div class="sub">${p.age} years old. ${p.note} There is no work for ${objp(p)} yet, and that is the point of the whole thing.</div>`); return; }
+  if(!canWork(p)){ openSheet(`<h3>${p.name}</h3><div class="sub">${p.age} years old. ${p.note} There is no work for ${objp(p)} yet.</div>`); return; }
   if(p.status==="down"){ openSheet(`<h3>${p.name}</h3><div class="sub">Laid up and resting. Back in a day or two — sooner with a caretaker.</div>`); return; }
   let h=`<h3>Where does ${p.name} go?</h3><div class="sub">hands ${p.hands} · green ${p.green} · care ${p.care} · wild ${p.wild} — ${TRAITS[p.trait]}.</div>`;
   const jobRow=(job,name,sub,skill)=>{
@@ -219,13 +219,13 @@ function openPersonSheet(pid){
     h+=jobRow("aquatend","Aquaponics — tender",`feeds the output${at?` · now: ${at.name}`:""}`,"green");
   }
   const ck=S.people.find(x=>x.job==="cook"&&x.id!==p.id);
-  h+=jobRow("cook","The hearth",`lifts everyone, stretches food${ck?` · now: ${ck.name}`:""}`,"care");
+  h+=jobRow("cook","The hearth",`makes everyone a little happier, stretches food${ck?` · now: ${ck.name}`:""}`,"care");
   const laidup=S.people.filter(x=>x.status==="down"||x.status==="spent").length;
   const curCare=S.people.find(x=>x.job==="care"&&x.id!==p.id);
   h+=jobRow("care","The sickbed",`${laidup} laid up${curCare?` · now: ${curCare.name}`:""}`,"care");
   if(Object.values(PRESERVE).some(m=>S.flags[m.flag])){
     const curP=S.people.find(x=>x.job==="preserve"&&x.id!==p.id);
-    h+=jobRow("preserve","Putting food by",`${S.preserved.toFixed(0)} kept${curP?` · now: ${curP.name}`:""}`,"care");
+    h+=jobRow("preserve","Preserving food",`${S.preserved.toFixed(0)} kept${curP?` · now: ${curP.name}`:""}`,"care");
   }
   if(S.flags.oilPress){
     const curPr=S.people.find(x=>x.job==="press"&&x.id!==p.id);
@@ -276,10 +276,10 @@ function drawPartySheet(target){
             : siteDef(target);
   if(!def) return;
   const days=def.days;
-  const title = isExplore?"Range farther out" : isForage?"Forage the near country" : `Party to ${siteName(target)}`;
+  const title = isExplore?"Range farther out" : isForage?"Forage the nearby wilderness" : `Party to ${siteName(target)}`;
   const sub = isForage
-    ? `${days} days, close to home and low risk. Pick up to 3. Wild hands find more. What they bring back feeds the village now — and thins the patches for later.`
-    : `${days} days there and back. Pick up to 3. High wild means safer on the road and stronger packs. Going alone is riskier, and there's no one to carry you home${isExplore?". No telling what they'll find, only that it's far":""}.`;
+    ? `${days} days, close to home and low risk. Pick up to 3. Higher wild finds more. Repeated harvest reduces yield.`
+    : `${days} days there and back. Pick up to 3. High wild means a safer trip and more material salvaged. Going alone is riskier${isExplore?". No telling what they'll find, only that it's far":""}.`;
   let h=`<h3>${title}</h3><div class="sub">${sub}</div>`;
   for(const p of S.people){
     const unavail=p.status!=="ok" || !roadReady(p);
@@ -292,7 +292,7 @@ function drawPartySheet(target){
   if(isForage && partyPick.size){
     // matches the yield math in tickExpeditions: raw × season forage × larder
     const est=[...partyPick].reduce((a,pid)=>a+3+effStat(byId(pid),"wild","forage")*1.4,0)*season().forage*(S.larder??1);
-    const lowForageNote = season().forage<0.5 ? " — the near country gives little this season" : "";
+    const lowForageNote = season().forage<0.5 ? " — there isn't much to forage this season" : "";
     h+=`<div class="outline-note" style="margin:2px 2px 8px">they'd bring back about ${est.toFixed(0)} food${lowForageNote}</div>`;
   }
   // forage runs the raw round-trip; only far trips take the season/bridge road penalty
@@ -315,9 +315,9 @@ function drawPartySheet(target){
     S.expeditions.push({id:S.expSeq++, type:isExplore?"explore":isForage?"forage":"salvage",
       siteId:(isExplore||isForage)?null:target, party, daysLeft:d, total:d, injured:[]});
     const names=party.map(pid=>byId(pid).name).join(", ");
-    S.pending.push(isExplore ? `${names} set out past the edge of the maps.`
-      : isForage ? `${names} went out with baskets before the dew burned off.`
-      : `${names} set out for ${siteName(target)}. ${d} days, if the road is kind.`);
+    S.pending.push(isExplore ? `${names} set out in search of new places to salvage.`
+      : isForage ? `${names} went out with baskets before all of us were awake.`
+      : `${names} set out for ${siteName(target)}. ${d} days, if all goes well.`);
     store.save(S); closeSheet(); renderAll();
   };
 }
