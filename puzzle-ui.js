@@ -347,9 +347,9 @@ function grantReward(kind){
 function sunflowerCelebration() {
   let html = `<div class="puzzle-celebration">`;
 
-  // 1. Dynamic Density: Target one flower roughly every 60 pixels of screen width
+  // 1. Dynamic Density: Target one flower roughly every 40 pixels of screen width
   const screenWidth = window.innerWidth;
-  const numFlowers = Math.max(4, Math.floor(screenWidth / 60)); // Ensure at least 4 show up
+  const numFlowers = Math.max(4, Math.floor(screenWidth / 40)); // Ensure at least 4 show up
   const segmentWidth = 100 / numFlowers; // Divide the screen into even percentage chunks
 
   // Dynamically generate the 12 petals once to save string space
@@ -374,12 +374,12 @@ function sunflowerCelebration() {
     const left = (i * segmentWidth) + jitter;
     
     // Height: Randomize between 40% and 95% of the container height
-    const height = Math.floor(Math.random() * 56) + 40; 
+    const height = Math.floor(Math.random() * 75) + 20; 
     
     // Timing: Make them all grow simultaneously 
     // Stalks start immediately (0s), heads pop slightly after (0.3s)
     const stalkDelay = 0;
-    const headDelay = 0.3;
+    const headDelay = 0.3 + height/500 + Math.random()/10;
 
     html += `
       <div style="position: absolute; bottom: 0; left: ${left}%; height: ${height}%; width: 8px;">
