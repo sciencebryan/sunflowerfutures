@@ -507,12 +507,12 @@ const PICROSS_REWARD = {
 };
 
 const PUZ_META = { //this is our definitive puzzle list. keep it correct.
-//  circuit:{levels:CIRCUIT_LEVELS, reward:CIRCUIT_REWARD, noun:"board"},
+  circuit:{levels:CIRCUIT_LEVELS, reward:CIRCUIT_REWARD, noun:"board"},
   water:{levels:WATER_LEVELS, reward:WATER_REWARD, noun:"season"},
   seed:{levels:SEED_LEVELS, reward:SEED_REWARD, noun:"frame"},
-//  radio:{levels:SIGNAL_LEVELS, reward:SIGNAL_REWARD, noun:"frequency"},
+  radio:{levels:SIGNAL_LEVELS, reward:SIGNAL_REWARD, noun:"frequency"},
   patch:{levels:PATCH_LEVELS, reward:PATCH_REWARD, noun:"draft"},
-//  focus:{levels:FOCUS_LEVELS, reward:FOCUS_REWARD, noun:"array"},
+  focus:{levels:FOCUS_LEVELS, reward:FOCUS_REWARD, noun:"array"},
   wires:{levels:WIRES_LEVELS, reward:WIRES_REWARD, noun:"run"},
   pipes:{levels:PIPES_LEVELS, reward:PIPES_REWARD, noun:"main"},
   picross:{levels:PICROSS_LEVELS, reward: PICROSS_REWARD, noun: "scan"}
