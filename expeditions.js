@@ -42,7 +42,7 @@ function tickExpeditions(lines){
   for(const ex of done){
     S.expeditions=S.expeditions.filter(x=>x!==ex);
     if(ex.type==="forage"){
-      // yield scales with wild skill and with how much the near country has left to give
+      // yield scales with wild skill and with how much it's been used
       const sf=season().forage;
       const raw=ex.party.reduce((a,pid)=>a+3+effStat(byId(pid),"wild","forage")*1.4,0)*sf;
       const got=raw*(S.larder??1);
@@ -54,7 +54,7 @@ function tickExpeditions(lines){
       S.lastForageDay = S.day;
       lines.push(`${names} came back from the near country with ${got.toFixed(0)} food.${thin?" The good patches are thinning. What's left needs a season to come back.":""}`);
       if(lockedCrops().length && Math.random()<0.12){
-        // near-country finds lean toward things that grow wild: perennials first if any remain
+        // discovery lean toward things that grow wild: perennials first if any remain
         const id = discoverRandomCrop(c=>CROPS[c].perennial) || discoverRandomCrop();
         if(id) lines.push(discoveryLine(id,"forage"));
       }
@@ -65,10 +65,10 @@ function tickExpeditions(lines){
         lines.push(`The ranging party came back with a place: ${next.name}, ${next.days} days' round walk. ${next.blurb}`);
       } else if(lockedCrops().length && Math.random()<0.5){
         const id=discoverRandomCrop();
-        if(id) lines.push("The ranging party found no new ground, but they came back with something better. "+discoveryLine(id,"explore"));
-        else lines.push("The ranging party came back with nothing new. The maps may simply be full now.");
+        if(id) lines.push("The ranging party didn't find any new places to salvage, but they came back with something better. "+discoveryLine(id,"explore"));
+        else lines.push("The ranging party came back with nothing new.");
       } else {
-        lines.push("The ranging party came back with nothing new. The maps may simply be full now.");
+        lines.push("The ranging party came back with nothing new.");
       }
       // even when they DO find a place, a chance of turning up seed too
       if(next && lockedCrops().length && Math.random()<0.3){
@@ -90,14 +90,12 @@ function tickExpeditions(lines){
         if(take>0.05){
           st.stock[k]=Math.max(0,st.stock[k]-take);
           if(k==="cans"){
-            // found already sealed -- no processing loss, and it never spoils,
-            // same as anything else in S.preserved
             S.preserved = clamp(S.preserved+take, 0, S.flags.rootCellar?300:170);
-            gotWords.push(`${take.toFixed(0)} cans of kept food`);
+            gotWords.push(`${take.toFixed(0)} cans of food`);
           } else {
             const actual = addRes(k, take);
             if(actual>0.05) gotWords.push(`${actual.toFixed(0)} ${k}`);
-            else gotWords.push(`no room for more ${k} — the depot's full`);
+            else gotWords.push(`no room for more ${k} — our storage is full`);
           }
         }
       }
@@ -108,11 +106,11 @@ function tickExpeditions(lines){
       S.discovered = S.discovered || {};
       if(ex.siteId==="solarfarm" && !S.discovered.solar){
         S.discovered.solar = true;
-        lines.push("The wiring diagrams on the wall were still legible. Panels are something the village can build now.");
+        lines.push("We found some still-readable wiring diagrams at the solar farm, plus a bunch of solar panels we've brought back. We think we can install them on our roof.");
       }
       if((ex.siteId==="pharmacy"||ex.siteId==="hospital") && !S.discovered.herbalStores){
         S.discovered.herbalStores = true;
-        lines.push("Someone came back with more than supplies — a working knowledge of what to dry, and how, and for what.");
+        lines.push("We also found a beat-up guide to wild remedies — a working knowledge of what to dry, and how, and for what.");
       }
       if(lockedCrops().length && Math.random()<0.16){
         const id=discoverRandomCrop();
@@ -125,17 +123,15 @@ function tickExpeditions(lines){
       if(ex.injured.includes(pid)){
         p.status="down"; p.downDays=(ex.party.length>1?2:4)+Math.floor(Math.random()*2); p.job=null;
         p.wb=clamp(p.wb-15, wbFloor(p), 100);
-        // rarely, a hurt does not fully mend. When it doesn't, the lasting memory
-        // is the one worth keeping — set it last so nothing overwrites it.
         if(!p.perm && Math.random()<0.12){
           p.perm="leg";
           p.wild=Math.max(1,p.wild-2);
-          lines.push(`${p.name}'s leg set badly. ${Cap(subj(p))} will walk, but not the long roads. There is other work, and ${subj(p)} ${isAre(p)} good at it.`);
-          p.mem=`Hurt at ${name}, day ${S.day}. The leg never came right.`;
+          lines.push(`${p.name}'s leg set badly. ${Cap(subj(p))} will walk, but can't go on expeditions any longer.`);
+          p.mem=`Hurt at ${name}, day ${S.day}. Can no longer travel long distances quickly or easily, but can still get around.`;
         } else {
           p.mem=`Hurt at ${name}, day ${S.day}.`;
         }
-        lines.push(`${p.name} came back hurt. Nothing that won't mend, but ${subj(p)} ${isAre(p)} laid up.`);
+        lines.push(`${p.name} came back injured. ${subj(p)} ${isAre(p)} is laid up until ${objp(p)}'s healed.`);
       } else {
         p.status="ok"; p.job=null;
         p.mem=`Last out: ${name}, day ${S.day}.`;
