@@ -54,7 +54,7 @@
    ========================================================================= */
 const DAY_MS = 120000;
 
-const OFFLINE_CAP = 14;
+const OFFLINE_CAP = 7;
 
 const INJURY_PER_DAY = 0.03;
 
@@ -165,11 +165,11 @@ const RESTORE_IN = {
 const SYS = [
   // decay rebalanced downward after the starting-stat nerf below (everyone -1 star,
   // so a new village's raw repair output is ~30% lower than it was) — see TUNING GUIDE
-  {id:"turbine",   name:"Wind turbine",    decay:3.6, draw:0, start:true,  blurb:"The bearing was old when it was found. It turns anyway."},
-  {id:"solar",     name:"Solar array",     decay:2.0, draw:0, start:false, cost:{scrap:5,parts:3},  work:11, blurb:"One panel off the depot roofs. Quiet, and only works in daylight.", gate:{discover:true}},
-  {id:"battery",   name:"Battery bank",    decay:1.6, draw:0, start:true,  blurb:"Two salvaged cells. Holds the day's light for the night's work — barely."},
-  {id:"catchment", name:"Water catchment", decay:2.4, draw:2, start:true,  blurb:"Gutters, tanks, and the pump that feeds them."},
-  {id:"aquaponics",name:"Aquaponics",      decay:2.4, draw:3, start:false, cost:{scrap:12,parts:6}, work:22, blurb:"Fish feed plants feed fish. Wants a machinist and a keeper of living things. Hungry for power.", gate:{sys:"irrigation"}},
+  {id:"turbine",   name:"Wind turbine",    decay:3.6, draw:0, start:true,  blurb:"The blades were old when it was found, but the turbine still turns."},
+  {id:"solar",     name:"Solar array",     decay:2.0, draw:0, start:false, cost:{scrap:5,parts:3},  work:11, blurb:"Panels on the depot roofs. Quiet, and only works in daylight.", gate:{discover:true}},
+  {id:"battery",   name:"Battery bank",    decay:1.6, draw:0, start:true,  blurb:"Salvaged cells that hold barely enough charge to be useful."},
+  {id:"catchment", name:"Water catchment", decay:2.4, draw:2, start:true,  blurb:"Rain gutters, storage tanks, and pumps."},
+  {id:"aquaponics",name:"Aquaponics",      decay:2.4, draw:3, start:false, cost:{scrap:12,parts:6}, work:22, blurb:"Fish feed plants feed fish. Wants a machinist and a keeper of living things. Uses power.", gate:{sys:"irrigation"}},
   {id:"irrigation",name:"Irrigation lines",decay:2.4, draw:0, start:false, cost:{scrap:9},          work:14, blurb:"Drip lines that stretch every liter."},
   {id:"commons",   name:"The commons",     decay:2.0, draw:1, start:true,  blurb:"A roof, a long table, a stove. Wants a keeper for the roof and a cook for the rest."}
 ];
@@ -183,14 +183,14 @@ const SYS = [
 const RES_CAP = {scrap:120, parts:60, wood:150};
 
 const SITE_DEF = [
-  {id:"oldtown",  name:"Old Town Row",          days:2, known:true,  stock:{scrap:40, parts:8, cans:14},   blurb:"Collapsed storefronts. Good bones, if you pry — and somebody's pantry might still be sealed."},
-  {id:"kessler",  name:"Kessler Depot",         days:3, known:true,  stock:{parts:30, scrap:10},           blurb:"An electronics depot, half looted before the quiet."},
+  {id:"oldtown",  name:"Old Town Row",          days:2, known:true,  stock:{scrap:40, parts:8, cans:14},   blurb:"Collapsed storefronts containing a mix of scrap, parts, and some canned food."},
+  {id:"kessler",  name:"Kessler Depot",         days:3, known:true,  stock:{parts:30, scrap:10},           blurb:"An electronics depot, already looted before we found it."},
   {id:"pharmacy", name:"Greenbriar Pharmacy",   days:2, known:true,  stock:{meds:20, scrap:6},             blurb:"Shelves behind a grate somebody gave up on."},
-  {id:"seedvault",name:"County Seed Vault",     days:4, known:false, stock:{seeds:30, meds:4},             blurb:"A basement archive. Cool, dry, and patient."},
+  {id:"seedvault",name:"County Seed Vault",     days:4, known:false, stock:{seeds:30, meds:4},             blurb:"A basement archive. Cool and dry."},
   {id:"substation",name:"Riverside Substation", days:5, known:false, stock:{parts:26, scrap:14},           blurb:"Transformers like sleeping animals."},
-  {id:"extension",name:"Agricultural Extension",days:5, known:false, stock:{seeds:22, scrap:12, parts:6},  blurb:"Test plots gone feral. Filing cabinets full of futures."},
-  {id:"hospital", name:"Valley Hospital",       days:6, known:false, stock:{meds:30, parts:8},             blurb:"Long halls. You don't go alone."},
-  {id:"solarfarm",name:"Solar Farm Ruins",      days:7, known:false, stock:{parts:34, scrap:20},           blurb:"A field of cracked mirrors aimed at nothing."},
+  {id:"extension",name:"Agricultural Extension",days:5, known:false, stock:{seeds:22, scrap:12, parts:6},  blurb:"Test plots gone feral. Filing cabinets full of seed varieties."},
+  {id:"hospital", name:"Valley Hospital",       days:6, known:false, stock:{meds:30, parts:8},             blurb:"Long halls and mysterious stains. A little creepy alone."},
+  {id:"solarfarm",name:"Solar Farm Ruins",      days:7, known:false, stock:{parts:34, scrap:20},           blurb:"A field of cracked panels that once moved to track the Sun."},
   {id:"reservoir",name:"The Reservoir Works",   days:8, known:false, stock:{scrap:30, parts:16, meds:6},   blurb:"The far edge of anyone's map."}
 ];
 
@@ -218,22 +218,22 @@ const SITE_LOOT_TABLE = {
 // expedition site turning it up). No gate = visible to a new village on day one.
 const PROJECTS = [
   {id:"toolLibrary", name:"Tool library",          cost:{scrap:12},          work:18, blurb:"Sorted, sharpened, and where you left it. All repairs work 20% better."},
-  {id:"rootCellar",  name:"Root cellar",           cost:{scrap:8},           work:14, blurb:"Cool, dark, and rat-proof. Holds far more food, and food spoils far slower."},
-  {id:"dryRacks",    name:"Drying racks",          cost:{scrap:4},           work:10, blurb:"Sun, air, patience. Fresh food becomes food that keeps — losing a fifth on the way."},
-  {id:"crocks",      name:"Fermenting crocks",     cost:{scrap:5, seeds:2},  work:12, blurb:"Salt and time. Keeps nearly all of what you put in, and it's good for people."},
-  {id:"canning",     name:"Canning kitchen",       cost:{scrap:6, parts:5},  work:18, blurb:"Jars, lids, and heat. The fastest way to put a harvest by — when the power holds.", gate:{flag:"dryRacks"}},
+  {id:"rootCellar",  name:"Root cellar",           cost:{scrap:8},           work:14, blurb:"Cool, dark, and relatively rat-proof. Holds far more food, and food spoils far slower."},
+  {id:"dryRacks",    name:"Drying racks",          cost:{scrap:4},           work:10, blurb:"Sun, air, patience. Fresh food becomes dried for storage — losing a fifth on the way."},
+  {id:"crocks",      name:"Fermenting crocks",     cost:{scrap:5, seeds:2},  work:12, blurb:"Salt, time, and the right microbial community. Pretty good for preserving food, even if not everyone loves the smell."},
+  {id:"canning",     name:"Canning kitchen",       cost:{scrap:6, parts:5},  work:18, blurb:"Jars, lids, and heat. The fastest way to preserve food, but it requires power.", gate:{flag:"dryRacks"}},
   {id:"gardenBeds",  name:"New beds",              cost:{scrap:5, seeds:4},  work:14, blurb:"More ground turned, more trellis raised. Another pair of hands can work the gardens."},
-  {id:"batteryRecond",name:"Battery reconditioning",cost:{parts:6},          work:14, gate:{sys:"battery"}, blurb:"New cells in old shells. The bank holds most of what it did over again."},
+  {id:"batteryRecond",name:"Battery reconditioning",cost:{parts:6},          work:14, gate:{sys:"battery"}, blurb:"New cells in old shells. The power bank's capacity is nearly doubled."},
   {id:"panelWash",   name:"Panel wash rig",        cost:{scrap:5},           work:10, gate:{sys:"solar"}, blurb:"A squeegee on a long pole, mostly. Solar array wears slower."},
   {id:"bearings",    name:"Spare bearings",        cost:{parts:8},           work:14, gate:{sys:"turbine"}, blurb:"Machined to fit. The turbine wears much slower."},
   {id:"dripRetrofit",name:"Drip retrofit",         cost:{scrap:6, parts:4},  work:14, gate:{sys:"irrigation"}, blurb:"Every joint resealed. Irrigation wears slower, gardens drink less."},
   {id:"graywater",   name:"Graywater loop",        cost:{scrap:7, parts:3},  work:16, gate:{sys:"irrigation"}, blurb:"Wash water and rinse water, filtered through sand and reed, sent back to the beds. The gardens take far less from the cisterns."},
-  {id:"coldFrames",  name:"Cold frames",           cost:{scrap:6, seeds:6},  work:16, gate:{sys:"irrigation"}, blurb:"Glass over good soil. A few beds keep growing straight through winter frost, and you can sow out of season."},
-  {id:"herbalStores",name:"Herbal stores",         cost:{meds:6, seeds:3},   work:12, gate:{discover:true}, blurb:"Dried, labeled, jarred. Illness comes less often and leaves sooner."},
+  {id:"coldFrames",  name:"Cold frames",           cost:{scrap:6, seeds:6},  work:16, gate:{sys:"irrigation"}, blurb:"Miniature greenhouses to keep the garden growing straight through winter frost, and you can sow out of season."},
+  {id:"herbalStores",name:"Herbal stores",         cost:{meds:6, seeds:3},   work:12, gate:{discover:true}, blurb:"Dried, labeled, jarred. Illness is briefer and less frequent."},
   {id:"oilPress",    name:"Oil press",             cost:{scrap:7, parts:3},  work:14, gate:{crop:"sunflower"}, blurb:"A hand crank and a screw. Turns seed into oil, if someone's willing to stand there and turn it."},
-  {id:"compost",     name:"Compost bins",          cost:{scrap:3},           work:8,  blurb:"What spoils and what's trimmed away doesn't have to just be gone. Turned rot closes the loop back into the beds — tired soil recovers faster."},
+  {id:"compost",     name:"Compost bins",          cost:{scrap:3},           work:8,  blurb:"What spoils and what's trimmed away doesn't have to just be gone. Discarded food contributes to soil fertility."},
   {id:"woodStove", name:"Masonry Heater", cost:{scrap:10, parts:4}, work:16, blurb:"A heavy stone hearth in the Commons. Burns wood slowly and holds the heat for hours. Crucial for winter survival."},
-  {id:"earthBerming", name:"Earth-bermed Walls", cost:{scrap:15}, work:25, blurb:"Packing earth and tires against the north walls of the Commons and sickbed. Passive solarpunk insulation. permanently softens extreme heat and cold."}
+  {id:"earthBerming", name:"Earth-bermed Walls", cost:{scrap:15}, work:25, blurb:"Packing earth and tires against the north walls of the Commons and sickbed. Passive solarpunk insulation, good for keeping temperatures stable in both winter and summer."}
 
 ];
 
@@ -418,9 +418,9 @@ const SEASONS = [
    under construction). Expedition types (forage/explore/salvage) feed "wild"
    and are credited separately, from S.expeditions, since travelling people
    carry job:"away" rather than a job id. */
-const PRACTICE_SPECIFIC_CAP = 0.7;
+const PRACTICE_SPECIFIC_CAP = 0.9;
 
-const PRACTICE_BROAD_CAP = 0.3;
+const PRACTICE_BROAD_CAP = 0.5;
 
 const PRACTICE_SPECIFIC_GROWTH = 0.012;   // per day worked -> ~94% of cap by ~2 game-years
 
