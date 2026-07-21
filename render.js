@@ -54,7 +54,7 @@ function renderHeader() {
 
   const delta = v => `<span class="delta"><span class="${v >= 0 ? 'pos' : 'neg'}">${v >= 0 ? '+' : ''}${v.toFixed(1)}</span></span>`;
   const foodBreakdown = S.preserved > 0
-    ? ` · ${S.res.food.toFixed(0)}f ${S.preserved.toFixed(0)}r` : '';
+    ? ` · ${S.res.food.toFixed(0)}fresh ${S.preserved.toFixed(0)}preserved` : '';
 
   $("hudVitals").innerHTML = `
     <div class="stat">
