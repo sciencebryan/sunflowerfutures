@@ -32,26 +32,26 @@ const TRAITS = {
 
 const ROSTER = [
   {id:"nadia",  name:"Nadia",   pn:"she/her",  trait:"Tinkerer",    hands:4, green:1, care:1, wild:1, note:"Keeps a jar of salvaged screws sorted by mood."},
-  {id:"ora",    name:"Ora",     pn:"she/they", trait:"Green-thumb", hands:1, green:4, care:2, wild:1, note:"Talks to the tomatoes. Swears they answer."},
+  {id:"ora",    name:"Ora",     pn:"she/they", trait:"Green-thumb", hands:1, green:4, care:2, wild:1, note:"Talks to the plants. Swears they answer."},
   {id:"bec",    name:"Bec",     pn:"they/them",trait:"Restless",    hands:2, green:1, care:1, wild:4, note:"Maps the ridgeline in their head at night."},
   {id:"sam",    name:"Sam",     pn:"he/him",   trait:"Steady",      hands:2, green:1, care:1, wild:2, note:"Has never once complained about the rain."},
-  {id:"yusuf",  name:"Yusuf",   pn:"he/him",   trait:"Cautious",    hands:3, green:1, care:1, wild:2, note:"Checks every ladder twice. Alive because of it."},
+  {id:"yusuf",  name:"Yusuf",   pn:"he/him",   trait:"Cautious",    hands:3, green:1, care:1, wild:2, note:"Checks every ladder twice."},
   {id:"petra",  name:"Petra",   pn:"she/her",  trait:"Mender",      hands:1, green:1, care:4, wild:1, note:"Remembers how everyone takes their tea."},
-  {id:"ilya",   name:"Ilya",    pn:"he/they",  trait:"Tinkerer",    hands:3, green:1, care:1, wild:2, note:"Hums to engines until they start."},
+  {id:"ilya",   name:"Ilya",    pn:"he/they",  trait:"Tinkerer",    hands:3, green:1, care:1, wild:2, note:"Hums to engines and motors until they start."},
   {id:"june",   name:"June",    pn:"she/her",  trait:"Weathered",   hands:2, green:3, care:3, wild:1, note:"Planted the first bed the spring after."},
   {id:"marisol",name:"Marisol", pn:"she/her",  trait:"Green-thumb", hands:1, green:3, care:2, wild:1, note:"Braids seed packets into her hair."},
-  {id:"theo",   name:"Theo",    pn:"he/him",   trait:"Restless",    hands:1, green:1, care:1, wild:3, note:"Sixteen, and the fastest up the water tower."},
+  {id:"theo",   name:"Theo",    pn:"he/him",   trait:"Restless",    hands:1, green:1, care:1, wild:3, note:"The fastest up the water tower."},
   {id:"ash",    name:"Ash",     pn:"they/them",trait:"Steady",      hands:2, green:2, care:1, wild:2, note:"Speaks rarely; finishes everything."},
-  {id:"kav",    name:"Kav",     pn:"xe/xem",   trait:"Cautious",    hands:1, green:2, care:2, wild:1, note:"Keeps the weather log. Trusts the sky less each year."}
+  {id:"kav",    name:"Kav",     pn:"xe/xem",   trait:"Cautious",    hands:1, green:2, care:2, wild:1, note:"Keeps a weather log. Likes to sketch the clouds."}
 ];
 
 const NEWCOMERS = [
-  {id:"rosa",  name:"Rosa",  pn:"she/her",  trait:"Steady",      hands:1, green:2, care:3, wild:1, note:"Arrived with a sourdough starter older than the quiet."},
-  {id:"emrys", name:"Emrys", pn:"he/him",   trait:"Tinkerer",    hands:3, green:1, care:1, wild:1, note:"Carries a multimeter like a talisman."},
+  {id:"rosa",  name:"Rosa",  pn:"she/her",  trait:"Steady",      hands:1, green:2, care:3, wild:1, note:"Arrived with a sourdough starter older than she is."},
+  {id:"emrys", name:"Emrys", pn:"he/him",   trait:"Tinkerer",    hands:3, green:1, care:1, wild:1, note:"Carries a multimeter like a holy relic."},
   {id:"din",   name:"Din",   pn:"they/them",trait:"Restless",    hands:1, green:1, care:1, wild:3, note:"Doesn't say where they walked from."},
-  {id:"halla", name:"Halla", pn:"she/her",  trait:"Green-thumb", hands:1, green:3, care:2, wild:1, note:"Knows which mushrooms. All of which."},
-  {id:"moss",  name:"Moss",  pn:"they/them",trait:"Weathered",   hands:2, green:2, care:1, wild:1, note:"Old enough to remember the before. Doesn't talk about it."},
-  {id:"yara",  name:"Yara",  pn:"she/her",  trait:"Cautious",    hands:2, green:1, care:2, wild:2, note:"Counts everything twice, shares anyway."}
+  {id:"halla", name:"Halla", pn:"she/her",  trait:"Green-thumb", hands:1, green:3, care:2, wild:1, note:"Knows mushrooms. Most of them, anyway."},
+  {id:"moss",  name:"Moss",  pn:"they/them",trait:"Weathered",   hands:2, green:2, care:1, wild:1, note:"Old enough to remember what life was like before. Doesn't like to talk about it."},
+  {id:"yara",  name:"Yara",  pn:"she/her",  trait:"Cautious",    hands:2, green:1, care:2, wild:2, note:"Measured, deliberate, and always kind."}
 ];
 
 
@@ -113,16 +113,16 @@ function stepRestoration(lines){
   // legible journal beats at the tipping points, not every season
   const up   = (v0,v1)=> v0<RESTORE_HIGH && v1>=RESTORE_HIGH;
   const down = (v0,v1)=> v0>=RESTORE_LOW && v1<RESTORE_LOW;
-  if(up(was.M,r.mycosphere)) lines.push("The soil has turned a corner. Dig anywhere and it's dark, and it smells alive — it holds itself together now.");
-  if(up(was.A,r.aquifer))    lines.push("The water table has come back up. The low ground stays damp through the dry weeks, the way the old people said it used to.");
-  if(up(was.P,r.pollinator)) lines.push("The valley hums. Bees no one keeps, in flowers no one planted for food — the bloom has caught on its own.");
-  if(down(was.M,r.mycosphere)) lines.push("The bare ground is washing thin again. Without more rooted in it, the soil won't stay.");
-  if(down(was.P,r.pollinator)) lines.push("The blooms are thinning. Nothing holds the pollinators if the soil and water beneath them fail.");
+  if(up(was.M,r.mycosphere)) lines.push("The soil has turned a corner. Dig anywhere and it's dark, and it smells alive.");
+  if(up(was.A,r.aquifer))    lines.push("The water table has come back up. The low ground stays damp through the dry weeks.");
+  if(up(was.P,r.pollinator)) lines.push("The valley hums. Bee balm flowers dip under the weight of visiting pollinators.");
+  if(down(was.M,r.mycosphere)) lines.push("The bare ground is washing away. Without more rooted in it, the soil won't stay.");
+  if(down(was.P,r.pollinator)) lines.push("There's little to attract pollinators if the soil and water beneath don't sustain life.");
 
   // the gate: all three restored
   if(!r.restored && r.mycosphere>=RESTORE_GATE && r.aquifer>=RESTORE_GATE && r.pollinator>=RESTORE_GATE){
     r.restored = true;
-    lines.push("Someone stood on the ridge at dusk and couldn't tell, for a moment, where the village ended and the woods began. The valley is whole. Whatever comes next, it comes from a place that can hold it.");
+    lines.push("Someone stood on the ridge at dusk and couldn't tell, for a moment, where the village ended and the woods began.");
   }
 }
 
@@ -185,27 +185,27 @@ function isVisible(entry){
    journal-writing section near the end of simulateDay) for ambient text only; it does
    not itself change any number. */
 const VISUALS = [
-  {id:"tower",     label:"a water tower everyone can see from home",
+  {id:"tower",     label:"a rusting water tower that can be seen for miles",
    fx:{drawReduce:2, safeReturn:true, strangerRate:1.7, journal:"tower"}},
-  {id:"bittersweet",label:"bittersweet swallowing the power lines",
+  {id:"bittersweet",label:"bittersweet vines swallowing old power lines",
    fx:{carry:2, siteYield:{substation:0.6, solarfarm:0.6}, journal:"vines"}},
-  {id:"rail",      label:"the rail line, walked but never ridden",
+  {id:"rail",      label:"train tracks that haven't seen a train in years",
    fx:{farSafe:0.45, scrapTrickle:0.3, journal:"rail"}},
   {id:"bikes",     label:"bicycles, endlessly repaired",
    fx:{fastLong:true, carry:3, partsUpkeep:0.14, journal:"bikes"}},
-  {id:"paths",     label:"paths worn by feet, not plows",
+  {id:"paths",     label:"paths worn by feet, not plows", //weak
    fx:{spirits:0.1, bikeDull:true, journal:"paths"}},
-  {id:"river",     label:"a river that took back its floodplain",
+  {id:"river",     label:"a river, wide and swift",
    fx:{wetter:true, waterStart:15, floodRisk:0.035, journal:"river"}},
-  {id:"library",   label:"the library, kept dry at all costs",
+  {id:"library",   label:"a library, kept dry at all costs",
    fx:{projectFaster:true, upkeepScrap:0.16, journal:"library"}},
   {id:"greenhouse",label:"greenhouses patched with car glass",
    fx:{coldStart:true, stormBreak:true, journal:"greenhouse"}},
-  {id:"reservoir", label:"the reservoir low, showing old foundations",
+  {id:"reservoir", label:"the reservoir low, showing old foundations", //weak
    fx:{scrapStart:10, drier:true, journal:"reservoir"}},
   {id:"turbinehum",label:"a turbine you can hear at night",
    fx:{sysStart:["turbine",25], spirits:-0.15, journal:"turbinehum"}},
-  {id:"solarfound",label:"a rack of panels someone kept the leaves off of",
+  {id:"solarfound",label:"a rack of solar panels, cracked but functional",
    fx:{solarStart:true, journal:"solarfound"}},
   {id:"bees",      label:"bee boxes on the courthouse steps",
    fx:{gardenBonus:1.15, journal:"bees"}},
@@ -217,23 +217,23 @@ const VISUALS = [
    fx:{spirits:-0.1, tripLong:true, strangerRate:0.55, journal:"bridge"}},
   {id:"mall",      label:"the flooded mall",
    fx:{siteRename:["oldtown","The Flooded Mall"], siteBonus:["oldtown",{scrap:10,parts:3}], journal:"mall"}},
-  {id:"chapel",    label:"a chapel reroofed as a seed store",
+  {id:"chapel",    label:"a chapel repurposed as a seed store",
    fx:{seedsStart:6, cropUnlock:3, journal:"chapel"}},
-  {id:"mushroom",  label:"mushroom logs in the shade of the ruin",
+  {id:"mushroom",  label:"mushroom logs in the shade",
    fx:{foodTrickle:0.5, journal:"mush"}},
-  {id:"orchard",   label:"orchards planted in parking lots",
+  {id:"orchard",   label:"a long-abandoned apple orchard",
    fx:{forestStart:3, orchardApples:2, journal:"orchard"}},
   {id:"scar",      label:"a burn scar coming back in fireweed",
    fx:{seedsStart:8, journal:"fireweed"}},
   {id:"barrels",   label:"rain barrels under every gutter",
    fx:{sysStart:["catchment",18], journal:"barrels"}},
-  {id:"stars",     label:"night skies with all the stars back",
+  {id:"stars",     label:"night skies with all the stars back", //weak
    fx:{spirits:0.25, journal:"stars"}},
   {id:"meadow",    label:"a highway gone to meadow",
    fx:{spirits:0.15, journal:"meadow"}},
   {id:"laundry",   label:"laundry strung between dead streetlights",
    fx:{spirits:0.2, journal:"laundry"}},
-  {id:"antenna",   label:"an antenna kept for a radio no one's heard in years",
+  {id:"antenna",   label:"a crossed-shaped radio antenna on a swaying metal mast",
    fx:{spirits:0.1, spiritsGrey:-0.15, journal:"antenna"}},
   {id:"graffiti",  label:"graffiti gone soft with moss",
    fx:{spirits:-0.1, journal:"graffiti"}}
