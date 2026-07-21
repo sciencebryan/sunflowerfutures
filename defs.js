@@ -17,7 +17,7 @@ const SKILL_INFO = {
   hands:"repairs, machines, building",
   green:"gardens, tanks, things that grow",
   care:"the hearth, the sickbed, people",
-  wild:"the road — safer and stronger out beyond"
+  wild:"the road — foraging, salvaging, exploring"
 };
 
 const TRAITS = {
@@ -31,17 +31,17 @@ const TRAITS = {
 };
 
 const ROSTER = [
-  {id:"nadia",  name:"Nadia",   pn:"she/her",  trait:"Tinkerer",    hands:4, green:1, care:1, wild:1, note:"Keeps a jar of salvaged screws sorted by mood."},
-  {id:"ora",    name:"Ora",     pn:"she/they", trait:"Green-thumb", hands:1, green:4, care:2, wild:1, note:"Talks to the plants. Swears they answer."},
-  {id:"bec",    name:"Bec",     pn:"they/them",trait:"Restless",    hands:2, green:1, care:1, wild:4, note:"Maps the ridgeline in their head at night."},
+  {id:"nadia",  name:"Nadia",   pn:"she/her",  trait:"Tinkerer",    hands:4, green:1, care:1, wild:1, note:"Keeps a tackle box of salvaged screws, meticulously sorted."},
+  {id:"ora",    name:"Ora",     pn:"she/they", trait:"Green-thumb", hands:1, green:4, care:2, wild:1, note:"Talks to the plants. Likes to imagine they answer."},
+  {id:"bec",    name:"Bec",     pn:"they/them",trait:"Restless",    hands:2, green:1, care:1, wild:4, note:"Sleeps outside, when the weather allows it."},
   {id:"sam",    name:"Sam",     pn:"he/him",   trait:"Steady",      hands:2, green:1, care:1, wild:2, note:"Has never once complained about the rain."},
-  {id:"yusuf",  name:"Yusuf",   pn:"he/him",   trait:"Cautious",    hands:3, green:1, care:1, wild:2, note:"Checks every ladder twice."},
+  {id:"yusuf",  name:"Yusuf",   pn:"he/him",   trait:"Cautious",    hands:3, green:1, care:1, wild:2, note:"Checks ladders twice."},
   {id:"petra",  name:"Petra",   pn:"she/her",  trait:"Mender",      hands:1, green:1, care:4, wild:1, note:"Remembers how everyone takes their tea."},
-  {id:"ilya",   name:"Ilya",    pn:"he/they",  trait:"Tinkerer",    hands:3, green:1, care:1, wild:2, note:"Hums to engines and motors until they start."},
-  {id:"june",   name:"June",    pn:"she/her",  trait:"Weathered",   hands:2, green:3, care:3, wild:1, note:"Planted the first bed the spring after."},
-  {id:"marisol",name:"Marisol", pn:"she/her",  trait:"Green-thumb", hands:1, green:3, care:2, wild:1, note:"Braids seed packets into her hair."},
-  {id:"theo",   name:"Theo",    pn:"he/him",   trait:"Restless",    hands:1, green:1, care:1, wild:3, note:"The fastest up the water tower."},
-  {id:"ash",    name:"Ash",     pn:"they/them",trait:"Steady",      hands:2, green:2, care:1, wild:2, note:"Speaks rarely; finishes everything."},
+  {id:"ilya",   name:"Ilya",    pn:"he/they",  trait:"Tinkerer",    hands:3, green:1, care:1, wild:2, note:"Can diagnose motor and engine problems by sound."},
+  {id:"june",   name:"June",    pn:"she/her",  trait:"Weathered",   hands:2, green:3, care:3, wild:1, note:"Jokes that she likes the people here almost as much as she likes the garden."},
+  {id:"marisol",name:"Marisol", pn:"she/her",  trait:"Green-thumb", hands:1, green:3, care:2, wild:1, note:"Her arms are covered in colorful tattoos of native flowers and butterflies."},
+  {id:"theo",   name:"Theo",    pn:"he/him",   trait:"Restless",    hands:1, green:1, care:1, wild:3, note:"Nobody has ever seen him sit still for more than a few seconds at a time."},
+  {id:"ash",    name:"Ash",     pn:"they/them",trait:"Steady",      hands:2, green:2, care:1, wild:2, note:"Speaks rarely; doesn't like to leave jobs half-done."},
   {id:"kav",    name:"Kav",     pn:"xe/xem",   trait:"Cautious",    hands:1, green:2, care:2, wild:1, note:"Keeps a weather log. Likes to sketch the clouds."}
 ];
 
@@ -51,7 +51,8 @@ const NEWCOMERS = [
   {id:"din",   name:"Din",   pn:"they/them",trait:"Restless",    hands:1, green:1, care:1, wild:3, note:"Doesn't say where they walked from."},
   {id:"halla", name:"Halla", pn:"she/her",  trait:"Green-thumb", hands:1, green:3, care:2, wild:1, note:"Knows mushrooms. Most of them, anyway."},
   {id:"moss",  name:"Moss",  pn:"they/them",trait:"Weathered",   hands:2, green:2, care:1, wild:1, note:"Old enough to remember what life was like before. Doesn't like to talk about it."},
-  {id:"yara",  name:"Yara",  pn:"she/her",  trait:"Cautious",    hands:2, green:1, care:2, wild:2, note:"Measured, deliberate, and always kind."}
+  {id:"yara",  name:"Yara",  pn:"she/her",  trait:"Cautious",    hands:2, green:1, care:3, wild:2, note:"Measured, deliberate, and always kind."},
+  {id:"eli",  name:"Eli",  pn:"he/him",  trait:"Mender",    hands:1, green:2, care:2, wild:2, note:"Always has a jar of black birch tea steeping somewhere."}
 ];
 
 
@@ -154,6 +155,7 @@ function decayOf(d){
   if(d.id==="solar")   base *= (1 + 0.03*((S.solarPanels||1)-1));
   if(d.id==="battery") base *= (1 + 0.03*((S.batteries||1)-1));
   if(F.relayGrid) base*=0.9;
+  base*=0.75; //adding this to make it easier
   return base;
 }
 // whether a gated SYS/PROJECT entry should appear in the build menu at all.
@@ -188,7 +190,7 @@ const VISUALS = [
   {id:"tower",     label:"a rusting water tower that can be seen for miles",
    fx:{drawReduce:2, safeReturn:true, strangerRate:1.7, journal:"tower"}},
   {id:"bittersweet",label:"bittersweet vines swallowing old power lines",
-   fx:{carry:2, siteYield:{substation:0.6, solarfarm:0.6}, journal:"vines"}},
+   fx:{carry:2, siteYield:{substation:0.8, solarfarm:0.8}, journal:"vines"}},
   {id:"rail",      label:"train tracks that haven't seen a train in years",
    fx:{farSafe:0.45, scrapTrickle:0.3, journal:"rail"}},
   {id:"bikes",     label:"bicycles, endlessly repaired",
