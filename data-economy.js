@@ -231,7 +231,7 @@ const PROJECTS = [
   {id:"coldFrames",  name:"Cold frames",           cost:{scrap:6, seeds:6},  work:16, gate:{sys:"irrigation"}, blurb:"Miniature greenhouses to keep the garden growing straight through winter frost, and you can sow out of season."},
   {id:"herbalStores",name:"Herbal stores",         cost:{meds:6, seeds:3},   work:12, gate:{discover:true}, blurb:"Dried, labeled, jarred. Illness is briefer and less frequent."},
   {id:"oilPress",    name:"Oil press",             cost:{scrap:7, parts:3},  work:14, gate:{crop:"sunflower"}, blurb:"A hand crank and a screw. Turns seed into oil, if someone's willing to stand there and turn it."},
-  {id:"compost",     name:"Compost bins",          cost:{scrap:3},           work:8,  blurb:"What spoils and what's trimmed away doesn't have to just be gone. Discarded food contributes to soil fertility."},
+  {id:"compost",     name:"Compost bins",          cost:{scrap:3},           work:8,  blurb:"Rotten food and vegetable scraps are composted. Discarded food contributes to soil fertility."},
   {id:"woodStove", name:"Masonry Heater", cost:{scrap:10, parts:4}, work:16, blurb:"A heavy stone hearth in the Commons. Burns wood slowly and holds the heat for hours. Crucial for winter survival."},
   {id:"earthBerming", name:"Earth-bermed Walls", cost:{scrap:15}, work:25, blurb:"Packing earth and tires against the north walls of the Commons and sickbed. Passive solarpunk insulation, good for keeping temperatures stable in both winter and summer."}
 
@@ -342,9 +342,9 @@ const CROPS = {
   // decades after that — genuinely outside any playthrough. It's here so the
   // choice to plant it can be made honestly: not a crop with a payoff, a gift
   // to whoever's still tending this ground when it's grown.
-  oakhickory:{name:"Oak & hickory mast", perennial:true, native:true, matureYears:40, harvestSeason:"autumn",
+  oakhickory:{name:"Oak & hickory", perennial:true, native:true, matureYears:20, harvestSeason:"autumn",
               yield:150, seed:8, seeds:0, sow:["spring"], feed:"light", locked:true,
-              note:"White oak and shagbark hickory. In the wild these don't produce a first acorn or nut until they're grown themselves — twenty years, more. Nobody who plants this expects to pick from it. Someone else will."}
+              note:"White oak and shagbark hickory. These take decades to mature."}
 };
 
 /* Preservation: fresh food spoils; preserved food does not.
@@ -371,13 +371,13 @@ const PRESERVE = {
    gives (a key into S.res / FAB_RATE), blurb. */
 const FABS = [
   {id:"seedSaving", name:"Seed saving",   cost:{seeds:4},           work:16, gives:"seeds",
-   blurb:"Save the best, sow the best. The seed vault stops mattering."},
+   blurb:"Save the best, sow the best. A steady source of seeds"},
   {id:"forge",      name:"The forge",     cost:{scrap:16, parts:4}, work:30, gives:"scrap",
-   blurb:"Charcoal, bellows, an anvil off a truck axle. Scrap becomes stock."},
+   blurb:"Charcoal, bellows, an anvil off a truck axle. Turning garbage into useful scrap."},
   {id:"machineShop",name:"Machine shop",  cost:{scrap:20, parts:12},work:40, gives:"parts",
-   blurb:"A lathe that runs off the grid. Bearings, fittings, the small hard things."},
+   blurb:"Tools and equipment to produce the parts we need to fix things."},
   {id:"apothecary", name:"Apothecary",    cost:{seeds:8, meds:4},   work:26, gives:"meds",
-   blurb:"Willow, yarrow, poppy, and a good book. Medicine you grow."}
+   blurb:"A medicinal herb garden and a good book. Medicine we can grow."}
 ];
 
 const FAB_RATE = {seeds:0.35, scrap:0.9, parts:0.5, meds:0.25};
@@ -385,16 +385,16 @@ const FAB_RATE = {seeds:0.35, scrap:0.9, parts:0.5, meds:0.25};
 const SEASONS = [
   {id:"spring", name:"Spring", wx:[0.38,0.28,0.34],
    solar:0.9,  heat:0,    grow:1.15, forage:0.9,  roadDays:1,
-   note:"Mud to the ankles, and everything trying at once."},
+   note:"The forest is waking up."},
   {id:"summer", name:"Summer", wx:[0.62,0.24,0.14],
    solar:1.15, heat:1,    grow:1.0,  forage:1.15, roadDays:0,
-   note:"Long light, thin water, and the tanks running warm."},
+   note:"Sunlight late into the evening, the water tanks always warm."},
   {id:"autumn", name:"Autumn", wx:[0.45,0.33,0.22],
    solar:0.85, heat:0,    grow:0.85, forage:1.35, roadDays:0,
-   note:"The year's whole answer comes in at once. Put it by."},
+   note:"The leaves turning red, orange, and yellow."},
   {id:"winter", name:"Winter", wx:[0.4,0.42,0.18],
-   solar:0.5,  heat:0,    grow:0.0,  forage:0.35, roadDays:1,
-   note:"Nothing grows outdoors. You eat what you kept, or you don't eat."}
+   solar:0.5,  heat:0,    grow:0.0,  forage:0.25, roadDays:2,
+   note:"Not much growing outside. We rely on what we've preserved."}
 ];
 
 /* ================= practice: earned skill, not endless growth =================
@@ -473,29 +473,29 @@ const NO_CLEANING_SICK = 0.10;
 const POWER_DEMANDS = [
   {id:"pump",    name:"Catchment pump",   gate:"catchment",  levels:[0,0.5,1],
    draw: SYS.find(s=>s.id==="catchment").draw,
-   blurb:"Lifts roof-water up to the tanks.",
+   blurb:"Moves water to where we need it.",
    fx:{0:"gravity feed only — the tanks fill at half rate",
        0.5:"low pressure — the tanks fill at three-quarters rate",
        1:"full pressure"}},
   {id:"aqua",    name:"Aquaponics pumps", gate:"aquaponics", levels:[0,0.5,1],
    draw: SYS.find(s=>s.id==="aquaponics").draw,
-   blurb:"Circulation and aeration. The fish forgive a slow day, not a still week.",
-   fx:{0:"still water — a third of the yield, and the system sours fast",
+   blurb:"Circulation and aeration. Both fish and plants suffer without it.",
+   fx:{0:"still water — a third of the yield, and the system breaks down quickly",
        0.5:"slow water — seven-tenths of the yield",
        1:"full flow"}},
   {id:"commons", name:"Commons stove & lights", gate:"commons", levels:[0,1],
    draw: SYS.find(s=>s.id==="commons").draw,
    blurb:"The long table's stove, and the lights above it.",
-   fx:{0:"dark evenings — it wears on everyone, and nobody lingers after dinner",
+   fx:{0:"dark evenings — less time spent gathered together",
        1:"lit and warm"}},
   {id:"canning", name:"Canning kitchen",  gate:"flag:canning", levels:[0,1],
    draw: CANNING_DRAW,
-   blurb:"Jars, lids, and heat — the fastest way to put a harvest by.",
-   fx:{0:"boilers cold — preserving falls back to the crocks or the racks",
+   blurb:"Jars, lids, and heat — the fastest way to preserve food.",
+   fx:{0:"boilers cold — preserving falls back to the fermenting crocks or the drying racks",
        1:"boilers hot"}},
   {id:"fab",     name:"Fabrication shops", gate:"fab", levels:[0,1],
    draw: FAB_DRAW,
-   blurb:"The lathe and the forge blower. Only draws while something is being made.",
+   blurb:"The lathe and the forge blower.",
    fx:{0:"hand power only — output at six-tenths",
        1:"machines humming"}}
 ];
@@ -503,20 +503,20 @@ const POWER_DEMANDS = [
 const WATER_DEMANDS = [
   {id:"drinking",  name:"Drinking water", levels:[0.5,1], use:"people",
    blurb:"Cups, canteens, the kettle. This one has no off switch.",
-   fx:{0.5:"on ration — saves three-tenths, and everyone feels it a little more each day",
+   fx:{0.5:"on ration — saves three-tenths, and everyone suffers",
        1:"as much as anyone wants"}},
-  {id:"cooking",   name:"Cooking",        levels:[0,1],   use:"1/day",
-   blurb:"Washing grain, soaking beans, stock on the stove.",
-   fx:{0:"cold sparse meals — spirits sag, and nobody bonds over dinner",
-       1:"proper meals"}},
+//  {id:"cooking",   name:"Cooking",        levels:[0,1],   use:"1/day",
+//   blurb:"Washing grain, soaking beans, stock on the stove.",
+//   fx:{0:"cold sparse meals — spirits sag",
+//       1:"proper meals"}},
   {id:"cleaning",  name:"Cleaning",       levels:[0,0.5,1], use:"1/day",
    blurb:"Dishes, laundry, scrubbed hands. Invisible until it stops.",
-   fx:{0:"nothing washed — spirits sag hard, and sickness finds the village",
+   fx:{0:"nothing washed — spirits sag hard, and people get sick easier",
        0.5:"the essentials only — spirits sag a little",
-       1:"clean and kept"}},
+       1:"clean and well-maintained"}},
   {id:"irrigation",name:"Irrigation",     levels:[0,0.5,1], use:"beds",
-   blurb:"What the gardens drink. The single biggest use in a dry month.",
-   fx:{0:"dry beds — growth all but stops, and crops start to die where they stand",
+   blurb:"What the gardens use. The biggest water draw.",
+   fx:{0:"dry beds — growth all but stops, and crops start to die",
        0.5:"half water — growth at about two-thirds",
        1:"watered in full"}}
 ];
