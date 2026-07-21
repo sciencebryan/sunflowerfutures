@@ -51,7 +51,7 @@ padding: 14px 0 12px;
 }
 
 .masthead { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-.title { font-family: var(--serif); font-weight: 700; font-size: 28px; letter-spacing: 0.02em; text-transform: uppercase; position: relative; z-index: 1; color: var(--paper); -webkit-text-stroke: 1px var(--ink); text-shadow: 2px 2px 0 var(--ink); padding-top: 15px; }
+.title { font-family: var(--serif); font-weight: 700; font-size: 28px; letter-spacing: 0.02em; text-transform: uppercase; position: relative; z-index: 1; color: var(--paper); -webkit-text-stroke: 1px var(--ink); padding-top: 10px; }
 .title::before {
   content: "";
   position: absolute;
