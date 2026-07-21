@@ -756,14 +756,14 @@ header.mini .mini-dayfill {
 .sky-container.wx-overcast { background: linear-gradient(to top, #cfd3d2 0%, #7d8583 100%); }
 .sky-container.wx-rain { background: linear-gradient(to top, #a1b4bc 0%, #4c7286 100%); }
 
-/* Skyline Graphic */
+/* Skyline Graphic 
 .skyline-ruins {
   position: absolute; bottom: 0; left: 0; width: 100%; height: 45px; 
   background-image: url('ny-skyline.png'); 
   background-size: contain; 
   background-repeat: repeat-x; 
   z-index: 1;
-}
+} */
 
 /* Rain Animation */
 .weather-layer { position: absolute; pointer-events: none; z-index: 0; opacity: 0; transition: opacity 1.5s ease; }
