@@ -743,7 +743,7 @@ header.mini .mini-dayfill {
    SKY & WEATHER ANIMATIONS
 ========================================= */
 .sky-container {
-  position: absolute; top: 0; left: 0; right: 0; height: 100%; 
+  position: absolute; top: 0; left: 0; right: 0; height: 55px; 
   overflow: hidden; z-index: 0; 
   transition: background 1.5s ease-in-out;
   background: linear-gradient(to top, #fdfbf7 0%, #89b4c4 100%);
