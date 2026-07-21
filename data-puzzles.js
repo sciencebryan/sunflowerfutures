@@ -60,7 +60,7 @@ function vly(W,H,drop){ const e=[]; const mid=(H-1)/2;
   for(let y=0;y<H;y++){ const r=[]; for(let x=0;x<W;x++) r.push(Math.round((W+drop) - x + Math.abs(y-mid)*2)); e.push(r); } return e; }
 
 const WATER_LEVELS = [
-  { n:1, w:5, h:4, rain:1, teach:"Water runs downhill and spreads. A channel sends it all one way instead.",
+  { n:1, w:5, h:4, rain:3, teach:"Water runs downhill and spreads. A channel sends it all one way instead.",
     elev:vly(5,4,7), beds:[{p:[4,0],min:7,max:15}], budget:{channel:3}, cisternTarget:0 },
   { n:2, w:5, h:4, rain:2, teach:"A berm raises the ground. Water goes around it — or stays where you want it.",
     elev:vly(5,4,7), beds:[{p:[4,0],min:7,max:15},{p:[4,3],min:7,max:15}], budget:{channel:4,berm:4}, cisternTarget:0 },
@@ -429,8 +429,29 @@ const WIRES_REWARD = {
 
 // The library of puzzle layouts (1 = filled, 0 = empty)
 const PICROSS_LEVELS = [
-  {
+
+   {
+     
     n: 1, 
+    teach: "Resolve LIDAR interference to map the heavy tool cache.",
+    parts: 5,
+    rewardText: "You recovered a cache of heavy tools! +5 parts.",
+    grid: [
+      [1,1,1,1,1,1,1,1,1],
+      [1,0,0,0,0,0,0,0,1],
+      [1,0,0,0,1,0,0,0,1],
+      [1,0,0,0,1,0,0,0,1],
+      [1,0,1,1,1,1,1,0,1],
+      [1,0,0,0,1,0,0,0,1],
+      [1,0,0,0,1,0,0,0,1],
+      [1,0,0,0,0,0,0,0,1],
+      [1,1,1,1,1,1,1,1,1]
+     
+    ]
+  },
+   
+   {
+    n: 3, 
     teach: "Resolve LIDAR interference to map the heavy tool cache.",
     parts: 5,
     rewardText: "You recovered a cache of heavy tools! +5 parts.",
@@ -486,12 +507,12 @@ const PICROSS_REWARD = {
 };
 
 const PUZ_META = { //this is our definitive puzzle list. keep it correct.
-  circuit:{levels:CIRCUIT_LEVELS, reward:CIRCUIT_REWARD, noun:"board"},
+//  circuit:{levels:CIRCUIT_LEVELS, reward:CIRCUIT_REWARD, noun:"board"},
   water:{levels:WATER_LEVELS, reward:WATER_REWARD, noun:"season"},
   seed:{levels:SEED_LEVELS, reward:SEED_REWARD, noun:"frame"},
-  radio:{levels:SIGNAL_LEVELS, reward:SIGNAL_REWARD, noun:"frequency"},
+//  radio:{levels:SIGNAL_LEVELS, reward:SIGNAL_REWARD, noun:"frequency"},
   patch:{levels:PATCH_LEVELS, reward:PATCH_REWARD, noun:"draft"},
-  focus:{levels:FOCUS_LEVELS, reward:FOCUS_REWARD, noun:"array"},
+//  focus:{levels:FOCUS_LEVELS, reward:FOCUS_REWARD, noun:"array"},
   wires:{levels:WIRES_LEVELS, reward:WIRES_REWARD, noun:"run"},
   pipes:{levels:PIPES_LEVELS, reward:PIPES_REWARD, noun:"main"},
   picross:{levels:PICROSS_LEVELS, reward: PICROSS_REWARD, noun: "scan"}
