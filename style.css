@@ -462,7 +462,7 @@ footer { padding: 32px 16px 60px; text-align: center; border-top: 1px solid var(
 footer button { font-family: var(--mono); font-size: 13px; font-weight: 700; text-transform: uppercase; color: var(--rust); text-decoration: underline; }
 .protonote { font-family: var(--serif); font-style: italic; font-size: 15px; color: var(--ink-soft); margin-top: 16px; line-height: 1.6; max-width: 600px; margin-left: auto; margin-right: auto; }
 
-@media /*(max-width: 768px)*/{
+@media (max-width: 768px){
 body { padding: 0 12px; }
 main section { grid-template-columns: 1fr; }
 .title { font-size: 22px; }
@@ -473,6 +473,8 @@ main section { grid-template-columns: 1fr; }
 .stat .val small { font-size: 11px; }
 .hud-line { gap: 2px 14px; }
 
+
+}
 /* Minimized header while scrolled down: masthead on one line,
       compact vitals, everything else tucked away */
 header.mini { padding: 6px 0 7px; }
@@ -484,8 +486,6 @@ header.mini .hud-vitals { margin-top: 5px; }
 header.mini .stat { padding: 4px 8px 5px; }
 header.mini .stat .lbl { font-size: 10px; }
 header.mini .stat .val { font-size: 14px; margin-top: 0; }
-}
-
 /* --- allocation tabs (Power / Water) --- */
 .allocrow { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 0; border-bottom:1px dashed var(--line); }
 .allocrow:last-child { border-bottom:none; }
