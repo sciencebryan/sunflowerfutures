@@ -343,7 +343,85 @@ function grantReward(kind){
   if(crops.length) parts.push(`there ${crops.length>1?"are":"are"} ${crops.join(" and ")} to plant now`);
   return parts.length?` And ${parts.join(", and ")}.`:"";
 }
+function sunflowerCelebration() {
+  let html = `<div class="puzzle-celebration">`;
 
+  // 1. Dynamic Density: Target one flower roughly every 40 pixels of screen width
+  const screenWidth = window.innerWidth;
+  const numFlowers = Math.max(4, Math.floor(screenWidth / 40)); 
+  const segmentWidth = 100 / numFlowers; 
+
+  // Dynamically generate the 12 petals once to save string space
+  let petals = '';
+  for (let i = 0; i < 12; i++) {
+    petals += `<ellipse cx="50" cy="22" rx="7" ry="20" fill="#fbbf24" transform="rotate(${i * 30} 50 50)" />`;
+  }
+
+  // The core SVG for the flower head
+  const headSVG = `
+    <svg viewBox="0 0 100 100" width="100%" height="100%">
+      ${petals}
+      <circle cx="50" cy="50" r="22" fill="#78350f" />
+      <circle cx="50" cy="50" r="16" fill="none" stroke="#522504" stroke-width="3" stroke-dasharray="2 4" />
+    </svg>
+  `;
+
+  // Build the garden organically
+  for (let i = 0; i < numFlowers; i++) {
+    const jitter = Math.random() * (segmentWidth * 0.6); 
+    const left = (i * segmentWidth) + jitter;
+    
+    const height = Math.floor(Math.random() * 75) + 20; 
+    
+    const stalkDelay = 0;
+    const headDelay = 0.3 + height/500 + Math.random()/10;
+    const leafDelay = 0.2 + Math.random()/10;
+
+    // Randomly decide if this flower leans left or right for leaf placement variety
+    const flipLeaf = i % 2 === 0;
+    
+    // Leaf styling common variables
+    const leafCommon = `position: absolute; width: 22px; height: 10px; background: #15803d; border-radius: 0 100% 0 100%; opacity: 0; animation: bloom-leaf 0.4s ease-out ${leafDelay}s forwards;`;
+    
+    // Left leaf style & position (placed around 40% down the stalk)
+    const leftLeaf = flipLeaf 
+      ? `${leafCommon} top: 40%; left: -18px; transform-origin: right center; transform: rotate(-25deg);` 
+      : `${leafCommon} top: 40%; right: -18px; transform-origin: left center; transform: scaleX(-1) rotate(-25deg);`;
+
+    // Right leaf style & position (placed around 70% down the stalk, mirrored)
+    const rightLeaf = flipLeaf 
+      ? `${leafCommon} top: 70%; right: -18px; transform-origin: left center; transform: scaleX(-1) rotate(15deg);` 
+      : `${leafCommon} top: 70%; left: -18px; transform-origin: right center; transform: rotate(15deg);`;
+
+    html += `
+      <div style="position: absolute; bottom: 0; left: ${left}%; height: ${height}%; width: 8px;">
+        
+        <!-- The Stalk -->
+        <div style="width: 100%; height: 100%; background: #16a34a; border-radius: 4px; 
+                    transform-origin: bottom center; transform: scaleY(0); 
+                    animation: grow-stalk 0.6s ease-out ${stalkDelay}s forwards;">
+          
+          <!-- Leaf Pair Along the Stalk -->
+          <div style="${leftLeaf}"></div>
+          <div style="${rightLeaf}"></div>
+
+        </div>
+        
+        <!-- The Head -->
+        <div style="position: absolute; top: 0; left: 50%; width: 70px; height: 70px; 
+                    margin-top: -35px; margin-left: -35px; opacity: 0; 
+                    animation: bloom-sunflower 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) ${headDelay}s forwards;">
+          ${headSVG}
+        </div>
+        
+      </div>
+    `;
+  }
+
+  html += `</div>`;
+  return html;
+}
+/*
 function sunflowerCelebration() {
   let html = `<div class="puzzle-celebration">`;
 
@@ -402,7 +480,7 @@ function sunflowerCelebration() {
 
   html += `</div>`;
   return html;
-}
+}*/
 
 /* ---------- circuit UI ---------- */
 function renderCircuit(){
