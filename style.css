@@ -703,6 +703,11 @@ color: #000;
 100% { transform: scale(1) rotate(0deg); opacity: 1; }
 }
 
+@keyframes bloom-leaf {
+  0% { transform: scale(0); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
 .puzzle-celebration {
 position: absolute;
 bottom: 0;
