@@ -48,11 +48,12 @@ header {
 position: sticky; top: 0; z-index: 30; background: var(--paper);
 border-bottom: 2px solid var(--ink);
 padding: 14px 0 12px;
+overflow: hidden;
 }
 
 .masthead { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; position: relative; z-index: 2 }
 .title { font-family: var(--serif); font-weight: 700; font-size: 28px; letter-spacing: 0.02em; text-transform: uppercase; position: relative; z-index: 1; color: var(--paper); -webkit-text-stroke: 1px var(--ink); paint-order: stroke fill; padding-top: 10px; }
-.title::before {
+.masthead .title::before {
   content: "";
   position: absolute;
   top: 0;
@@ -742,14 +743,14 @@ header.mini .mini-dayfill {
    SKY & WEATHER ANIMATIONS
 ========================================= */
 .sky-container {
-  position: absolute; top: 0; left: 0; right: 0; height: 95px; 
+  position: absolute; top: 0; left: 0; right: 0; height: 100%; 
   overflow: hidden; z-index: 0; 
-  transition: height 0.3s ease, background 1.5s ease-in-out;
+  transition: background 1.5s ease-in-out;
   background: linear-gradient(to top, #fdfbf7 0%, #89b4c4 100%);
 }
 
 /* Hides the sky smoothly when the header shrinks */
-header.mini .sky-container { height: 0px; }
+/*header.mini .sky-container { height: 0px; }*/
 
 /* Dynamic Weather Gradients */
 .sky-container.wx-overcast { background: linear-gradient(to top, #cfd3d2 0%, #7d8583 100%); }
