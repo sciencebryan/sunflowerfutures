@@ -141,26 +141,26 @@ function dinnerLine(){
   // starving overrides everything
   if(starving){
     return pick1([
-      "Dinner was thin — hot water, whatever greens were left, and not enough of it.",
+      "Dinner was inadequate — whatever vegetable bits were left, boiled into a weak soup.",
       "Not much of a supper. Everyone went to bed still a little hungry.",
-      "They stretched the last of the stores into a thin soup and called it enough. It wasn't, quite."
+      "We stretched the last of the food into a thin soup. It wasn't enough."
     ]);
   }
   // no cook on the hearth: food gets eaten, but nobody made anything of it
   if(!cook){
     if(components===0) return "";
     return pick1([
-      `Supper was cold and quick — ${list(freshNames.length?freshNames:["stores"])}, eaten standing up. Nobody had the hearth tonight.`,
-      "People ate at odd hours, whatever was to hand. No one cooked."
+      `Supper was cold and quick — ${list(freshNames.length?freshNames:["stores"])}, eaten standing up. Nobody cooked tonight.`,
+      "People ate at odd hours, whatever required minimal prep. No one took cooking duty today."
     ]);
   }
 
   const oilBit = hasOil ? pick1([" fried bright in sunflower oil"," glistening with sunflower oil and salt"," crisped in oil"]) : "";
   // keptBit is now a plain noun phrase, not a connector-prefixed fragment -- it
   // flows through list() like everything else instead of bolting on a second "and"
-  const keptBit = hasKept ? pick1(["beans put up last season","pickles up from the crocks","something dried, softened back to life","what was canned in the good months"]) : "";
+  const keptBit = hasKept ? pick1(["beans put up last season","pickles up from the crocks","something dried, rehydrated","what was canned in the good months"]) : "";
   const fishBit = hasFish ? pick1(["the day's fish","trout from the tanks","fish, fresh from the tanks"]) : "";
-  const forageBit = hasForaged ? pick1(["mushrooms someone found on the ridge","greens off the near country","what the foragers carried home"]) : "";
+  const forageBit = hasForaged ? pick1(["mushrooms someone found on the ridge","wild-picked greens","what the foragers gathered"]) : "";
 
   // high quality + real variety -> a proper spread
   if(quality>=3.5 && components>=3){
@@ -173,7 +173,7 @@ function dinnerLine(){
     return pick1([
       `A real supper tonight: ${spread}. ${Cap(cook.name)} did it justice.`,
       `The table was worth sitting at — ${spread}. Somebody hummed while they washed up.`,
-      `${Cap(cook.name)} put together a proper meal: ${spread}. People lingered over it.`
+      `${Cap(cook.name)} put together a proper meal: ${spread}. People seemed glad for it.`
     ]);
   }
   // decent meal
@@ -183,17 +183,17 @@ function dinnerLine(){
     if(keptBit) parts.push(keptBit);
     const main = list(parts);
     return pick1([
-      `Dinner was honest and warm: ${main}.`,
-      `${Cap(cook.name)} made ${main} do the work. Nobody left the table hungry.`,
-      `A plain good supper — ${main}.`
+      `Dinner was warm and nourishing: ${main}.`,
+      `${Cap(cook.name)} made ${main}. Nobody left the table hungry.`,
+      `A good supper — ${main}.`
     ]);
   }
   // simple but fed
   if(components>=1){
     const main = freshNames.length ? list(freshNames) : (fishBit || "stores");
     return pick1([
-      `Supper was simple: ${main}, boiled and shared out.`,
-      `${main.charAt(0).toUpperCase()+main.slice(1)} again, but hot and enough.`
+      `Supper was simple: ${main}, boiled and shared.`,
+      `${main.charAt(0).toUpperCase()+main.slice(1)} again... but at least there was enough for everyone.`
     ]);
   }
   return "";
@@ -239,7 +239,7 @@ function simulateDay(){
 
   // --- APPLYING EXTREME WEATHER CONSEQUENCES ---
   if (tempEvent === "heatwave") {
-    lines.push("A blistering heatwave today. The air shimmered over the ruins.");
+    lines.push("A blistering heatwave today.");
     for (const p of S.people) {
       if (!canWork(p) && indoorSafety < 0.5 && Math.random() < 0.3) {
          p.wb = clamp(p.wb - 10, wbFloor(p), 100);
@@ -250,7 +250,7 @@ function simulateDay(){
       if (isOutdoors && Math.random() < 0.35) {
         if (p.status === "ok") {
           p.status = "spent";
-          lines.push(`The sun hammered down. ${p.name} pushed too hard outside and came back completely spent.`);
+          lines.push(`${p.name} worked too hard outside and came back exhausted.`);
         } else if (p.status === "spent") {
           p.status = "down";
           p.downDays = 2;
@@ -270,7 +270,7 @@ function simulateDay(){
          if (Math.random() < 0.15) {
            p.status = "down";
            p.downDays = 4;
-           lines.push(`The bitter cold got into ${p.name}'s chest. ${Cap(subj(p))} is in a bad way.`);
+           lines.push(`The bitter cold got into ${p.name}'s bones. ${Cap(subj(p))} is in a bad way.`);
          }
       }
       // Expeditions caught in a blizzard
@@ -280,7 +280,7 @@ function simulateDay(){
       }
     }
     if (indoorSafety < 0.5) {
-      lines.push("Without enough heat or insulation, the cold seeped into the Commons. Everyone suffered for it.");
+      lines.push("Without enough heat or insulation, the cold seeped into the Commons.");
       S.people.forEach(q => { if (q.status !== "away") q.wb = clamp(q.wb - 8, wbFloor(q), 100); });
     }
   }
@@ -291,7 +291,7 @@ function simulateDay(){
   if(S.giftDay && S.day>=S.giftDay){
     if(S.giftGood){
       S.res.seeds+=5; S.res.parts+=3;
-      lines.push("Before dawn, someone left a crate at the gate. Seeds, some parts, a pencil drawing of a bicycle. No note. No one on the road.");
+      lines.push("Before dawn, someone left a crate at the gate. Seeds, some parts, a pencil drawing of a bicycle.");
     }
     S.giftDay=null;
   }
@@ -442,7 +442,7 @@ function simulateDay(){
     // sunflower gives up a byproduct on top of what's eaten fresh -- seed set
     // aside for pressing, not a cut of the food value itself
     if(plot.crop==="sunflower") S.res.rawSeed = (S.res.rawSeed||0) + plot.stored*0.5;
-    lines.push(`${placeLabel} came in: ${plot.stored.toFixed(0)} of ${crop.name.toLowerCase()}${crop.seeds?`, and ${crop.seeds} seed saved back`:""}.`);
+    lines.push(`${placeLabel} came in: ${plot.stored.toFixed(0)} of ${crop.name.toLowerCase()}${crop.seeds?`, and ${crop.seeds} seed saved`:""}.`);
   };
 
   // --- kitchen garden: annuals grow with tending, then wait on hands to harvest ---
@@ -456,12 +456,12 @@ function simulateDay(){
     if(sn.grow===0){
       if(crop.hardy){ continue; }
       if(!F.coldFrames){
-        if(bed.growth>0.5) lines.push(`The ${crop.name.toLowerCase()} in bed ${S.beds.indexOf(bed)+1} went black with the first hard frost.`);
+        if(bed.growth>0.5) lines.push(`The ${crop.name.toLowerCase()} in bed ${S.beds.indexOf(bed)+1} died with the first hard frost.`);
         bed.crop=null; bed.growth=0; bed.days=0; bed.ready=false; bed.stored=0; bed.fertility=clamp((bed.fertility??75)-2,10,100); continue;
       }
     }
     if(irrAl===0 && Math.random()<WITHER_CHANCE){
-      lines.push(`With the irrigation shut off, the ${crop.name.toLowerCase()} in bed ${S.beds.indexOf(bed)+1} died where it stood.`);
+      lines.push(`With the irrigation shut off, the ${crop.name.toLowerCase()} in bed ${S.beds.indexOf(bed)+1} died.`);
       bed.crop=null; bed.growth=0; bed.days=0; bed.ready=false; bed.stored=0;
       bed.fertility=clamp((bed.fertility??75)-2,10,100); continue;
     }
@@ -509,7 +509,7 @@ function simulateDay(){
     const estFrac = clamp(ageYears/crop.matureYears, 0.15, 1);
     if(estFrac>=1 && !plot.matured){
       plot.matured=true;
-      lines.push(`The ${crop.name.toLowerCase()} in the food forest has come fully into itself. Whatever it gives now, it will keep giving.`);
+      lines.push(`The ${crop.name.toLowerCase()} in the food forest has fully matured.`);
     }
     plot.stored = (crop.yield/PEREN_PICK_DAYS.length) * estFrac * fertilityMult(plot.fertility);
     plot.ready = true;
@@ -546,7 +546,7 @@ function simulateDay(){
     // In winter the woods give almost nothing, which is the whole point of preserving.
     gleaned = Math.max(1, able*0.62) * (S.larder??1) * season().forage;
     S.larder = clamp((S.larder??1) - gleaned/260, 0.12, 1);
-    if(S.day%6===0) lines.push("Everyone who could stand went out to dig. Roots, bark, the last of the rosehips. It is not enough, but it is not nothing.");
+    if(S.day%6===0) lines.push("Everyone who could stand went out foraging. Roots, bark, whatever they could find. It wasn't enough.");
   }
   let hunger=0;
   let f = S.res.food + foodIn + gleaned - foodOut;
@@ -556,7 +556,7 @@ function simulateDay(){
     const fromJars = Math.min(S.preserved, short);
     S.preserved -= fromJars;
     const still = short - fromJars;
-    if(fromJars>0.2 && S.day%5===0) lines.push("Dinner came out of jars tonight. Nobody minded.");
+    if(fromJars>0.2 && S.day%5===0) lines.push("Dinner came out of jars or cans tonight.");
     if(still>0){ hunger = Math.min(1, still/foodOut); }
     f=0;
   }
@@ -567,9 +567,9 @@ function simulateDay(){
     if(methods.length){
       const best=methods.reduce((a,b)=>a.loss<b.loss?a:b);
       S.preserved += over*(1-best.loss);
-      lines.push(`The stores overflowed. Everyone spent the evening at the ${best.name.toLowerCase()}, and ${(over*(1-best.loss)).toFixed(0)} went by for later.`);
+      lines.push(`The stores overflowed. Everyone spent the evening at the ${best.name.toLowerCase()}, and ${(over*(1-best.loss)).toFixed(0)} was preserved for later.`);
     } else {
-      lines.push(`${over.toFixed(0)} of the harvest had nowhere to go and will not keep. Somebody should build a way to put food by.`);
+      lines.push(`${over.toFixed(0)} of the harvest had nowhere to go and will spoil. Somebody should build a way to preserve food.`);
     }
     f = foodCap();
   }
@@ -585,15 +585,15 @@ function simulateDay(){
   if(fz.upkeepScrap)  S.res.scrap = Math.max(0, S.res.scrap - fz.upkeepScrap); // the library roof
   if(fz.partsUpkeep)  S.res.parts = Math.max(0, S.res.parts - fz.partsUpkeep); // endlessly repaired
   if(fz.stormBreak && wx.id==="rain" && Math.random()<0.18){
-    if(S.res.scrap>=1){ S.res.scrap-=1; lines.push("A pane went in the night. Someone swept it up and cut another windshield to fit."); }
-    else lines.push("A pane went in the night, and there was nothing to patch it with.");
+    if(S.res.scrap>=1){ S.res.scrap-=1; lines.push("A glass pane broke in a storm. Someone swept it up and cut another windshield to replace it."); }
+    else lines.push("A glass pane broke in a storm, and there was nothing to replace it with.");
   }
   if(fz.floodRisk && wx.id==="rain" && Math.random()<fz.floodRisk){
     const cands=["irrigation","catchment","aquaponics"].filter(built);
     if(cands.length){
       const low=pick(cands);
       S.sys[low].cond=clamp(S.sys[low].cond-14,0,100);
-      lines.push(`The river came up over the low ground. The ${SYS.find(s=>s.id===low).name.toLowerCase()} took the worst of it.`);
+      lines.push(`The river flooded its banks. The ${SYS.find(s=>s.id===low).name.toLowerCase()} took the worst of it.`);
     }
   }
 
@@ -717,7 +717,7 @@ function simulateDay(){
           S.sys[d.id].cond=clamp(S.sys[d.id].cond-dmg,0,100);
           named.push(d.name.toLowerCase());
         }
-        lines.push(`A hard storm${yrs>=3?", the kind the old-timers would've called a bad one,":""} in the night. The ${named.join(" and the ")} took damage.`);
+        lines.push(`A hard storm in the night. The ${named.join(" and the ")} took damage.`);
       }
     }
   }
@@ -728,7 +728,7 @@ function simulateDay(){
       const eaten=S.res.food*eatFrac;
       S.res.food=Math.max(0,S.res.food-eaten);
       lines.push(F.rootCellar
-        ? `Rats got into what wasn't in the cellar — ${eaten.toFixed(0)} food gone. The cellar held the rest.`
+        ? `Rats got into what wasn't in the cellar — ${eaten.toFixed(0)} food gone.`
         : `Rats found the stores. ${eaten.toFixed(0)} food gone, and droppings in what's left. A root cellar would keep them out of most of it.`);
     }
   }
@@ -745,10 +745,10 @@ function simulateDay(){
         const partsNeed = 3+Math.floor(Math.random()*3);
         if(S.res.parts>=partsNeed){
           S.res.parts-=partsNeed;
-          lines.push(`Something let go in the ${d.name.toLowerCase()} — a bearing, a weld, a cracked housing. It took ${partsNeed} parts to nurse it back, and it isn't what it was.`);
+          lines.push(`Something broke in the ${d.name.toLowerCase()} — a hinge, a weld, a cracked housing. It took ${partsNeed} parts to fix it.`);
         } else {
           equipShort=true; equipShortDef=d; equipShortNeed=partsNeed;
-          lines.push(`Something let go in the ${d.name.toLowerCase()}, and there weren't parts enough to fix it right. It limps now. The village will need to make more parts, or find them.`);
+          lines.push(`Something broke in the ${d.name.toLowerCase()}, and there weren't parts enough to fix it. We need to make or find more parts.`);
         }
       }
     }
@@ -764,24 +764,24 @@ function simulateDay(){
       S.neighborStanding -= 1;
       addRes("parts", equipShortNeed);
       S.sys[equipShortDef.id].cond = clamp(S.sys[equipShortDef.id].cond+8,0,100);
-      lines.push(`A cart came up the road before anyone sent word — someone from two valleys over, paying back a debt with ${equipShortNeed} parts and a spare pair of hands for an hour. The ${equipShortDef.name.toLowerCase()} runs again.`);
+      lines.push(`A cart came up the road — someone from two valleys over, paying back a debt with ${equipShortNeed} parts and a spare pair of hands for an hour. The ${equipShortDef.name.toLowerCase()} is working again.`);
       equipShort=false;
     } else if((S.hungerDays||0)>=3 && Math.random()<0.45){
       S.neighborStanding -= 1;
       const gift=8+Math.floor(Math.random()*8);
       S.res.food = clamp(S.res.food+gift, 0, foodCap());
-      lines.push(`Someone remembered the medicine sent north, once. A sack of food showed up at the gate before dawn — ${gift.toFixed(0)} worth, no note, no debt asked back.`);
+      lines.push(`Someone brought us a gift -- a sack of ${gift.toFixed(0)} food was left at the door before dawn.`);
     } else if(stormHit && Math.random()<0.3){
       S.neighborStanding -= 1;
       addRes("scrap", 4); addRes("parts", 2);
-      lines.push(`Word of the storm travels faster than the storm did. A little scrap and a few parts arrived with a runner who didn't stay for thanks.`);
+      lines.push(`After the storm, a runner from a nearby community dropped off a little scrap and a few parts to help us make repairs.`);
     }
     S.neighborStanding = Math.max(0, S.neighborStanding);
   }
   // favor fades if it's never called in — this is reciprocity, not a bank account
   if((S.neighborStanding||0)>0) S.neighborStanding = Math.max(0, S.neighborStanding - 0.004);
 
-  // --- blight: a monoculture invites disaster. Variety is insurance, not just morale. ---
+  // --- blight: a monoculture invites disaster. 
   {
     const planted=S.beds.filter(b=>b.crop);
     if(planted.length>=2){
@@ -795,7 +795,7 @@ function simulateDay(){
         if(n>=2 && Math.random()<0.012*n*blightMult){
           const hit=planted.filter(b=>b.crop===crop);
           for(const b of hit){ b.crop=null; b.growth=0; b.days=0; b.ready=false; b.stored=0; }
-          lines.push(`Blight took the ${CROPS[crop]?CROPS[crop].name.toLowerCase():crop} — all ${n} beds of it, black and slumped by morning. A field of one thing is a field waiting for this. Next time, a mix.`);
+          lines.push(`Blight took the ${CROPS[crop]?CROPS[crop].name.toLowerCase():crop} — all ${n} beds of it, discolored and wilting by morning. Multiple beds of the same crop increases the risk of this.`);
           break;
         }
       }
@@ -830,7 +830,7 @@ function simulateDay(){
         S.sys[def.id].built=true;
         if(def.id==="solar" && !S.solarPanels) S.solarPanels=1;
         S.sys[def.id].cond=100;
-        lines.push(`The ${def.name.toLowerCase()} is up and running. ${def.draw>0?"It draws power now, whether or not there's power to draw.":""}`);
+        lines.push(`The ${def.name.toLowerCase()} is up and running. ${def.draw>0?"It's using power.":""}`);
       } else {
         S.flags[def.id]=true;
         if(def.id==="gardenBeds") S.beds.push({crop:null,growth:0,days:0,ready:false,stored:0,fertility:75,plantedDay:0});
@@ -935,7 +935,7 @@ function simulateDay(){
     if(home.length && Math.random()<NO_CLEANING_SICK){
       const sick=pick(home);
       sick.status="down"; sick.downDays=2; sick.job=null;
-      lines.push(`${sick.name} took sick. Unwashed dishes, unwashed hands — with the cleaning water shut off, it was a matter of time.`);
+      lines.push(`${sick.name} got sick. Unwashed dishes, unwashed hands — with the cleaning water shut off, it was a matter of time.`);
     }
   }
 
@@ -1004,7 +1004,7 @@ function simulateDay(){
             const before = hpr.specific[legacy.key]||0;
             hpr.specific[legacy.key] = Math.min(PRACTICE_SPECIFIC_CAP, before + legacy.val*0.45);
             if(hpr.specific[legacy.key] > before + 0.02){
-              memLines.push(`${heir.name} had stood beside ${objp(p)} at ${practiceLabel(legacy.key)} long enough to keep going without ${objp(p)}. Some of what ${subj(p)} knew, ${heir.name} ${isAre(heir)} carrying now.`);
+              memLines.push(`${heir.name} had stood beside ${objp(p)} at ${practiceLabel(legacy.key)} long enough to keep going without ${objp(p)}. Some of what ${subj(p)} knew, ${heir.name} ${isAre(heir)} carries forward.`);
             }
           }
         }
@@ -1015,11 +1015,11 @@ function simulateDay(){
         const knownPerennial = Object.keys(CROPS).find(id=>CROPS[id].perennial && (!CROPS[id].locked || (S.crops&&S.crops[id])));
         if(knownPerennial && S.forest.length<MAX_FOREST_PLOTS){
           S.forest.push({crop:knownPerennial, growth:0, days:0, ready:false, stored:0, fertility:80, plantedDay:S.day, memorial:p.name});
-          memLines.push(`${CROPS[knownPerennial].name} went into the ground on the hill above the beds, for ${p.name}. It will bear long after anyone remembers planting it.`);
+          memLines.push(`${CROPS[knownPerennial].name} went into the ground on the hill above the beds, for ${p.name}.`);
         }
 
         S.journal.unshift({day:S.day, weather:S.weather, event:true,
-          lines:[...memLines, `Buried on the hill above the beds. The village keeps going, which is what ${subj(p)} would have said, and probably did.`]});
+          lines:[...memLines, `Buried on the hill above the beds. The village keeps going, which is what ${subj(p)} would have said.`]});
       }
     }
 
@@ -1030,7 +1030,7 @@ function simulateDay(){
         const p = pick(cands);
         S.people = S.people.filter(x=>x!==p);
         S.departures++;
-        lines.push(`${p.name} left in the thaw, with a pack and an apology. ${Cap(subj(p))} said there was a place ${subj(p)} needed to see. Nobody stopped ${objp(p)}.`);
+        lines.push(`${p.name} left with a pack and an apology. ${Cap(subj(p))} said there was a place ${subj(p)} needed to see. Nobody stopped ${objp(p)}.`);
       }
     }
     lines.push(`— The turn of year ${yr}. ${S.people.length} at the table.`);
@@ -1052,7 +1052,7 @@ function simulateDay(){
   tickVillageSpiritsStreak();      
   
   if (S.lowSpiritsStreak === 5 && S.day % 7 === 0) {
-    lines.push("No one has come up the road in a long time. The valley has a reputation now—a place where people go to fade.");
+    lines.push("No one has come up the road in a long time. The valley has a reputation now — a place where people go to fade.");
   }
 
 
@@ -1062,16 +1062,16 @@ function simulateDay(){
     lines.unshift(`— ${s.name}. ${seasonNote(s)}`);
   }
   let wxLine;
-  if(wx.id==="clear")    wxLine = built("solar") ? "A clear day; the panels drank their fill." : "A clear, bright day. Good drying weather.";
-  else if(wx.id==="overcast") wxLine = built("turbine") ? "Grey all day. The turbine earned its keep." : "Grey all day, and still.";
-  else                   wxLine = built("catchment") ? "Rain on the catchment roof — the good kind of noise." : "Rain all day. The barrels and buckets came out.";
+  if(wx.id==="clear")    wxLine = built("solar") ? "A clear day; the panels turned sunlight into electricity." : "A clear, bright day.";
+  else if(wx.id==="overcast") wxLine = built("turbine") ? "Grey all day, the turbine spinning in the wind." : "Grey day.";
+  else                   wxLine = built("catchment") ? "Rain on the catchment roof — a good kind of noise." : "Rain all day.";
   lines.unshift(wxLine);
-  if(varietyMood <= -0.4 && S.day%6===0) lines.push(`Another week of little but ${(function(){const c=S.dietLog.filter(e=>S.day-e.day<=14).map(e=>CROPS[e.crop]?CROPS[e.crop].name.toLowerCase():e.crop); return c[c.length-1]||"the same thing";})()}. Nobody complains out loud. Everybody's thinking it.`);
-  else if(varietyMood >= 0.4 && S.day%9===0) lines.push("The table had a bit of everything tonight. It's a small thing, and it isn't.");
+  if(varietyMood <= -0.4 && S.day%6===0) lines.push(`Another week of little but ${(function(){const c=S.dietLog.filter(e=>S.day-e.day<=14).map(e=>CROPS[e.crop]?CROPS[e.crop].name.toLowerCase():e.crop); return c[c.length-1]||"the same thing";})()}.`);
+  else if(varietyMood >= 0.4 && S.day%9===0) lines.push("The table had a bit of everything tonight.");
   if(brownout) lines.push(built("aquaponics")
-    ? "The batteries ran dry before the work did. Brownout. The fish tanks went quiet for a while."
-    : "The batteries ran dry before the work did. Brownout. The pump slowed to a trickle and everyone felt the dark come early.");
-  if(standstill) lines.push("No one is on their feet. The village stands still — thin soup, long sleep, and whatever mends on its own.");
+    ? "We didn't have enough electricity to run everything today. Brownout. The fish tanks went quiet for a while."
+    : "We didn't have enough electricity to run everything today. Brownout. The pump slowed to a trickle and we spent the evening in the dark.");
+  if(standstill) lines.push("No one is on their feet. The village is resting.");
   // the village counts its stores against the coming winter
   {
     const sn=season();
@@ -1084,8 +1084,8 @@ function simulateDay(){
     if(sn.id==="autumn" && dayOfSeason(S.day)===20){
       const short = winterNeed - banked - (built("aquaponics") ? aquaFood*SEASON_LEN*0.8 : 0);
       lines.push(short > 0
-        ? `Ten days to the frost. Counting the jars and the cellar: about ${Math.max(0,short).toFixed(0)} short of a winter. Somebody says it out loud, and then nobody says anything.`
-        : `Ten days to the frost, and the stores will hold. Kav wrote it in the log twice, to be sure.`);
+        ? `Ten days to the frost. Counting the jars and the cellar: about ${Math.max(0,short).toFixed(0)} short to last the winter.`
+        : `Ten days to the frost, and we have enough food stored.`);
     }
   }
 
@@ -1095,38 +1095,38 @@ function simulateDay(){
     const avgWb = S.people.length ? S.people.reduce((a,p)=>a+p.wb,0)/S.people.length : 100;
     const low = avgWb < 55;
     if(S.hungerDays>=4) lines.push(low
-      ? "Day "+S.hungerDays+" with the stores empty. People move slower and speak less."
-      : "Day "+S.hungerDays+" of thin meals. Spirits are holding, but the larder can't do this forever.");
+      ? "Day "+S.hungerDays+" without adequate food. People move slower and speak less."
+      : "Day "+S.hungerDays+" of thin meals. Not sure how much longer we can manage this way.");
     else if(S.hungerDays>=2) lines.push(low
-      ? "The stores are empty again. Belts tightened, tempers shorter."
-      : "The stores came up short again. Nobody is happy about it, but nobody is breaking either.");
-    else lines.push("Not enough at the long table tonight. Nobody said much.");
+      ? "The food stores are empty again. Belts tightened, tempers shorter."
+      : "Not enough food. Again.");
+    else lines.push("Not enough at the long table tonight.");
   }
   if(thirst>=0.34) lines.push(S.thirstDays>=4
-    ? "Day "+S.thirstDays+" with the cisterns nearly dry. People are short with each other, and no one's washing much."
-    : "The water ran short and everyone felt it — dry throats, short tempers, a hard day.");
+    ? "Day "+S.thirstDays+" without adequate water. People are short with each other, and no one's washing much."
+    : "Not enough water -- a day of dry throats and short tempers.");
   else if(thirst===0 && thirstFelt>0) lines.push(S.thirstDays>=3
-    ? "Day "+S.thirstDays+" on the water ration. Everyone understands why. Nobody has to like it."
-    : "Water's on ration — by choice, this time. Cups measured, kettle watched.");
+    ? "Day "+S.thirstDays+" on water rationing."
+    : "We need more water.");
   else if(thirst>0) lines.push(S.thirstDays>=3
-    ? "Day "+S.thirstDays+" of thin water. Nobody's said it outright yet, but everyone's rationing on their own."
-    : "The cisterns ran low. People drank a little less and watched the sky.");
+    ? "Day "+S.thirstDays+" of inadequate water."
+    : "The cisterns ran low. We watch the horizon for rain clouds.");
   for(const p of spentToday) lines.push(p.job
-    ? `${p.name} has nothing left. ${Cap(subj(p))} keeps working, because the work is there, but slowly and badly.`
+    ? `${p.name} has nothing left. ${Cap(subj(p))} keeps working -- slowly, badly -- because the work needs done and no one else is doing it.`
     : `${p.name} has nothing left. ${Cap(subj(p))} sat down and didn't get up again today.`);
   for(const p of recovered) lines.push(`${p.name} is back on ${poss(p)} feet.`);
   const failing = worstSys && worstCond<35;
-  if(failing) lines.push(`The ${worstSys.name.toLowerCase()} is failing. Someone should be on it.`);
+  if(failing) lines.push(`The ${worstSys.name.toLowerCase()} is failing. Someone should work on it.`);
   if(commonsLit && hunger===0 && thirst===0 && Math.random()<(failing?0.14:0.32)){
     const base=[
-      "An ordinary day. They are harder to come by than they sound.",
-      "Someone fixed the squeak in the commons door without being asked.",
+      "An ordinary day, somehow.",
+      "Someone fixed a squeaking hinge or uneven table without being asked.",
       "The evening smelled like rain and solder."
     ];
     // named lines only appear while that person is actually here to be doing them
-    if(byId("ora") && byId("ora").status!=="away") base.push("Ora left the last tomato on the vine. For luck, she said.");
+    //if(byId("ora") && byId("ora").status!=="away") base.push("Ora left the last tomato on the vine. For luck, she said.");
     if(byId("theo") && byId("theo").status!=="away") base.push("Theo raced the sunset up the water tower and won.");
-    if(byId("kav") && byId("kav").status!=="away") base.push("Kav's weather log gained a page. Xe says the sky owes us one.");
+    //if(byId("kav") && byId("kav").status!=="away") base.push("Kav's weather log gained a page. Xe says the sky owes us one.");
     const pool=[...base];
     for(const id of (S.founding&&S.founding.visuals||[])){
       const v=VISUALS.find(x=>x.id===id);
@@ -1149,7 +1149,7 @@ function simulateDay(){
   if(compostSpread && S.day % 7 === 0){
     const isForestPlot = (S.forest||[]).includes(compostTarget);
     addRestore("mycosphere", RESTORE_IN.compost);   // returning worn soil to life feeds the web
-    lines.push(`Turned compost went onto ${isForestPlot?"a tired plot in the food forest":"the worst of the beds"} — soil worn thin doesn't have to stay that way.`);
+    lines.push(`Turned compost went onto ${isForestPlot?"a tired plot in the food forest":"the worst of the beds"} — improving soil richness.`);
   }
 
 
@@ -1193,14 +1193,14 @@ function workDef(){
 }
 function workName(){
   const d=workDef(); if(!d) return "Workshop";
-  return S.project.kind==="build" ? `Raising the ${d.name.toLowerCase()}` : d.name;
+  return S.project.kind==="build" ? `Building the ${d.name.toLowerCase()}` : d.name;
 }
 function jobSkill(j){ return JOB_SKILL[j]||"hands"; }
 function assignPhrase(p){
   const j=p.job;
   if(!j || j==="away") return "";
   // things phrased as an activity, not a place ("putting food by", "fabrication")
-  if(j==="preserve") return "Putting food by";
+  if(j==="preserve") return "Preserving food";
   if(j==="press") return "Pressing oil";
   if(j==="fab"){
     const d=S.fabProject?FABS.find(x=>x.id===S.fabProject.id):null;
@@ -1214,14 +1214,14 @@ function assignPhrase(p){
   // a SYS job: building it if not yet built, otherwise keeping it
   const d=SYS.find(s=>s.id===j);
   if(d && !built(j)) return `Raising the <b>${d.name.toLowerCase()}</b>`;
-  return `Keeping the <b>${jobName(j).toLowerCase()}</b>`;
+  return `Maintaining the <b>${jobName(j).toLowerCase()}</b>`;
 }
 function jobName(j){
   if(j==="garden") return "Gardens";
   if(j==="aquatend") return "Fish tanks";
   if(j==="care") return "Sickbed";
   if(j==="cook") return "Hearth";
-  if(j==="preserve") return "Putting food by";
+  if(j==="preserve") return "Storing food";
   if(j==="press") return "Pressing oil";
   if(j==="fab") return S.fabProject ? FABS.find(x=>x.id===S.fabProject.id).name : "Fabrication";
   if(j==="project") return workName();
