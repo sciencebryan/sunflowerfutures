@@ -12,13 +12,13 @@ import { S } from "./state.js";
 
 
 
-/* Age in years. Time is measured in winters, because that is how it is felt. */
+/* Age in years. */
 const AGES = {nadia:34, ora:29, bec:31, sam:44, yusuf:38, petra:52, ilya:27,
               june:61, marisol:33, theo:16, ash:40, kav:47,
               rosa:36, emrys:30, din:24, halla:57, moss:66, yara:35};
 
 // Deterministic fallback so a child is never lost to name exhaustion, even in a very old,
-// very lucky village that outlasts the pool above.
+// very lucky village 
 function generateFallbackChildName(used){
   const syllA = ["Bri","Fen","Wil","Tam","Sor","Ash","Ren","Cal","Mer","Or"];
   const syllB = ["ar","el","wyn","on","is","eth","ora","in","ley","an"];
@@ -62,7 +62,7 @@ function discoveryLine(id, how){
   const where = how==="explore" ? "the far country"
               : how==="forage" ? "the near country"
               : "a stripped building";
-  return `They brought ${seedWord} back from ${where} — ${name}, a crop the village hasn't grown before. Something new to put in the ground.`;
+  return `They brought ${seedWord} back from ${where} — ${name}, a crop the village hasn't grown before.`;
 }
 
 const season    = () => SEASONS[seasonIdx(S.day)];
@@ -73,7 +73,7 @@ const isWinter  = () => season().id==="winter";
 // this corrects it wherever it's actually shown, so it never contradicts the
 // crop list right below it (which already lets hardy/cold-framed crops grow)
 const seasonNote = s => (s.id==="winter" && S.flags && S.flags.coldFrames)
-  ? "Frozen outside, but the cold frames keep a few beds going all winter — slow, but alive."
+  ? "Frozen outside, but the cold frames keep the garden going all winter, albeit slower."
   : s.note;
 
 function rollWeather(){
