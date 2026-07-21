@@ -29,28 +29,26 @@ const EVENTS = [
     roll:()=>({}),
     view:()=>{
       const n=S.arrivalQueue[S.newcomerIdx];
-      const text = n.founderEcho
-        ? `${n.name} (${n.pn}) came up the road at dusk with a pack and a careful face — someone who could have been standing in this yard from the very first day, if things had gone a little differently. ${n.note} They ask for nothing outright. They wait.`
-        : `${n.name} (${n.pn}) came up the road at dusk with a pack and a careful face. ${n.note} They ask for nothing outright. They wait.`;
+      const text = `${n.name} (${n.pn}) came up the road at dusk with a pack and a careful face. ${n.note} They ask for nothing outright.`; 
       return {
-        title: n.founderEcho ? "Someone who might have been here" : "Someone on the road",
+        title: "A stranger on the road",
         text,
         opts:[
           {label:"Take them in", sub:"another mouth from tonight; another pair of hands soon"},
-          {label:"Turn them away", sub:"the stores are the stores"}
+          {label:"Turn them away", sub:"we already have too many mouths to feed"}
         ]
       };
     },
     resolve:(ctx,i)=>{
       const n=S.arrivalQueue[S.newcomerIdx];
       if(i===0){
-        const p=freshPerson(n); p.wb=55; p.mem=n.founderEcho?`Arrived day ${S.day}. Could have been here from the first day.`:`Arrived day ${S.day}.`;
+        const p=freshPerson(n); p.wb=55; p.mem=`Arrived day ${S.day}.`;
         S.people.push(p); S.newcomerIdx++;
-        S.pending.push(`${n.name} stayed. A place was made at the long table, the way places are made — someone moved over.`);
+        S.pending.push(`${n.name} stayed. We gladly made a place for ${subj(n)} at the long table.`);
       } else {
         S.newcomerIdx++;
         S.people.forEach(p=>{ if(p.status!=="away") p.wb=clamp(p.wb-1,wbFloor(p),100); });
-        S.pending.push(`${n.name} walked on before full dark. No one met anyone's eyes at dinner.`);
+        S.pending.push(`${n.name} was turned away. Not everyone's happy about it.`);
       }
     }
   },
@@ -64,10 +62,10 @@ const EVENTS = [
     roll:()=>rollStranger(),
     view:ctx=>({
       title:"Someone on the road, again",
-      text:`${ctx.name} (${ctx.pn}) came up the road with a pack and a careful face. ${ctx.note} They ask for nothing outright. They wait.`,
+      text:`${ctx.name} (${ctx.pn}) showed up at our door. ${ctx.note} They asked to join us.`,
       opts:[
-        {label:"Take them in", sub:"another mouth from tonight; another pair of hands soon"},
-        {label:"Turn them away", sub:"the stores are the stores"}
+        {label:"Take them in", sub:"another person to feed, but another person to help with the work"},
+        {label:"Turn them away", sub:"we already have too many mouths to feed"}
       ]
     }),
     resolve:(ctx,i)=>{
@@ -76,10 +74,10 @@ const EVENTS = [
         const def={id, name:ctx.name, pn:ctx.pn, trait:ctx.trait, hands:ctx.hands, green:ctx.green, care:ctx.care, wild:ctx.wild, note:ctx.note};
         const p=freshPerson(def); p.wb=55; p.mem=`Arrived day ${S.day}, off the radio.`;
         S.people.push(p);
-        S.pending.push(`${ctx.name} stayed. A place was made at the long table, the way places are made — someone moved over.`);
+        S.pending.push(`${ctx.name} stayed. We gladly made a place for ${subj(ctx)} at the long table.`);
       } else {
         S.people.forEach(p=>{ if(p.status!=="away") p.wb=clamp(p.wb-1,wbFloor(p),100); });
-        S.pending.push(`${ctx.name} walked on before full dark. No one met anyone's eyes at dinner.`);
+        S.pending.push(`We turned ${ctx.name} away. Not everyone's happy about it.`);
       }
     }
   },
@@ -102,7 +100,7 @@ const EVENTS = [
       text:`A handful of people from the next valley over came down the road with a cart. They're short on ${ctx.wantKind}, need it for their own repairs, and have ${ctx.giveKind} to spare in trade.`,
       opts:[
         {label:"Make the trade", sub:`−${ctx.wantAmt} ${ctx.wantKind} · +${ctx.giveAmt} ${ctx.giveKind}`, can:()=>S.res[ctx.wantKind]>=ctx.wantAmt},
-        {label:"Keep the stores", sub:"might need it yet"}
+        {label:"Keep what we have", sub:"might need it yet"}
       ]
     }),
     resolve:(ctx,i)=>{
@@ -110,9 +108,9 @@ const EVENTS = [
         S.res[ctx.wantKind] -= ctx.wantAmt;
         S.res[ctx.giveKind] = (S.res[ctx.giveKind]||0) + ctx.giveAmt;
         S.neighborStanding = Math.min(5, (S.neighborStanding||0)+0.5);
-        S.pending.push(`The ${ctx.wantKind} changed hands for ${ctx.giveKind}, fair and quick. They left word of the road, and a promise to come back before the snows.`);
+        S.pending.push(`The ${ctx.wantKind} changed hands for ${ctx.giveKind}. They told some stories of their travels, and promised to come back someday.`);
       } else {
-        S.pending.push("They nodded, understanding well enough, and turned the cart back up the ridge.");
+        S.pending.push("They seemed disappointed, but didn't push it. They departed back the direction they came from.");
       }
     }
   },
@@ -150,10 +148,10 @@ const EVENTS = [
     },
     view:ctx=>({
       title:"A sealed room",
-      text:`The last party to ${siteName(ctx.siteId)} found a wing nobody had forced — steel door, good lock, whatever that means it's guarding. Forcing it will eat crowbars and time.`,
+      text:`The last party to ${siteName(ctx.siteId)} found a room or cabinet still sealed shut. Forcing it will eat tools and time.`,
       opts:[
-        {label:"Force it", sub:"−3 scrap · the site will hold more", can:()=>S.res.scrap>=3},
-        {label:"Leave it sealed", sub:"some doors keep"}
+        {label:"Force it", sub:"−3 scrap · more resources can be salvaged from this site", can:()=>S.res.scrap>=3},
+        {label:"Leave it sealed", sub:"some doors are best left shut"}
       ]
     }),
     resolve:(ctx,i)=>{
@@ -161,9 +159,9 @@ const EVENTS = [
         S.res.scrap-=3;
         const st=S.sites[ctx.siteId];
         st.stock[ctx.kind]=(st.stock[ctx.kind]||0)+8; st.total0+=8;
-        S.pending.push(`The sealed room at ${siteName(ctx.siteId)} gave way. Inside: a cache of ${ctx.kind}. Worth the crowbars.`);
+        S.pending.push(`We managed to open the sealed door at ${siteName(ctx.siteId)}. Inside: a cache of ${ctx.kind}.`);
       } else {
-        S.pending.push(`The door at ${siteName(ctx.siteId)} stays shut. ${aliveName("kav","Someone")} approved. ${aliveName("bec","Someone else")} did not.`);
+        S.pending.push(`The door at ${siteName(ctx.siteId)} stays shut. ${aliveName("bec","Someone")} was disappointed.`);
       }
     }
   },
@@ -173,22 +171,22 @@ const EVENTS = [
     roll:()=>({giftIn:8+Math.floor(Math.random()*8), giftGood:Math.random()<0.6}),
     view:()=>({
       title:"A runner from two valleys over",
-      text:"A settlement you've never traded with sent a kid on a bicycle. Fever there, the bad kind, and their stores are empty. They ask for medicine. They can promise nothing back.",
+      text:"A settlement you've never traded with sent a kid on a bicycle. Fever there and they're out of meds. They ask if we have any. They have nothing to offer in return.",
       opts:[
-        {label:"Send medicine", sub:"−3 meds · no promises", can:()=>S.res.meds>=3},
-        {label:"Keep it", sub:"your own laid-up may need it"}
+        {label:"Send medicine", sub:"−3 meds", can:()=>S.res.meds>=3},
+        {label:"Keep it", sub:"we may need it"}
       ]
     }),
     resolve:(ctx,i)=>{
       if(i===0){
         S.res.meds-=3; S.giftDay=S.day+ctx.giftIn; S.giftGood=ctx.giftGood;
         S.neighborStanding = Math.min(5, (S.neighborStanding||0)+1);
-        S.pending.push("The kid rode off with three days' worth of meds in a feed sack. That's all there is to say about it.");
+        S.pending.push("The kid rode off with three days' worth of meds in a beat-up backpack.");
       } else {
         const petra=byId("petra");
         const line = (petra && petra.status!=="away")
-          ? "The kid rode off with an apology. Petra didn't say anything, which said plenty."
-          : "The kid rode off with an apology. Nobody said anything, which said plenty.";
+          ? "The kid rode off, dejected. Petra seems disappointed in the rest of us."
+          : "The kid rode off, dejected.";
         S.pending.push(line);
       }
     }
@@ -204,9 +202,9 @@ const EVENTS = [
       const d=siteDef(ctx.siteId);
       return {
         title:"Theo wants to run",
-        text:`Theo says he can do ${siteName(ctx.siteId)} alone, overnight, faster than any party. He's laid out his route on the table like it settles the question. He's sixteen, and he's not wrong about being fast.`,
+        text:`Theo says he can do ${siteName(ctx.siteId)} alone, faster than any party. He's laid out his route on the table, his eyes ablaze. He's not wrong about being fast.`,
         opts:[
-          {label:"Let him go", sub:`${Math.max(1,d.days-1)} days, alone · faster, riskier`,
+          {label:"Let him go", sub:`${Math.max(1,Math.floor(d.days/2))} days, alone · faster, riskier`,
            can:()=>{const t=byId("theo");return t&&t.status==="ok";}},
           {label:"Not alone, not yet", sub:"Theo takes it hard"}
         ]
@@ -216,11 +214,11 @@ const EVENTS = [
       const t=byId("theo"), d=siteDef(ctx.siteId);
       if(i===0 && t && t.status==="ok"){
         t.status="away"; t.job="away";
-        S.expeditions.push({id:S.expSeq++,type:"salvage",siteId:ctx.siteId,party:["theo"],daysLeft:Math.max(1,d.days-1),total:Math.max(1,d.days-1),injured:[],riskMult:1.5});
-        S.pending.push("Theo left before anyone could change their mind, including him.");
+        S.expeditions.push({id:S.expSeq++,type:"salvage",siteId:ctx.siteId,party:["theo"],daysLeft:Math.max(1,Math.floor(d.days/2)),total:Math.max(1,Math.floor(d.days/2)),injured:[],riskMult:1.5});
+        S.pending.push("Theo left before anyone could change their mind.");
       } else if(t){
         t.wb=clamp(t.wb-6,wbFloor(t),100);
-        S.pending.push("Theo took the no like a door closing. He'll forgive the village. Eventually.");
+        S.pending.push("Theo brooded moodily for the rest of the day. He'll forgive us. Eventually. Probably.");
       }
     }
   },
@@ -230,19 +228,19 @@ const EVENTS = [
     roll:()=>({}),
     view:()=>({
       title:"June, by the beds",
-      text:"June sat by the garden beds long after dark, not working, just sitting. Some day this was, before. Nobody asked which.",
+      text:"June sat quietly by the garden beds long after dark, not working.",
       opts:[
-        {label:"Give her tomorrow", sub:"June rests; the beds wait"},
-        {label:"Let her work through it", sub:"some people mend by doing"}
+        {label:"Give her tomorrow", sub:"June rests; work can wait"},
+        {label:"Let her work through it", sub:"maybe working will make her feel better"}
       ]
     }),
     resolve:(ctx,i)=>{
       const j=byId("june"); if(!j) return;
       if(i===0){
         j.job=null; j.wb=clamp(j.wb+8,wbFloor(j),100);
-        S.pending.push("June took the day. In the evening she left a handful of dried flowers on the long table and said nothing about them.");
+        S.pending.push("June took the day. In the evening she left a small bouquet of wildflowers in an old glass vase on the long table.");
       } else {
-        S.pending.push("June worked through it, the way she always has. The rows she weeded were very straight.");
+        S.pending.push("June worked through it, the way she always has.");
       }
     }
   }
@@ -402,7 +400,7 @@ function tickDepartures(lines) {
           if (q.status !== "away") q.wb = clamp(q.wb - 5, wbFloor(q), 100);
         });
 
-        lines.push(`${p.name} packed ${poss(p)} things in the grey light before dawn and left. ${Cap(subj(p))} didn't leave a note, but everyone at the table knew why. The quiet is heavier today.`);
+        lines.push(`${p.name} packed ${poss(p)} things in the grey light before dawn and left. ${Cap(subj(p))} didn't leave a note. We'll miss ${objp(p)}.`);
         
         S.journal.unshift({
           day: S.day,
