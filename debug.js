@@ -18,7 +18,7 @@ import { AXES } from "./ideology.js";
 import { toxLoad } from "./toxins.js";
 
 const DEBUG_UIDS = [
-  "df874858-baf7-46ed-86f4-5d16aec1056a"
+  "e6aeba18-e2ee-44f1-b4a7-975559578495"
 ];
 const DEBUG_EMAILS = [
   // "you@example.com"
