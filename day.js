@@ -1,13 +1,17 @@
 import { S } from "./state.js";
 import { ELDER, canRoad, canWork, dayOfSeason, generateFallbackChildName, rollWeather, scaledWeather, season, seasonIdx, seasonNote, yearOf } from "./seasons.js";
-import { AQUA_STAGNANT_WEAR, BATTERY_UNIT, CANNING_DRAW, CROPS, DAY_MS, FABS, FAB_DRAW, FAB_RATE, JOB_PRACTICE, LOSS_DECAY, MAX_FOREST_PLOTS, NO_CLEANING_SICK, OFFLINE_CAP, POLLINATOR_YIELD, POWER_LOSS_BASE, PRACTICE_BROAD_CAP, PRACTICE_BROAD_DECAY, PRACTICE_BROAD_GROWTH, PRACTICE_SPECIFIC_CAP, PRACTICE_SPECIFIC_DECAY, PRACTICE_SPECIFIC_GROWTH, PRESERVE, PROJECTS, RESTORE_IN, SEASONS, SEASON_LEN, SOLAR_UNIT, SYS, TURBINE_UNIT, WATER_LOSS_BASE, WITHER_CHANCE, YIELD_SOIL_FLOOR, YIELD_TEND_MAX, YIELD_TEND_SCALE } from "./data-economy.js";
+import { AC_DRAW, WELL_DRAW, AQUA_STAGNANT_WEAR, BATTERY_UNIT, CANNING_DRAW, CROPS, DAY_MS, FABS, FAB_DRAW, FAB_RATE, JOB_PRACTICE, LOSS_DECAY, MAX_FOREST_PLOTS, NO_CLEANING_SICK, OFFLINE_CAP, POLLINATOR_YIELD, POWER_LOSS_BASE, PRACTICE_BROAD_CAP, PRACTICE_BROAD_DECAY, PRACTICE_BROAD_GROWTH, PRACTICE_SPECIFIC_CAP, PRACTICE_SPECIFIC_DECAY, PRACTICE_SPECIFIC_GROWTH, PRESERVE, PROJECTS, RESTORE_IN, SEASONS, SEASON_LEN, SOLAR_UNIT, SYS, TURBINE_UNIT, WATER_LOSS_BASE, WITHER_CHANCE, YIELD_SOIL_FLOOR, YIELD_TEND_MAX, YIELD_TEND_SCALE } from "./data-economy.js";
 import { Cap, byId, clamp, decayPractice, eff, effStat, growPractice, hasHave, isAre, mult, objp, pick, poss, practiceOf, subj, wbFloor, working } from "./helpers.js";
 import { TRAITS, VISUALS, addRes, addRestore, built, decayOf, foodCap, stepRestoration, waterCapEff } from "./defs.js";
 import { tickExpeditions } from "./expeditions.js";
 import { CHILD_NAMES, CHILD_NOTES, FV } from "./data-events.js";
 import { bestSpecific, practiceLabel, renderAll } from "./render.js";
-import { maybeSpawnEvent, tickDepartures, tickDinnerBonds, tickRelationships, tickVillageSpiritsStreak } from "./events.js";
+import { maybeSpawnEvent, resetSeasonFlares, tickDepartures, tickDinnerBonds, tickFriction, tickRelationships, tickVillageSpiritsStreak } from "./events.js";
 import { store } from "./store.js";
+import { rollPersonality } from "./bonds.js";
+import { driftIdeology, seedIdeology } from "./ideology.js";
+import { tickConflicts } from "./mediation.js";
+import { accrueToxins, toxDeathAdd, toxPracticeMult, toxSickMult } from "./toxins.js";
 
 
 
@@ -92,8 +96,9 @@ function applyPracticeUpdate(snap){
     const today = snap[p.id];   // {specific, broad} or undefined if they did nothing creditable
 
     // specific: grow today's key (if any), decay every other key already on record
+    const tox = toxPracticeMult(p);   // a dulled person learns slower, and never knows why
     if(today && today.specific!=null){
-      pr.specific[today.specific] = growPractice(pr.specific[today.specific]||0, PRACTICE_SPECIFIC_CAP, PRACTICE_SPECIFIC_GROWTH);
+      pr.specific[today.specific] = growPractice(pr.specific[today.specific]||0, PRACTICE_SPECIFIC_CAP, PRACTICE_SPECIFIC_GROWTH*tox);
     }
     for(const k in pr.specific){
       if(today && k===today.specific) continue;
@@ -102,7 +107,7 @@ function applyPracticeUpdate(snap){
 
     // broad: grow today's category, decay the other three
     for(const cat of ["hands","green","care","wild"]){
-      if(today && today.broad===cat) pr.broad[cat] = growPractice(pr.broad[cat]||0, PRACTICE_BROAD_CAP, PRACTICE_BROAD_GROWTH);
+      if(today && today.broad===cat) pr.broad[cat] = growPractice(pr.broad[cat]||0, PRACTICE_BROAD_CAP, PRACTICE_BROAD_GROWTH*tox);
       else pr.broad[cat] = decayPractice(pr.broad[cat]||0, PRACTICE_BROAD_DECAY);
     }
   }
@@ -199,45 +204,56 @@ function dinnerLine(){
   return "";
 }
 
-function simulateDay(){
-  // captured before anything else runs — see buildWorkSnapshot() for why
-  const workSnapshot = buildWorkSnapshot();
-  const lines=[...S.pending]; S.pending=[];
-  // if a forecast was made for today (see the end of this function), honor it —
-  // the log only means something if it's actually right
-  const wx = S.forecast ? scaledWeather(S.forecast) : rollWeather();
-  S.weather=wx.id;
-  const F=S.flags;
-  const sn=season();
 
+/* How much summer relief the shade trees give — nothing for years, then
+   real cooling once they're up. Reuses the food-forest plot system whole:
+   a shade tree is just a perennial with no harvest season, so the bearing
+   loop skips it and only this reads it. */
+function shadeCooling(){
+  let n = 0;
+  for(const plot of (S.forest||[])){
+    if(!plot.crop) continue;
+    const c = CROPS[plot.crop];
+    if(!c || !c.shade) continue;
+    const ageYears = (S.day - plot.plantedDay) / (SEASON_LEN*4);
+    n += clamp(ageYears / (c.matureYears||5), 0, 1);
+  }
+  // a forest plot is a stand, not a single tree — one mature plot already
+  // shades the building; a second is worth planting but not twice as good
+  return Math.min(0.45, n * 0.35);
+}
 
-  // --- TEMPERATURE EXTREMES ---
-  const isSummer = sn.id === "summer";
-  const isWinter = sn.id === "winter";
-  
-  let tempEvent = null;
-  if (isSummer && Math.random() < 0.15) tempEvent = "heatwave";
-  if (isWinter && Math.random() < 0.15) tempEvent = "deepfreeze";
+/* Everything temperature does to people, applied once, after the power
+   block has decided whether the cooling unit ran. Two tiers:
+   - a continuous daily comfort effect, so shelter matters every day of
+     summer and winter rather than only on the 15% that roll an extreme
+   - the extreme-event consequences, unchanged in their severity */
+function applyTemperature(lines, tempEvent, indoorSafety, isSummer, isWinter, yr1){
+  const safety = clamp(indoorSafety, 0, 1);
 
-  let indoorSafety = 0; // 0 = dangerously exposed, 1 = perfectly comfortable
-  
-  if (isWinter) {
-    if (F.earthBerming) indoorSafety += 0.4; // Passive insulation
-    if (F.woodStove && S.res.wood >= 3) {
-      S.res.wood -= 3; // Burn wood to stay alive
-      indoorSafety += 0.6;
-      lines.push("The masonry heater burned through 3 wood today, keeping the Commons warm against the cold.");
-    } else if (F.woodStove && S.res.wood < 3) {
-      lines.push("A freezing day, and the woodpile is empty. The masonry heater sits cold.");
+  // --- the everyday cost of poor shelter ---
+  // TUNING: these two rates are the first knob to check. At 1.2/0.9 a bare
+  // first winter costs about 36 wb across the season — heavy, felt, and
+  // survivable. Much above this and poor shelter alone drives departures
+  // before the heater's parts cost can realistically be met.
+  if ((isWinter || isSummer) && safety < 0.85) {
+    const bite = (isWinter ? 1.2 : 0.9) * (1 - safety) * (yr1 ? 0.28 : 1);
+    for (const p of S.people) {
+      if (p.status === "away") continue;
+      p.wb = clamp(p.wb - bite, wbFloor(p), 100);
+    }
+    // said once a season, on the day it starts, so it registers without nagging
+    if (isWinter && dayOfSeason(S.day) === 1 && yearOf(S.day) === 2) {
+      lines.push("This winter has a different edge to it than the last one. The first year here was kind, and nobody had understood that it was being kind.");
+    }
+    if (dayOfSeason(S.day) === 2 && safety < 0.4) {
+      lines.push(isWinter
+        ? "The Commons never really gets warm. People keep their coats on indoors and go to bed early to be out of it."
+        : "The Commons holds the day's heat well past dark. Nobody sleeps well in this.");
     }
   }
 
-  if (isSummer) {
-    if (F.earthBerming) indoorSafety += 0.6; // Earth walls keep things cool
-    // AC could be added here later, draining S.res.charge heavily
-  }
-
-  // --- APPLYING EXTREME WEATHER CONSEQUENCES ---
+  // --- the extremes ---
   if (tempEvent === "heatwave") {
     lines.push("A blistering heatwave today.");
     for (const p of S.people) {
@@ -285,6 +301,71 @@ function simulateDay(){
     }
   }
 
+}
+
+function simulateDay(){
+  // captured before anything else runs — see buildWorkSnapshot() for why
+  const workSnapshot = buildWorkSnapshot();
+  const lines=[...S.pending]; S.pending=[];
+  // if a forecast was made for today (see the end of this function), honor it —
+  // the log only means something if it's actually right
+  const wx = S.forecast ? scaledWeather(S.forecast) : rollWeather();
+  S.weather=wx.id;
+  const F=S.flags;
+  const sn=season();
+
+
+  // --- TEMPERATURE EXTREMES ---
+  const isSummer = sn.id === "summer";
+  const isWinter = sn.id === "winter";
+  
+  // The first year is gentler on purpose. Not a tutorial — a mild first
+  // year that the village mistakes for the normal weather, so the second
+  // winter lands as a correction rather than as difficulty ramping.
+  const yr1 = yearOf(S.day) === 1;
+  const extremeP = yr1 ? 0.035 : 0.15;
+  let tempEvent = null;
+  if (isSummer && Math.random() < extremeP) tempEvent = "heatwave";
+  if (isWinter && Math.random() < extremeP) tempEvent = "deepfreeze";
+
+  // indoorSafety: 0 = dangerously exposed, 1 = perfectly comfortable.
+  // PASSIVE contributions only are computed here. The one powered option
+  // (the cooling unit) is added after the power block resolves, because
+  // whether it runs at all depends on the brownout — a machine that fails
+  // exactly when everyone is running everything is the whole argument
+  // against depending on it. See applyTemperature() below.
+  let indoorSafety = 0;
+
+  if (isWinter) {
+    if (F.earthBerming) indoorSafety += 0.4;   // packed earth cuts both ways
+    // the rocket heater is the same warmth off half the wood — a real
+    // return on scrap and labor rather than a second heat source
+    const burn = F.rocketHeater ? 1.5 : 3;
+    if (F.woodStove && S.res.wood >= burn) {
+      S.res.wood -= burn;
+      indoorSafety += 0.6;
+      // journal: the first burn of the season, then only when the pile is
+      // getting thin. Thirty identical lines a winter is not a journal.
+      const daysLeft = Math.floor(S.res.wood / burn);
+      if (dayOfSeason(S.day) === 1) {
+        lines.push(F.rocketHeater
+          ? "First fire of the winter in the rocket heater. It'll draw down the woodpile slower than the old hearth did."
+          : "First fire of the winter in the masonry heater. The stone holds the warmth for hours after it burns down.");
+      } else if (daysLeft <= 7 && S.day % 3 === 0) {
+        lines.push(`The woodpile is down to about ${daysLeft} more day${daysLeft === 1 ? "" : "s"} of burning. Somebody should be at the tree line.`);
+      }
+    } else if (F.woodStove) {
+      lines.push("A freezing day, and the woodpile is empty. The hearth sits cold.");
+    }
+  }
+
+  if (isSummer) {
+    if (F.earthBerming)  indoorSafety += 0.5;   // earth walls run cool
+    if (F.earthTubes)    indoorSafety += 0.4;   // air drawn through cool ground
+    if (F.windcatcher)   indoorSafety += 0.35;  // no moving parts, nothing to break
+    indoorSafety += shadeCooling();             // trees, planted years ago
+  }
+
   tickExpeditions(lines);
 
   // gift return, if any
@@ -319,12 +400,14 @@ function simulateDay(){
   const pumpAl    = built("catchment")  ? alv("pump")    : 0;
   const aquaAl    = built("aquaponics") ? alv("aqua")    : 0;
   const commonsAl = built("commons")    ? alv("commons") : 0;
+  const wellAl    = F.well              ? alv("well")   : 0;
+  const acAl      = (F.acUnit && isSummer) ? alv("ac")   : 0;
   const canningAl = F.canning           ? alv("canning") : 0;
   const fabAl     = S.fabProject        ? alv("fab")     : 0;
   const sysDraw=id=>SYS.find(d=>d.id===id).draw;
   const rawDraw = sysDraw("catchment")*pumpAl + sysDraw("aquaponics")*aquaAl
                 + sysDraw("commons")*commonsAl
-                + CANNING_DRAW*canningAl + FAB_DRAW*fabAl;
+                + CANNING_DRAW*canningAl + FAB_DRAW*fabAl + AC_DRAW*acAl + WELL_DRAW*wellAl;
   const draw = Math.max(1, rawDraw - ((S.f||{}).drawReduce||0) - (F.gridTuned?1:0));
   // transmission loss: the lines bleed a share of everything generated.
   // Solving line-run benches (S.puz.wires) shrinks it toward zero.
@@ -339,6 +422,15 @@ function simulateDay(){
   // effective tiers: what each demand actually gets today. Brownout forces
   // the old brownout behavior (pump on gravity, tanks slow, commons dark,
   // canning cold, shops on hand power) — allocation can only cut further.
+  // --- temperature, resolved ---
+  // the cooling unit only helps if the grid actually carried it today
+  if (isSummer && F.acUnit) {
+    const acOn = !brownout && ((S.alloc && S.alloc.power && S.alloc.power.ac) !== 0);
+    if (acOn) indoorSafety += 0.75;
+    else if (tempEvent === "heatwave") lines.push("The cooling unit sat dead through the worst of the heat. Nothing to run it on.");
+  }
+  applyTemperature(lines, tempEvent, indoorSafety, isSummer, isWinter, yr1);
+
   const pumpEff    = brownout ? 0 : pumpAl;
   const aquaEff    = brownout ? Math.min(aquaAl,0.5) : aquaAl;
   const commonsLit = !brownout && commonsAl>0;
@@ -352,7 +444,21 @@ function simulateDay(){
   // pipes carry. Rain into the tanks and hand-hauled water skip the pipes.
   // Solving water-main benches (S.puz.pipes) shrinks it toward zero.
   const waterLoss = WATER_LOSS_BASE * Math.pow(LOSS_DECAY, (S.puz&&S.puz.pipes)||0);
-  const wIn = (built("catchment") ? 14*mult(S.sys.catchment.cond)*pumpFactor*(F.sealedTanks?1.2:1)*(1-waterLoss) : 3) + wx.rain;
+  const rainIn = (built("catchment") ? 14*mult(S.sys.catchment.cond)*pumpFactor*(F.sealedTanks?1.2:1)*(1-waterLoss) : 3) + wx.rain;
+  // --- the well ---
+  // Independent of the weather, which is the whole appeal. Yield rides on
+  // the aquifer's health, so the restoration metric stops being a dampener
+  // on distant hazards and becomes the thing the tap runs on.
+  const wellEff = brownout ? 0 : wellAl;
+  const aquiferHealth = clamp(((S.restore&&S.restore.aquifer)||0)/100, 0, 1);
+  const wellIn = F.well ? 16 * wellEff * (0.45 + 0.55*aquiferHealth) : 0;
+  const wIn = rainIn + wellIn;
+  // and what comes up with it. Cumulative, silent, permanent.
+  const wellShare = wIn>0 ? wellIn/wIn : 0;
+  accrueToxins(S.people, wellShare, S.groundwaterContam||0);
+  if(F.well && wellEff>0 && (S.groundwaterContam||0)>=25 && S.day%45===0){
+    lines.push("The well water has a taste to it some days — metal, or something like it. It passes. Nobody has ever gotten sick from it that anyone could point to.");
+  }
   let gardenWater = irr>0.75 ? 2.5 : 4;
   if(F.dripRetrofit) gardenWater=Math.max(1.5,gardenWater-1);
   if(F.keyline) gardenWater=Math.max(1,gardenWater-0.8);
@@ -637,6 +743,7 @@ function simulateDay(){
   if(woodcutters.length){
     let gathered = 0;
     for(const p of woodcutters) gathered += 1.5 + effStat(p,"wild","woodcut")*0.6*eff(p);
+    gathered *= ((S.f||{}).woodcutBonus || 1);   // a coppiced woodlot cuts easier and regrows faster
     const actual = addRes("wood", gathered);
     S._woodWhy = `${actual.toFixed(1)} wood hauled`;
   } else {
@@ -921,7 +1028,15 @@ function simulateDay(){
   const healthy=S.people.filter(p=>p.status==="ok");
   const sickChance=Math.max(0.02, (F.herbalStores?0.07:0.12) - (F.draftProof?0.02:0));
   if(healthy.length && Math.random()<sickChance){
-    let sick=pick(healthy);
+    // who it lands on is weighted by lifetime exposure — the same roll,
+    // but the people who drank the bad water come up more often
+    let sick=(function(){
+      const w=healthy.map(toxSickMult);
+      const tot=w.reduce((a,b)=>a+b,0);
+      let r=Math.random()*tot;
+      for(let i=0;i<healthy.length;i++){ r-=w[i]; if(r<=0) return healthy[i]; }
+      return healthy[healthy.length-1];
+    })();
     if(sick.trait==="Cautious" && Math.random()<0.7) sick=null;
     if(sick){ sick.status="down"; sick.downDays=2; const wasJob=sick.job; sick.job=null;
       const stillTended = wasJob && wasJob!=="away" && working(wasJob).length>0;
@@ -942,6 +1057,7 @@ function simulateDay(){
   // --- the turn of each season: the land's slow feedback runs ---
   if(dayOfSeason(S.day)===SEASON_LEN){
     stepRestoration(lines);
+    resetSeasonFlares();   // a new season is a clean(ish) slate; the per-pair log persists
   }
 
   // --- the turn of the year: people age, and the village changes ---
@@ -964,13 +1080,17 @@ function simulateDay(){
         const raisers = [r0, r1];
         // a child inherits from who raises them, not who bore them
         const inh = k => clamp(Math.round((raisers[0][k]+raisers[1][k])/2 + (Math.random()<0.5?-1:1)), 1, 5);
-        S.people.push({
+        const kid = {
           id:"child_"+S.day+"_"+name.toLowerCase(), name, pn: pick(["she/her","he/him","they/them"]),
           trait: pick(Object.keys(TRAITS)), hands:inh("hands"), green:inh("green"), care:inh("care"), wild:inh("wild"),
           note: pick(CHILD_NOTES), age:0, years:0, perm:null,
           wb:80, job:null, streak:0, status:"ok", downDays:0, mem:`Born in the village, winter of year ${yr}.`,
+          personality: rollPersonality(),   // chemistry, not lineage — deliberately not inherited
+          toxins: 0,   // born clean; the well will do its own work over their lifetime
           practice:{specific:{}, broad:{hands:0,green:0,care:0,wild:0}}   // earned fresh, not inherited
-        });
+        };
+        kid.ideology = seedIdeology(kid);   // seeded from their own rolled self; the village will do the rest
+        S.people.push(kid);
         S.births++;
         const raiserPhrase = raisers[0]===raisers[1]
           ? `${raisers[0].name} will raise ${name}, and so will everyone else`
@@ -985,7 +1105,7 @@ function simulateDay(){
     for(const p of [...S.people]){
       if(p.age<ELDER) continue;
       if(p.status==="away") continue;
-      const risk = 0.04 + Math.max(0,(p.age-ELDER))*0.022 + (p.wb<35?0.05:0);
+      const risk = 0.04 + Math.max(0,(p.age-ELDER))*0.022 + (p.wb<35?0.05:0) + toxDeathAdd(p);
       if(Math.random()<risk){
         S.people = S.people.filter(x=>x!==p);
         S.deaths++;
@@ -1045,8 +1165,10 @@ function simulateDay(){
   if (S.day > 5) { // e.g., let them settle in for a few days first
     tickRelationships(); 
     if(cookAl>0) tickDinnerBonds(hunger, S.sys.commons.cond); // no one bonds over a cold, silent dinner
-//    checkForHearthConflicts(lines); 
+    tickFriction(lines);      // flares read today's wb and bonds, after the warm ticks land
+    tickConflicts(lines);     // and the conflict lifecycle reads today's flares
   }
+  driftIdeology(lines);       // stances move last, off the day as it actually went
 
   tickDepartures(lines);            
   tickVillageSpiritsStreak();      

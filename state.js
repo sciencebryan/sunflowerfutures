@@ -4,6 +4,8 @@ import { PUZ_META } from "./data-puzzles.js";
 import { AGES } from "./seasons.js";
 import { NEWCOMERS, ROSTER, VISUALS } from "./defs.js";
 import { clamp } from "./helpers.js";
+import { rollPersonality, seedFounderBonds } from "./bonds.js";
+import { seedIdeology } from "./ideology.js";
 
 
 
@@ -26,13 +28,19 @@ function newSites(){
 
 
 function freshPerson(def){
-  return {...def, age: AGES[def.id] ?? 30, years:0, perm:null, wb:78+Math.floor(Math.random()*10), job:null, streak:0, status:"ok", downDays:0, mem:null, practice:{specific:{}, broad:{hands:0,green:0,care:0,wild:0}}};
+  // personality: hidden chemistry, rolled fresh per person per game — never
+  // rendered, never derived from anything visible (see bonds.js)
+  const p = {...def, age: AGES[def.id] ?? 30, years:0, perm:null, wb:78+Math.floor(Math.random()*10), job:null, streak:0, status:"ok", downDays:0, mem:null, toxins:0, personality: rollPersonality(), practice:{specific:{}, broad:{hands:0,green:0,care:0,wild:0}}};
+  // ideology: hidden stance vector, seeded from who they already are
+  // (stats + trait), so it needs the finished person — hence after the spread
+  p.ideology = seedIdeology(p);
+  return p;
 }
 
 // every demand at full — the sim at these defaults behaves exactly as it
 // did before allocation existed (see the ALLOCATION section of data-economy)
 function defaultAlloc(){
-  return { power:{pump:1, aqua:1, commons:1, canning:1, fab:1},
+  return { power:{pump:1, aqua:1, commons:1, canning:1, fab:1, ac:1},
            water:{drinking:1, cooking:1, cleaning:1, irrigation:1} };
 }
 
@@ -75,11 +83,19 @@ function newState(){
                           // one in trouble — see the "neighbors" block in simulateDay. Decays
                           // slowly if never called in; this is reciprocity, not a bank account.
     festivalCooldown: 0, festivalBoostDays: 0,  // a deliberate sink for surplus food/oil — see holdFestival()
+    groundwaterContam: 0,  // HIDDEN. What's in the water table, 0-100. Seeded by the landfill
+                           // visual, read only by the well. Rain is always clean; this is the
+                           // cost of the reliable supply, and it is never shown to anyone.
     compost: 0,  // built up from spoilage/preserving loss once compost bins exist; spread onto
                  // whichever bed or forest plot needs it most (see the compost phase below)
 
-    bonds: {},          // Keyed by "char1Id:char2Id", value is a float (0 to 10)
-    activeConflicts: [],// Array of current interpersonal issues
+    bonds: {},          // Keyed by "char1Id:char2Id", value is {familiarity 0..10, affinity -10..+10}
+                        // (+ lazily: flares, log, lastFix — see events.js friction & mediation.js)
+    activeConflicts: [],// Array of current interpersonal issues (see mediation.js)
+    conflictSeq: 1,
+    legitimacy: 70,     // HIDDEN. The village's read on your facilitation — built by honest
+                        // process (a values airing that lands), spent by misjudged ones.
+                        // Governance (M6) will draw on this same pool. Leaks via journal only.
     earthseedUnlocked: false, // Set to true once the Commons or a specific milestone is reached
 
     lastForageDay: -999,  // safely far in the past so "hasForaged" starts false, not undefined
@@ -131,6 +147,33 @@ function applyFounding(s, visualIds){
         }
       }
     }
+    if(fx.catalpaStart){
+      // the trees were here before anyone was. Backdated past maturity, so
+      // the shade is real on day one — the one way to have it without waiting.
+      s.forest = s.forest || []; s.crops = s.crops || {};
+      s.crops.catalpa = true;
+      for(let i=0;i<fx.catalpaStart;i++){
+        s.forest.push({crop:"catalpa", growth:0, days:0, ready:false, stored:0, fertility:75,
+                       plantedDay: -(SEASON_LEN*4*30)});   // old trees, long past mature
+      }
+    }
+    if(fx.cropGrant){
+      // one specific perennial known from the start, unlike cropUnlock's
+      // random annuals — you know these trees because they're standing here
+      s.crops = s.crops || {}; s.crops[fx.cropGrant] = true;
+    }
+    if(fx.flagStart){ s.flags[fx.flagStart] = true; }
+    if(fx.woodStart){ s.res.wood = (s.res.wood||0) + fx.woodStart; }
+    if(fx.restoreStart){
+      s.restore = s.restore || {mycosphere:0, aquifer:0, pollinator:0, seen:false, restored:false};
+      for(const [k,v] of Object.entries(fx.restoreStart)) s.restore[k] = clamp((s.restore[k]||0)+v, 0, 100);
+      s.restore.seen = true;   // the land is already doing something; the panel should show it
+    }
+    if(fx.contamStart){
+      // the mound has been leaching into the water table since long before
+      // anyone arrived. Only matters if the village ever drills for water.
+      s.groundwaterContam = (s.groundwaterContam||0) + fx.contamStart;
+    }
     if(fx.cropUnlock){
       // a seed store: start already knowing a few more crops (annuals, not the
       // slow perennials -- those you still have to find or plant into the forest)
@@ -165,6 +208,13 @@ function applyFounding(s, visualIds){
     if(fx.tripLong)     f.tripLong=true;
     if(fx.spirits)      f.spirits=(f.spirits||0)+fx.spirits;
     if(fx.spiritsGrey)  f.spiritsGrey=(f.spiritsGrey||0)+fx.spiritsGrey;
+    if(fx.forageBonus)  f.forageBonus=(f.forageBonus||1)*fx.forageBonus;
+    if(fx.woodcutBonus) f.woodcutBonus=(f.woodcutBonus||1)*fx.woodcutBonus;
+    if(fx.practiceStart){ f.practiceStart=f.practiceStart||{}; for(const[k,v]of Object.entries(fx.practiceStart)) f.practiceStart[k]=(f.practiceStart[k]||0)+v; }
+    // the place leaves its mark on what people come to believe: circled
+    // visuals accumulate stance nudges, applied to the founders once they
+    // exist (applyFounders) — your opening aesthetic choice IS early politics
+    if(fx.ideology){ f.ideoSeed=f.ideoSeed||{}; for(const[ax,amt]of Object.entries(fx.ideology)) f.ideoSeed[ax]=(f.ideoSeed[ax]||0)+amt; }
   }
   // bicycles and footpaths argue with each other
   if(f.fastLong && f.bikeDull){ f.fastLong=false; f.carry=(f.carry||0)-1; f.partsUpkeep=(f.partsUpkeep||0)*0.5; }
@@ -181,6 +231,17 @@ function applyFounders(s, founderIds){
   const ids = (founderIds && founderIds.length===FOUNDER_COUNT) ? founderIds
             : ROSTER.slice(0,FOUNDER_COUNT).map(r=>r.id);  // safety net, shouldn't be reachable from the UI
   s.people = ids.map(id=>ROSTER.find(r=>r.id===id)).filter(Boolean).map(freshPerson);
+  seedFounderBonds(s);   // they traveled here together; day one is not a room full of strangers
+  // the circled visuals shape the founders' starting stances — later arrivals
+  // weren't formed by this place, so the nudge is founders-only
+  // a place of footpaths means everyone already knows the near country
+  const prStart = s.f && s.f.practiceStart;
+  if(prStart) for(const p of s.people)
+    for(const [k,v] of Object.entries(prStart)) p.practice.broad[k] = (p.practice.broad[k]||0) + v;
+  const ideoSeed = s.f && s.f.ideoSeed;
+  if(ideoSeed) for(const p of s.people)
+    for(const [ax,amt] of Object.entries(ideoSeed))
+      p.ideology[ax] = clamp((p.ideology[ax]||0)+amt, -1, 1);
   const unchosen = ROSTER.filter(r=>!ids.includes(r.id)).map(r=>({...r, founderEcho:true}));
   // shuffle so who shows up first isn't always the same across playthroughs
   for(let i=unchosen.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [unchosen[i],unchosen[j]]=[unchosen[j],unchosen[i]]; }
@@ -243,6 +304,7 @@ function migrate(s){
   if(s.festivalCooldown===undefined) s.festivalCooldown=0;
   if(s.festivalBoostDays===undefined) s.festivalBoostDays=0;
   if(s.compost===undefined) s.compost=0;
+  if(s.groundwaterContam===undefined) s.groundwaterContam=0;
   if(s.lastForageDay===undefined) s.lastForageDay=-999;
   if(s.arrivalQueue===undefined) s.arrivalQueue=NEWCOMERS.slice();  // old saves already started with all 12; nothing unchosen to add
   // perennials used to live in the beds; move any into the food forest
@@ -255,6 +317,14 @@ function migrate(s){
   if(s.larder===undefined) s.larder=1;
   // practice: earned skill added later — anyone from an older save starts with none
   for(const p of s.people) if(!p.practice) p.practice={specific:{}, broad:{hands:0,green:0,care:0,wild:0}};
+  // personality: hidden chemistry added later — anyone without one rolls it now
+  for(const p of s.people) if(!p.personality) p.personality=rollPersonality();
+  // ideology: hidden stance vector added later — seeded from stats+trait now
+  for(const p of s.people) if(!p.ideology) p.ideology=seedIdeology(p);
+  for(const p of s.people) if(p.toxins===undefined) p.toxins=0;
+  if(s.legitimacy===undefined) s.legitimacy=70;
+  if(!s.conflictSeq) s.conflictSeq=1;
+  if(!s.activeConflicts) s.activeConflicts=[];
   if(s.v<5){
     // v4 -> v5: seasons, crop beds, preservation, fabrication, generations
     s.beds = Array.from({length: 1 + (s.flags.gardenBeds?1:0) + (s.flags.terraces?1:0)},

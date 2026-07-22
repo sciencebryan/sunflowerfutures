@@ -1,5 +1,8 @@
 import { S, freshPerson } from "./state.js";
 import { Cap, aliveName, byId, clamp, pick, poss, siteDef, siteName, subj, wbFloor } from "./helpers.js";
+import { bondKey, bondOf, isMismatched, moreBothered, termBreakdown, tickBondPair } from "./bonds.js";
+import { nudgeIdeology } from "./ideology.js";
+import { promoteConflict } from "./mediation.js";
 import { rollStranger } from "./defs.js";
 import { SITE_DEF, SITE_LOOT_TABLE } from "./data-economy.js";
 
@@ -44,6 +47,7 @@ const EVENTS = [
       if(i===0){
         const p=freshPerson(n); p.wb=55; p.mem=`Arrived day ${S.day}.`;
         S.people.push(p); S.newcomerIdx++;
+        nudgeIdeology(S.people.filter(q=>q.status!=="away"), "openness", 0.02);   // a door opened is an argument for doors
         S.pending.push(`${n.name} stayed. We gladly made a place for ${subj(n)} at the long table.`);
       } else {
         S.newcomerIdx++;
@@ -74,6 +78,7 @@ const EVENTS = [
         const def={id, name:ctx.name, pn:ctx.pn, trait:ctx.trait, hands:ctx.hands, green:ctx.green, care:ctx.care, wild:ctx.wild, note:ctx.note};
         const p=freshPerson(def); p.wb=55; p.mem=`Arrived day ${S.day}, off the radio.`;
         S.people.push(p);
+        nudgeIdeology(S.people.filter(q=>q.status!=="away"), "openness", 0.02);
         S.pending.push(`${ctx.name} stayed. We gladly made a place for ${subj(ctx)} at the long table.`);
       } else {
         S.people.forEach(p=>{ if(p.status!=="away") p.wb=clamp(p.wb-1,wbFloor(p),100); });
@@ -266,7 +271,7 @@ function maybeSpawnEvent(){
 
 function tickRelationships() {
   S.bonds = S.bonds || {};
-  
+
   // 1. Working together (for jobs that allow multiple people, like garden/preserve)
   const jobs = {};
   for (const p of S.people) {
@@ -277,7 +282,7 @@ function tickRelationships() {
   }
   for (const [jobId, workers] of Object.entries(jobs)) {
     if (workers.length > 1) {
-      modifyBonds(workers, 0.04); 
+      modifyBonds(workers, 0.04);
     }
   }
 
@@ -287,32 +292,30 @@ function tickRelationships() {
     modifyBonds(resting, 0.03); // Slightly slower but much more common
   }
 
-  // 3. Caretaker and Patient bonding
+  // 3. Caretaker and Patient bonding — fast, through vulnerability
   const caretaker = S.people.find(p => p.job === "care" && p.status === "ok");
   if (caretaker) {
-    const patients = S.people.filter(p => p.status === "down" || p.status === "spent").map(p => p.id);
-    for (const pid of patients) {
-      const key = [caretaker.id, pid].sort().join(":");
-      S.bonds[key] = Math.min(10, (S.bonds[key] || 0) + 0.08); // Fast bonding through vulnerability
+    const patients = S.people.filter(p => p.status === "down" || p.status === "spent");
+    for (const pt of patients) {
+      tickBondPair(S.bonds, caretaker, pt, 0.08);
     }
   }
+
+  // 4. Surviving the road builds bonds quickly
   for (const ex of S.expeditions) {
-  // Only bond characters who are actually in the active party and not dead/gone
-    const travelers = ex.party.filter(pid => byId(pid)); 
+    // Only bond characters who are actually in the active party and not dead/gone
+    const travelers = ex.party.filter(pid => byId(pid));
     if (travelers.length > 1) {
-      // Surviving the road builds bonds quickly
-      modifyBonds(travelers, 0.08); 
+      modifyBonds(travelers, 0.08);
+    }
   }
-}
 }
 
 function tickDinnerBonds(hunger, commonsCond) {
   if (hunger > 0 || commonsCond < 50) return; // No bonding during a cold, hungry night
 
   // Find everyone present in the village for dinner
-  const diners = S.people
-    .filter(p => p.status !== "away" && p.status !== "down")
-    .map(p => p.id);
+  const diners = S.people.filter(p => p.status !== "away" && p.status !== "down");
 
   if (diners.length <= 1) return;
 
@@ -320,34 +323,122 @@ function tickDinnerBonds(hunger, commonsCond) {
 
   for (let i = 0; i < diners.length; i++) {
     for (let j = i + 1; j < diners.length; j++) {
-      const key = [diners[i], diners[j]].sort().join(":");
-      const currentBond = S.bonds[key] || 0;
+      const b = bondOf(S.bonds, bondKey(diners[i].id, diners[j].id));
 
-      // Baseline dinner boost
-      let boost = 0.02; 
+      // Baseline dinner boost; people who already know each other well
+      // deepen faster. Familiarity gates this, not affinity — you gravitate
+      // to the same end of the table out of habit, fond of them or not.
+      const boost = b.familiarity > 1.0 ? 0.05 : 0.02;
 
-      // If they already have a meaningful connection, the bond deepens faster
-      if (currentBond > 1.0) {
-        boost = 0.05; 
-      }
-
-      S.bonds[key] = Math.min(10, currentBond + boost);
+      tickBondPair(S.bonds, diners[i], diners[j], boost);
     }
   }
 }
 
 
 function modifyBonds(ids, amt) {
+  // ids in, person objects resolved here — tickBondPair needs the people
+  // themselves so compatibility() can read their (hidden) personality.
+  // byId returns undefined for the dead and departed; tickBondPair guards.
   for (let i = 0; i < ids.length; i++) {
     for (let j = i + 1; j < ids.length; j++) {
-      const key = [ids[i], ids[j]].sort().join(":");
-      S.bonds[key] = Math.min(10, (S.bonds[key] || 0) + amt);
+      tickBondPair(S.bonds, byId(ids[i]), byId(ids[j]), amt);
     }
   }
 }
 
 
 //put new functions here
+
+/* ================= friction: flares =================
+   The rare, visible tier on top of the routine suppression in tickBondPair.
+   Two ways a pair qualifies on a given day:
+     circumstantial — mismatched pair, co-present, either under low spirits.
+       The flare is about the hard week, not really about them.
+     relational — affinity already well below zero, regardless of spirits.
+       The relationship itself is the problem.
+   The distinction is logged per flare; milestone 5's "give them space"
+   reads it back to judge whether space was the right call.
+   At most ONE flare per day village-wide, so the journal never floods.
+   Flares touch affinity only — never wb (one-directional by design: hardship
+   strains relationships; flares don't feed the departure spiral). */
+
+const FLARE_P_CIRC = 0.05;
+const FLARE_P_REL  = 0.025;
+const FLARE_HIT    = 0.35;
+const FLARES_TO_CONFLICT = 3;
+const PAIR_LOG_CAP = 5;
+
+/* PLACEHOLDER VOICE — two pools, picked by which compatibility term is
+   dragging the pair down. A careful reader should be able to tell a values
+   clash from a temperament clash across a season without being told. */
+const FRICTION_TEMPERAMENT = [
+  (a,b) => `${a.name} and ${b.name} snapped at each other over nothing much, near the woodpile. It passed. It didn't apologize itself away, though.`,
+  (a,b) => `${a.name} left the room when ${b.name} started in on the same story again. Small thing. Everyone noticed.`,
+  (a,b) => `${a.name} and ${b.name} worked the whole shift three steps apart and said maybe six words.`,
+  (a,b) => `Something about how ${b.name} hums while working. ${a.name} didn't say what. ${a.name} didn't have to.`
+];
+const FRICTION_VALUES = [
+  (a,b) => `${a.name} and ${b.name} got into it again about how things ought to be run here. Neither gave an inch.`,
+  (a,b) => `${a.name} said what ${b.name} wants for this place would be the end of what it is. ${b.name} heard it.`,
+  (a,b) => `An argument at the long table — ${a.name} and ${b.name}, and everyone else studying their plates.`,
+  (a,b) => `${a.name} and ${b.name} agree on the work and on nothing underneath it. Today the underneath showed.`
+];
+
+function pairInCooling(idA, idB) {
+  const key = bondKey(idA, idB);
+  return (S.activeConflicts || []).some(c => c.key === key && c.status === "cooling");
+}
+
+function tickFriction(lines) {
+  S.bonds = S.bonds || {};
+  const present = S.people.filter(p => p.status !== "away" && p.status !== "down");
+  for (let i = 0; i < present.length; i++) {
+    for (let j = i + 1; j < present.length; j++) {
+      const pA = present[i], pB = present[j];
+      if (pairInCooling(pA.id, pB.id)) continue;
+      const b = bondOf(S.bonds, bondKey(pA.id, pB.id));
+
+      const lowWb = pA.wb < 35 || pB.wb < 35;
+      // a strong values clash qualifies even when personality chemistry is
+      // fine — two people who like each other and disagree about everything
+      // underneath still flare under a hard week, and it tags "values"
+      const valuesClash = termBreakdown(pA, pB).ideo < -0.35;
+      let p = 0, circumstantial = false;
+      if ((isMismatched(pA, pB) || valuesClash) && lowWb) { p = FLARE_P_CIRC; circumstantial = true; }
+      else if (b.affinity <= -2)         { p = FLARE_P_REL; }
+      if (p === 0 || Math.random() >= p) continue;
+
+      // which term is carrying the friction names the cause
+      const t = termBreakdown(pA, pB);
+      const cause = (t.ideo < t.persona) ? "values" : "temperament";
+      const pool = cause === "values" ? FRICTION_VALUES : FRICTION_TEMPERAMENT;
+
+      // the more-bothered party leads the sentence, when there is one
+      const mb = moreBothered(pA, pB);
+      const [x, y] = mb === pB ? [pB, pA] : [pA, pB];
+      const line = pick(pool)(x, y);
+
+      b.affinity = Math.max(-10, b.affinity - FLARE_HIT);
+      b.flares = (b.flares || 0) + 1;
+      b.log = b.log || [];
+      b.log.push({ day: S.day, cause, circumstantial, line });
+      if (b.log.length > PAIR_LOG_CAP) b.log.shift();
+      lines.push(line);
+
+      if (b.flares >= FLARES_TO_CONFLICT) promoteConflict(pA, pB, b, lines);
+      return;   // one flare a day is plenty
+    }
+  }
+}
+
+// season turn: flare counters reset — a new season is a clean(ish) slate.
+// The per-pair log persists; patterns outlive the counter.
+function resetSeasonFlares() {
+  for (const b of Object.values(S.bonds || {})) {
+    if (typeof b !== "number" && b.flares) b.flares = 0;
+  }
+}
 
 function tickVillageSpiritsStreak() {
   if (!S.people.length) return;
@@ -430,4 +521,4 @@ function tickDepartures(lines) {
 
 
 
-export { eventDef, eventView, exWhere, maybeSpawnEvent, tickDepartures, tickDinnerBonds, tickRelationships, tickVillageSpiritsStreak };
+export { eventDef, eventView, exWhere, maybeSpawnEvent, resetSeasonFlares, tickDepartures, tickDinnerBonds, tickFriction, tickRelationships, tickVillageSpiritsStreak };

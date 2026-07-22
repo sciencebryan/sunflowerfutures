@@ -8,6 +8,7 @@ import { DAY_MS } from "./data-economy.js";
 import { renderAll } from "./render.js";
 import { clamp } from "./helpers.js";
 import { db } from "./db.js";
+import { initDebugTab } from "./debug.js";
 
 
 
@@ -152,6 +153,7 @@ document.getElementById("signUpBtn").addEventListener("click", handleSignUp);
 
 // This runs the actual game state loading once we are securely authenticated
 async function runGameBoot() {
+  initDebugTab();   // no-op unless the logged-in uid/email is allowlisted in debug.js
   setS(await store.load());
   if(!S){ openFounding(); return; }   // first-ever game: opens the founding options
   setS(migrate(S));

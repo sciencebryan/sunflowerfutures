@@ -233,7 +233,22 @@ const PROJECTS = [
   {id:"oilPress",    name:"Oil press",             cost:{scrap:7, parts:3},  work:14, gate:{crop:"sunflower"}, blurb:"A hand crank and a screw. Turns seed into oil, if someone's willing to stand there and turn it."},
   {id:"compost",     name:"Compost bins",          cost:{scrap:3},           work:8,  blurb:"Rotten food and vegetable scraps are composted. Discarded food contributes to soil fertility."},
   {id:"woodStove", name:"Masonry Heater", cost:{scrap:10, parts:4}, work:16, blurb:"A heavy stone hearth in the Commons. Burns wood slowly and holds the heat for hours. Crucial for winter survival."},
-  {id:"earthBerming", name:"Earth-bermed Walls", cost:{scrap:15}, work:25, blurb:"Packing earth and tires against the north walls of the Commons and sickbed. Passive solarpunk insulation, good for keeping temperatures stable in both winter and summer."}
+  {id:"earthBerming", name:"Earth-bermed Walls", cost:{scrap:15}, work:25, blurb:"Packing earth and tires against the north walls of the Commons and sickbed. Passive solarpunk insulation, good for keeping temperatures stable in both winter and summer."},
+  /* --- heat and cold ---
+     One heating upgrade and three ways to cool a building, deliberately
+     spread across the cost axes rather than being strictly ranked:
+     the cooling unit is cheap to raise and expensive forever; the passive
+     options are expensive once and free thereafter, and cannot fail. */
+  {id:"rocketHeater", name:"Rocket mass heater", cost:{scrap:12, parts:3}, work:22, gate:{flag:"woodStove"},
+   blurb:"A J-tube burn chamber and a long cob bench for the exhaust to give up its heat into. Same warmth off half the wood."},
+  {id:"acUnit",      name:"Salvaged cooling unit", cost:{scrap:6, parts:8}, work:12, gate:{sys:"solar"},
+   blurb:"Compressor, coil, and a great deal of wire. It will cool the Commons properly — on the days the grid can carry it."},
+  {id:"earthTubes",  name:"Earth tubes", cost:{scrap:14}, work:34,
+   blurb:"A long run of salvaged pipe buried deep enough that the ground stays cool, and a duct drawing the house's air through it. Mostly digging. Nothing in it can break."},
+  {id:"well",        name:"Drilled well & pump", cost:{scrap:10, parts:9}, work:26, gate:{sys:"solar"},
+   blurb:"Down past the topsoil, past the clay, into the water that was already there. Reliable in a way rain is not — and it brings up whatever else is down there with it."},
+  {id:"windcatcher", name:"Windcatcher", cost:{scrap:9}, work:30,
+   blurb:"A tower on the roof, open to the prevailing wind, pulling the hot air up and out. Older than any of us, and it has no moving parts at all."}
 
 ];
 
@@ -305,6 +320,16 @@ const CROPS = {
   // yield, matures in a year), not Fragaria virginiana, whose wild fruit is tiny and
   // wouldn't remotely produce at this rate. Don't borrow native credibility for the
   // wrong plant. Raspberry also unflagged: the cultivated red cane is Eurasian.
+  // Not food. A perennial with no harvestSeason, so the food-forest bearing
+  // loop skips it entirely and only shadeCooling() in day.js reads it —
+  // planted for a summer five years from now. See the Now/Later axis.
+  catalpa:   {name:"Catalpa trees", perennial:true, shade:true, locked:true, matureYears:5,
+              sow:["spring"], note:"Heart-shaped leaves the size of a hand, and a canopy that turns the south wall cool. Five years of nothing, and then a great deal of shade."},
+  // slow, native, and a piece of what was lost: chestnuts take longer than
+  // anything else in the ground here, and then they feed a village
+  chestnut:  {name:"Chestnuts", perennial:true, native:true, matureYears:7, harvestSeason:"autumn",
+              yield:200, seed:4, seeds:0, sow:["spring"], feed:"light", locked:true,
+              note:"American chestnut, somehow still standing where four billion others fell. Seven years to bear, and then more than you can carry."},
   strawberry:{name:"Strawberries", perennial:true, matureYears:1, harvestSeason:"summer",
               yield:80, seed:3, seeds:0, sow:["spring"], feed:"light", locked:true,
               note:"Runners fill a plot in a year. After that, pickings all summer for almost no work."},
@@ -466,6 +491,10 @@ const JOB_PRACTICE = {
    ============================================================ */
 const CANNING_DRAW = 1.0;
 const FAB_DRAW = 0.8;
+const WELL_DRAW = 1.1;   // the pump runs whenever the well is drawing
+const AC_DRAW = 1.6;   // heavy on purpose: the cooling unit is the most expensive thing
+                       // on the grid, and it wants power on exactly the days solar is
+                       // strong and everyone else wants power too
 const AQUA_STAGNANT_WEAR = 1.5;
 const WITHER_CHANCE = 0.04;
 const NO_CLEANING_SICK = 0.10;
@@ -488,6 +517,17 @@ const POWER_DEMANDS = [
    blurb:"The long table's stove, and the lights above it.",
    fx:{0:"dark evenings — less time spent gathered together",
        1:"lit and warm"}},
+  {id:"well",    name:"Well pump",       gate:"flag:well", levels:[0,0.5,1],
+   draw: WELL_DRAW,
+   blurb:"Lifts groundwater into the tanks. Independent of the weather entirely.",
+   fx:{0:"capped — the village drinks rain only",
+       0.5:"drawing lightly — half what the well could give",
+       1:"drawing full"}},
+  {id:"ac",      name:"Cooling unit",    gate:"flag:acUnit", levels:[0,1],
+   draw: AC_DRAW,
+   blurb:"Cools the Commons and the sickbed through the worst of the summer.",
+   fx:{0:"off — the summer is whatever the walls and the trees make of it",
+       1:"running — the Commons stays bearable"}},
   {id:"canning", name:"Canning kitchen",  gate:"flag:canning", levels:[0,1],
    draw: CANNING_DRAW,
    blurb:"Jars, lids, and heat — the fastest way to preserve food.",
@@ -578,4 +618,4 @@ const YIELD_SOIL_FLOOR = 0.65;
 const POLLINATOR_YIELD = 0.20;
 
 
-export { AQUA_STAGNANT_WEAR, BATTERY_UNIT, CANNING_DRAW, CROPS, DAY_MS, FABS, FAB_DRAW, FAB_RATE, FOREST_PLOT_COST, INJURY_PER_DAY, JOB_PRACTICE, LOSS_DECAY, MAX_BATTERIES, MAX_FOREST_PLOTS, MAX_SOLAR, NO_CLEANING_SICK, OFFLINE_CAP, POLLINATOR_YIELD, POWER_DEMANDS, POWER_LOSS_BASE, PRACTICE_BROAD_CAP, PRACTICE_BROAD_DECAY, PRACTICE_BROAD_GROWTH, PRACTICE_SPECIFIC_CAP, PRACTICE_SPECIFIC_DECAY, PRACTICE_SPECIFIC_GROWTH, PRESERVE, PROJECTS, RESTORE_GATE, RESTORE_HIGH, RESTORE_IN, RESTORE_LOW, RES_CAP, SEASONS, SEASON_LEN, SITE_DEF, SITE_LOOT_TABLE, SOLAR_UNIT, STACKABLE, SYS, TURBINE_UNIT, WATER_DEMANDS, WATER_LOSS_BASE, WEATHERS, WITHER_CHANCE, YIELD_SOIL_FLOOR, YIELD_TEND_MAX, YIELD_TEND_SCALE };
+export { WELL_DRAW, AC_DRAW, AQUA_STAGNANT_WEAR, BATTERY_UNIT, CANNING_DRAW, CROPS, DAY_MS, FABS, FAB_DRAW, FAB_RATE, FOREST_PLOT_COST, INJURY_PER_DAY, JOB_PRACTICE, LOSS_DECAY, MAX_BATTERIES, MAX_FOREST_PLOTS, MAX_SOLAR, NO_CLEANING_SICK, OFFLINE_CAP, POLLINATOR_YIELD, POWER_DEMANDS, POWER_LOSS_BASE, PRACTICE_BROAD_CAP, PRACTICE_BROAD_DECAY, PRACTICE_BROAD_GROWTH, PRACTICE_SPECIFIC_CAP, PRACTICE_SPECIFIC_DECAY, PRACTICE_SPECIFIC_GROWTH, PRESERVE, PROJECTS, RESTORE_GATE, RESTORE_HIGH, RESTORE_IN, RESTORE_LOW, RES_CAP, SEASONS, SEASON_LEN, SITE_DEF, SITE_LOOT_TABLE, SOLAR_UNIT, STACKABLE, SYS, TURBINE_UNIT, WATER_DEMANDS, WATER_LOSS_BASE, WEATHERS, WITHER_CHANCE, YIELD_SOIL_FLOOR, YIELD_TEND_MAX, YIELD_TEND_SCALE };

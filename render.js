@@ -10,6 +10,7 @@ import { assignPhrase, workDef } from "./day.js";
 import { store } from "./store.js";
 import { FORAGE_FLAVOR } from "./data-events.js";
 import { renderWorks } from "./puzzle-ui.js";
+import { openConflictSheet } from "./mediation.js";
 import { syncNavTop } from "./main.js";
 
 
@@ -725,7 +726,23 @@ function practiceLine(p){
 }
 
 function renderPeople(){
-  let h=`<div class="legend"><b>hands</b> — ${SKILL_INFO.hands} · <b>green</b> — ${SKILL_INFO.green}<br><b>care</b> — ${SKILL_INFO.care} · <b>wild</b> — ${SKILL_INFO.wild}</div>`;
+  let h="";
+  // active conflicts first — the village's open wounds, above the roster.
+  // Symptom language only: never the cause tag, never a number.
+  for(const c of (S.activeConflicts||[])){
+    const pA=byId(c.pair[0]), pB=byId(c.pair[1]);
+    if(!pA||!pB) continue;
+    const statusWord = c.status==="cooling" ? "You've arranged some distance between them."
+                     : c.status==="jointwork" ? `They're meant to be working something through together${c.progress?` — ${c.progress} day${c.progress>1?"s":""} of it so far`:""}.`
+                     : c.severity>=3 ? "It's hardening. People have started planning around it."
+                     : c.severity===2 ? "It's past pretending now."
+                     : "Something's off between them, and it keeps surfacing.";
+    h+=`<button class="card" data-conflict="${c.id}" style="text-align:left;cursor:pointer;width:100%;border-left:2px solid var(--rust);padding-left:10px">
+      <div><span class="pname">${pA.name} · ${pB.name}</span></div>
+      <div class="flavor">${statusWord}${c.status==="open"?" <span style=\"font-style:normal;color:var(--moss)\">· tend to it?</span>":""}</div>
+    </button>`;
+  }
+  h+=`<div class="legend"><b>hands</b> — ${SKILL_INFO.hands} · <b>green</b> — ${SKILL_INFO.green}<br><b>care</b> — ${SKILL_INFO.care} · <b>wild</b> — ${SKILL_INFO.wild}</div>`;
   for(const p of S.people){
     let badge="";
     if(!canWork(p)) badge+=`<span class="status-badge" style="color:var(--water);border-color:var(--water)">child, ${p.age}</span>`;
@@ -757,6 +774,9 @@ function renderPeople(){
   $("tab-people").innerHTML=h;
   $("tab-people").querySelectorAll("[data-p]").forEach(el=>{
     el.onclick=()=>openPersonSheet(el.dataset.p);
+  });
+  $("tab-people").querySelectorAll("[data-conflict]").forEach(el=>{
+    el.onclick=()=>openConflictSheet(el.dataset.conflict);
   });
 }
 
