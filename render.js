@@ -679,8 +679,6 @@ function bindTabActions(el){
       store.save(S); renderAll();
     };
   });
-}
-
   el.querySelectorAll("[data-expand]").forEach(b=>{ b.onclick=()=>{ expandedSys.add(b.dataset.expand); renderAll(); }; });
   el.querySelectorAll("[data-celeb]").forEach(b=>{ b.onclick=()=>openCelebrationSheet(b.dataset.celeb); });
   el.querySelectorAll("[data-forget]").forEach(b=>{ b.onclick=()=>{ forgetTradition(b.dataset.forget); store.save(S); renderAll(); }; });
