@@ -28,6 +28,7 @@
    airing builds a sliver; a misjudged one spends some. */
 
 import { S } from "./state.js";
+import { canWork } from "./seasons.js";
 import { $ } from "./dom.js";
 import { byId, clamp, effStat, growPractice, practiceOf, wbFloor } from "./helpers.js";
 import { PRACTICE_SPECIFIC_CAP, PRACTICE_SPECIFIC_GROWTH } from "./data-economy.js";
@@ -238,7 +239,7 @@ function mediatorCandidates(c) {
   const [idA, idB] = c.pair;
   return S.people.filter(m =>
     m.id !== idA && m.id !== idB &&
-    m.age >= 16 && m.status !== "away" && m.status !== "down" &&
+    canWork(m) && m.status !== "away" && m.status !== "down" &&
     Math.min(standing(m, byId(idA)), standing(m, byId(idB))) >= MED_MIN_STANDING
   );
 }

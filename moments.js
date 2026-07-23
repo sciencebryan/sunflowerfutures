@@ -17,11 +17,28 @@
 import { S } from "./state.js";
 import { byId, pick, poss, objp, growPractice, practiceOf } from "./helpers.js";
 import { bondKey, bondOf } from "./bonds.js";
+import { canWork } from "./seasons.js";
 import { DOC_BY_LEAN, JOB_PLACE, MOMENTS, MOMENT_AFF, MOMENT_DAILY_P, MOMENT_PAIR_COOLDOWN, MOMENT_TIERS, SKILL_TEACH, TEACH_RATE, TEACH_TEACHER_SHARE, TOOL_BY_JOB } from "./data-moments.js";
 import { PRACTICE_BROAD_CAP } from "./data-economy.js";
 
 const present = p => p && p.status !== "away";
 const upright = p => present(p) && p.status !== "down";
+/* Moments describe people DOING things — washing up, saving a seat, teaching.
+   A one-year-old does none of that. Children still accrue bonds (that's how
+   "who raised whom" emerges), they just aren't actors in these lines. They
+   can still be the one visited when laid up. */
+const actor = p => present(p) && canWork(p);
+
+/* The tier-3 lines are the ambiguous-intimate ones — beds in the same room,
+   looking for someone first. Hard floor of 18, and a gap rule that tightens
+   at the young end. A pair that fails this still gets tier 1 and 2 lines;
+   they just never reach the closest register. */
+const INTIMATE_AGE = 18, GAP_YOUNG = 7, YOUNG_UNTIL = 25;
+function intimacyOk(A, B){
+  if((A.age||0) < INTIMATE_AGE || (B.age||0) < INTIMATE_AGE) return false;
+  if(Math.min(A.age, B.age) < YOUNG_UNTIL && Math.abs(A.age - B.age) > GAP_YOUNG) return false;
+  return true;
+}
 
 /* --- gates: named in data, resolved here. ctx = {A,B,b} --- */
 const GATES = {
@@ -92,22 +109,26 @@ function tickMoments(lines){
 
   // candidate pairs: both alive, neither away, off cooldown
   const cands = [];
-  const ppl = S.people.filter(present);
+  const ppl = S.people.filter(present);   // includes children — they can be visited
   for(let i=0;i<ppl.length;i++) for(let j=i+1;j<ppl.length;j++){
     let A = ppl[i], B = ppl[j];
     const b = bondOf(S.bonds, bondKey(A.id, B.id));
     if(S.day - (b.lastMoment||-999) < MOMENT_PAIR_COOLDOWN) continue;
 
     if(A.status==="down" || B.status==="down"){
-      // visiting: the down one is always {B}
+      // visiting: the down one is always {B}. The visitor must be an adult;
+      // the one laid up can be any age — an adult sitting with a sick child
+      // is exactly the kind of thing worth writing down.
       if(A.status==="down") [A,B] = [B,A];
-      if(!upright(A) || A.job==="care") continue;
+      if(!actor(A) || A.job==="care") continue;
       if(b.affinity < MOMENT_TIERS.t1) continue;   // strangers don't visit
       cands.push({A,B,b,pool:"visit",w:b.affinity});
       continue;
     }
 
-    const tier = tierFor(b.affinity);
+    if(!actor(A) || !actor(B)) continue;   // everything below needs two people who act
+    let tier = tierFor(b.affinity);
+    if(tier === 3 && !intimacyOk(A, B)) tier = 2;
     if(tier > 0) cands.push({A,B,b,pool:tier,w:b.affinity});
     if(GATES.peakDrop({A,B,b})) cands.push({A,B,b,pool:"cooling",w:2+(b.peakAff-b.affinity)});
   }
@@ -122,7 +143,7 @@ function tickMoments(lines){
   if(c.pool===2 || c.pool===3){
     let best=null, bw=MOMENT_TIERS.t1;
     for(const p of ppl){
-      if(p.id===c.A.id || p.id===c.B.id || p.status==="down") continue;
+      if(p.id===c.A.id || p.id===c.B.id || p.status==="down" || !actor(p)) continue;
       const w = Math.min(bondOf(S.bonds,bondKey(p.id,c.A.id)).affinity,
                          bondOf(S.bonds,bondKey(p.id,c.B.id)).affinity);
       if(w > bw){ bw = w; best = p; }

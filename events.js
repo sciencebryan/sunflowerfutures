@@ -4,6 +4,7 @@ import { bondKey, bondOf, isMismatched, moreBothered, termBreakdown, tickBondPai
 import { nudgeIdeology } from "./ideology.js";
 import { promoteConflict } from "./mediation.js";
 import { rollStranger } from "./defs.js";
+import { canWork } from "./seasons.js";
 import { SITE_DEF, SITE_LOOT_TABLE } from "./data-economy.js";
 
 
@@ -392,7 +393,9 @@ function pairInCooling(idA, idB) {
 
 function tickFriction(lines) {
   S.bonds = S.bonds || {};
-  const present = S.people.filter(p => p.status !== "away" && p.status !== "down");
+  // adults only: a child doesn't have a values clash with anyone, and shouldn't
+  // be promotable into an active conflict
+  const present = S.people.filter(p => p.status !== "away" && p.status !== "down" && canWork(p));
   for (let i = 0; i < present.length; i++) {
     for (let j = i + 1; j < present.length; j++) {
       const pA = present[i], pB = present[j];
