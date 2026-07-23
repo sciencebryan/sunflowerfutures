@@ -1231,6 +1231,21 @@ function checkPicrossWin() {
 
 
 
+const DIRGLYPH={E:"→",W:"←",S:"↓",N:"↑"};
+
+const PATCH_TINTS=[
+  {line:"#44622F", bg:"rgba(68,98,47,0.20)"},    // leaf
+  {line:"#4C7286", bg:"rgba(76,114,134,0.22)"},  // water
+  {line:"#B88124", bg:"rgba(184,129,36,0.22)"},  // sun
+  {line:"#6E5A7E", bg:"rgba(110,90,126,0.20)"},  // dusk violet
+  {line:"#7D8E6C", bg:"rgba(125,142,108,0.26)"}, // moss
+  {line:"#5B6770", bg:"rgba(91,103,112,0.20)"}   // slate
+];
+
+const WIRE_COLORS = {k:"var(--ink)", r:"var(--rust)", b:"#3d6b8a"};
+
+const WIRE_POST = [[1/3,0],[2/3,0],[1,1/3],[1,2/3],[2/3,1],[1/3,1],[0,2/3],[0,1/3]];
+
 /* ---------- fourier UI (the radio) ----------
    Target wave behind static; player wave overlaid live. Quarter-step
    amplitude buttons per harmonic; no spectrum shown anywhere. Exact match
