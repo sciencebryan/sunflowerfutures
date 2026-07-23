@@ -1,5 +1,5 @@
 import { S } from "./state.js";
-import { Cap, byId, clamp, effStat, isAre, siteDef, siteName, subj, wbFloor } from "./helpers.js";
+import { Cap, byId, clamp, effStat, isAre, objp, siteDef, siteName, subj, wbFloor } from "./helpers.js";
 import { CROPS, INJURY_PER_DAY, SITE_DEF } from "./data-economy.js";
 import { discoverRandomCrop, discoveryLine, lockedCrops, season } from "./seasons.js";
 import { addRes, foodCap } from "./defs.js";
@@ -41,11 +41,17 @@ function tickExpeditions(lines){
   }
   for(const ex of done){
     S.expeditions=S.expeditions.filter(x=>x!==ex);
+    // NOTE: the party's homecoming lives in the finally below. The expedition
+    // is already off S.expeditions by this point, so if anything in the loot
+    // or narration throws, these people would otherwise be stranded "away"
+    // forever with no expedition backing them. That is exactly the bug that
+    // a missing objp import caused. Belt and braces now.
+    try{
     if(ex.type==="forage"){
       // yield scales with wild skill and with how much it's been used
       const sf=season().forage;
       const raw=ex.party.reduce((a,pid)=>a+3+effStat(byId(pid),"wild","forage")*1.4,0)*sf;
-      const got=raw*(S.larder??1);
+      const got=raw*(S.larder??1)*((S.f||{}).forageBonus||1);   // paths worn by feet: the near country is known ground
       S.res.food=clamp(S.res.food+got,0,foodCap());
       S.larder=clamp((S.larder??1) - got/95, 0.12, 1);
       const names=ex.party.map(pid=>byId(pid).name).join(", ");
@@ -117,8 +123,13 @@ function tickExpeditions(lines){
         if(id) lines.push(discoveryLine(id,"salvage"));
       }
     }
+    }catch(err){
+      console.error("expedition return failed", err);
+      lines.push("The party came back. Nobody wrote down what they carried.");
+    }finally{
     for(const pid of ex.party){
       const p=byId(pid);
+      if(!p) continue;
       const name=ex.type==="explore"?"the far country":ex.type==="forage"?"the near country":siteName(ex.siteId);
       if(ex.injured.includes(pid)){
         p.status="down"; p.downDays=(ex.party.length>1?2:4)+Math.floor(Math.random()*2); p.job=null;
@@ -135,7 +146,9 @@ function tickExpeditions(lines){
       } else {
         p.status="ok"; p.job=null;
         p.mem=`Last out: ${name}, day ${S.day}.`;
+        (S.returnedToday=S.returnedToday||[]).push({id:p.id, place:name});
       }
+    }
     }
   }
 }

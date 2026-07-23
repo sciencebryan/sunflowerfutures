@@ -8,9 +8,11 @@ import { CHILD_NAMES, CHILD_NOTES, FV } from "./data-events.js";
 import { bestSpecific, practiceLabel, renderAll } from "./render.js";
 import { maybeSpawnEvent, resetSeasonFlares, tickDepartures, tickDinnerBonds, tickFriction, tickRelationships, tickVillageSpiritsStreak } from "./events.js";
 import { store } from "./store.js";
-import { rollPersonality } from "./bonds.js";
+import { rollMusic, rollPersonality } from "./bonds.js";
 import { driftIdeology, seedIdeology } from "./ideology.js";
 import { tickConflicts } from "./mediation.js";
+import { tickMoments } from "./moments.js";
+import { tickCelebCooldowns, tickTraditions } from "./celebrations.js";
 import { accrueToxins, toxDeathAdd, toxPracticeMult, toxSickMult } from "./toxins.js";
 
 
@@ -336,14 +338,21 @@ function simulateDay(){
   // against depending on it. See applyTemperature() below.
   let indoorSafety = 0;
 
+  const hearthParts=[];
+  const addWarm=(label,amt)=>{ indoorSafety+=amt; hearthParts.push([label,amt]); };
+  // the patchwork puzzle: each finished draft seals the Commons a little,
+  // both seasons — S.puz.patch is read directly, no flags
+  const patchSeal = Math.min((S.puz&&S.puz.patch)||0, 6) * 0.03;
   if (isWinter) {
-    if (F.earthBerming) indoorSafety += 0.4;   // packed earth cuts both ways
+    if (F.earthBerming) addWarm("earth-bermed walls", 0.4);   // packed earth cuts both ways
+    if (F.earthTubes)   addWarm("earth tubes (preheating)", 0.25);   // 52° air is not warm, but it is not 20° either
+    if (patchSeal>0)    addWarm("patchwork draught-proofing", patchSeal);
     // the rocket heater is the same warmth off half the wood — a real
     // return on scrap and labor rather than a second heat source
     const burn = F.rocketHeater ? 1.5 : 3;
     if (F.woodStove && S.res.wood >= burn) {
       S.res.wood -= burn;
-      indoorSafety += 0.6;
+      addWarm(F.rocketHeater?"the rocket heater":"the masonry heater", 0.6);
       // journal: the first burn of the season, then only when the pile is
       // getting thin. Thirty identical lines a winter is not a journal.
       const daysLeft = Math.floor(S.res.wood / burn);
@@ -360,12 +369,14 @@ function simulateDay(){
   }
 
   if (isSummer) {
-    if (F.earthBerming)  indoorSafety += 0.5;   // earth walls run cool
-    if (F.earthTubes)    indoorSafety += 0.4;   // air drawn through cool ground
-    if (F.windcatcher)   indoorSafety += 0.35;  // no moving parts, nothing to break
-    indoorSafety += shadeCooling();             // trees, planted years ago
+    if (F.earthBerming)  addWarm("earth-bermed walls", 0.5);   // earth walls run cool
+    if (F.earthTubes)    addWarm("earth tubes", 0.4);          // air drawn through cool ground
+    if (F.windcatcher)   addWarm("the windcatcher", 0.35);     // no moving parts, nothing to break
+    if (patchSeal>0)     addWarm("patchwork draught-proofing", patchSeal);
+    const sh=shadeCooling(); if(sh>0) addWarm("catalpa shade", sh);
   }
 
+  S.returnedToday = [];   // expeditions.js fills this as parties come home; moments read it
   tickExpeditions(lines);
 
   // gift return, if any
@@ -426,9 +437,10 @@ function simulateDay(){
   // the cooling unit only helps if the grid actually carried it today
   if (isSummer && F.acUnit) {
     const acOn = !brownout && ((S.alloc && S.alloc.power && S.alloc.power.ac) !== 0);
-    if (acOn) indoorSafety += 0.75;
+    if (acOn) addWarm("the cooling unit", 0.75);
     else if (tempEvent === "heatwave") lines.push("The cooling unit sat dead through the worst of the heat. Nothing to run it on.");
   }
+  S.report.hearth = (isWinter||isSummer) ? {safety: clamp(indoorSafety,0,1), parts: hearthParts} : null;
   applyTemperature(lines, tempEvent, indoorSafety, isSummer, isWinter, yr1);
 
   const pumpEff    = brownout ? 0 : pumpAl;
@@ -534,6 +546,7 @@ function simulateDay(){
   };
   const PEREN_PICK_DAYS = [6, 12, 18, 24];   // a perennial bears on these days of its harvest season
 
+
   // The kitchen garden (S.beds, annuals) and the food forest (S.forest,
   // perennials) are separate ground: annual beds want tending; forest plots
   // want years. They don't compete for space or for the gardener's day.
@@ -611,13 +624,29 @@ function simulateDay(){
     if(sn.id!==crop.harvestSeason) continue;
     if(!PEREN_PICK_DAYS.includes(dayOfSeason(S.day))) continue;
     if(plot.lastPickDay===S.day) continue;
+    // --- how much a perennial bears for its age ---
+    // TWO dates, not one. bearYears is when it first fruits at all;
+    // matureYears is when it reaches maximum yield. Between them it ramps
+    // from nothing to full. Before bearYears it produces exactly zero — it
+    // is a young tree, and young trees do not feed anyone.
     const ageYears = (S.day - plot.plantedDay) / (SEASON_LEN*4);
-    const estFrac = clamp(ageYears/crop.matureYears, 0.15, 1);
+    const bearY = crop.bearYears ?? crop.matureYears*0.7;   // fallback for any crop not yet given one
+    if(ageYears < bearY){
+      plot.ready = false;
+      plot.lastPickDay = S.day;
+      continue;
+    }
+    const span = Math.max(0.25, crop.matureYears - bearY);
+    const estFrac = clamp((ageYears - bearY)/span, 0, 1);
     if(estFrac>=1 && !plot.matured){
       plot.matured=true;
-      lines.push(`The ${crop.name.toLowerCase()} in the food forest has fully matured.`);
+      lines.push(`The ${crop.name.toLowerCase()} in the food forest has come into its full bearing. This is as much as it will ever give in a year.`);
     }
     plot.stored = (crop.yield/PEREN_PICK_DAYS.length) * estFrac * fertilityMult(plot.fertility);
+    if(!plot.firstBorne && plot.stored >= 1){
+      plot.firstBorne = true;
+      lines.push(`The ${crop.name.toLowerCase()} in the food forest bore for the first time. A thin crop — it was never going to be more than that, this year.`);
+    }
     plot.ready = true;
     plot.lastPickDay = S.day;
   }
@@ -1087,6 +1116,7 @@ function simulateDay(){
           wb:80, job:null, streak:0, status:"ok", downDays:0, mem:`Born in the village, winter of year ${yr}.`,
           personality: rollPersonality(),   // chemistry, not lineage — deliberately not inherited
           toxins: 0,   // born clean; the well will do its own work over their lifetime
+          music: rollMusic(),
           practice:{specific:{}, broad:{hands:0,green:0,care:0,wild:0}}   // earned fresh, not inherited
         };
         kid.ideology = seedIdeology(kid);   // seeded from their own rolled self; the village will do the rest
@@ -1167,7 +1197,10 @@ function simulateDay(){
     if(cookAl>0) tickDinnerBonds(hunger, S.sys.commons.cond); // no one bonds over a cold, silent dinner
     tickFriction(lines);      // flares read today's wb and bonds, after the warm ticks land
     tickConflicts(lines);     // and the conflict lifecycle reads today's flares
+    tickMoments(lines);       // and the small tender things, off the same bond graph
   }
+  tickCelebCooldowns();
+  tickTraditions(lines);      // anything the village keeps yearly comes round on its day
   driftIdeology(lines);       // stances move last, off the day as it actually went
 
   tickDepartures(lines);            

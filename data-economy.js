@@ -325,49 +325,44 @@ const CROPS = {
   // planted for a summer five years from now. See the Now/Later axis.
   catalpa:   {name:"Catalpa trees", perennial:true, shade:true, locked:true, matureYears:5,
               sow:["spring"], note:"Heart-shaped leaves the size of a hand, and a canopy that turns the south wall cool. Five years of nothing, and then a great deal of shade."},
-  // slow, native, and a piece of what was lost: chestnuts take longer than
-  // anything else in the ground here, and then they feed a village
-  chestnut:  {name:"Chestnuts", perennial:true, native:true, matureYears:7, harvestSeason:"autumn",
-              yield:200, seed:4, seeds:0, sow:["spring"], feed:"light", locked:true,
-              note:"American chestnut, somehow still standing where four billion others fell. Seven years to bear, and then more than you can carry."},
-  strawberry:{name:"Strawberries", perennial:true, matureYears:1, harvestSeason:"summer",
+  strawberry:{name:"Strawberries", perennial:true, bearYears:0.5, matureYears:1, harvestSeason:"summer",
               yield:80, seed:3, seeds:0, sow:["spring"], feed:"light", locked:true,
               note:"Runners fill a plot in a year. After that, pickings all summer for almost no work."},
-  blueberry: {name:"Blueberries", perennial:true, native:true, matureYears:3, harvestSeason:"summer",
+  blueberry: {name:"Blueberries", perennial:true, native:true, bearYears:2, matureYears:3, harvestSeason:"summer",
               yield:150, seed:4, seeds:0, sow:["spring"], feed:"light", locked:true,
               note:"Highbush blueberry, native to these woods. Three slow years, then a whole summer of it, and it feeds the soil it stands in."},
-  raspberry: {name:"Raspberries", perennial:true, matureYears:2, harvestSeason:"summer",
+  raspberry: {name:"Raspberries", perennial:true, bearYears:1, matureYears:2, harvestSeason:"summer",
               yield:125, seed:3, seeds:0, sow:["spring"], feed:"light", locked:true,
               note:"Cane fruit — raspberry, or blackberry, whichever cuttings took. Bears for weeks. Spreads if you let it."},
-  apple:     {name:"Apple trees", food:"apples", perennial:true, matureYears:4, harvestSeason:"autumn",
+  apple:     {name:"Apple trees", food:"apples", perennial:true, bearYears:3, matureYears:4, harvestSeason:"autumn",
               yield:170, seed:5, seeds:0, sow:["spring"], feed:"light", locked:true,
               note:"Old grafted stock from the parking-lot rows. Four years to bear, then baskets of them every fall."},
-  hazelnut:  {name:"Hazelnuts", perennial:true, native:true, matureYears:5, harvestSeason:"autumn",
+  hazelnut:  {name:"Hazelnuts", perennial:true, native:true, bearYears:3, matureYears:5, harvestSeason:"autumn",
               yield:200, seed:5, seeds:0, sow:["spring"], feed:"light", locked:true,
               note:"American hazelnut, native stock. Five years to a real harvest, then a wall of nuts every autumn, and roots that hold the hillside."},
   // the rest of the native forest crops, researched rather than guessed —
   // maturity years drawn from real extension/nursery sources, yield tiers
   // reasoned by relative fruit size and prolificacy against what's already here.
-  pawpaw:    {name:"Pawpaw", perennial:true, native:true, matureYears:6, harvestSeason:"autumn",
+  pawpaw:    {name:"Pawpaw", perennial:true, native:true, bearYears:4, matureYears:6, harvestSeason:"autumn",
               yield:170, seed:6, seeds:0, sow:["spring"], feed:"light", locked:true,
               note:"Asimina triloba — the largest fruit native to this continent, custard-sweet, and it needs two trees near each other to set anything. Five or six years before the first ones fall."},
-  persimmon: {name:"American persimmon", perennial:true, native:true, matureYears:8, harvestSeason:"autumn",
+  persimmon: {name:"American persimmon", perennial:true, native:true, bearYears:5, matureYears:8, harvestSeason:"autumn",
               yield:160, seed:6, seeds:0, sow:["spring"], feed:"light", locked:true,
               note:"Diospyros virginiana, and usually a male tree and a female tree both, or nothing sets. Bitter unripe, honey-sweet after the first hard frost softens it. A slow tree — plant it for later."},
-  mulberry:  {name:"Red mulberry", perennial:true, native:true, matureYears:5, harvestSeason:"summer",
+  mulberry:  {name:"Red mulberry", perennial:true, native:true, bearYears:3, matureYears:5, harvestSeason:"summer",
               yield:130, seed:4, seeds:0, sow:["spring"], feed:"light", locked:true,
               note:"Morus rubra — not the white mulberry that escaped every hedge in the old world, the real native one. Five years, then it drops fruit for weeks like it's trying to give the whole thing away."},
-  cranberrybush:{name:"Cranberrybush viburnum", perennial:true, native:true, matureYears:4, harvestSeason:"autumn",
+  cranberrybush:{name:"Cranberrybush viburnum", perennial:true, native:true, bearYears:2, matureYears:4, harvestSeason:"autumn",
               yield:100, seed:4, seeds:0, sow:["spring"], feed:"light", locked:true,
               note:"Viburnum trilobum — tart, close cousin of the true cranberry only in name. Four years to bear, and it bears heavily; you'll want a lot of them to make the harvest worth the tartness."},
-  chestnut:  {name:"American chestnut", perennial:true, native:true, matureYears:5, harvestSeason:"autumn",
+  chestnut:  {name:"American chestnut", perennial:true, native:true, bearYears:4, matureYears:5, harvestSeason:"autumn",
               yield:190, seed:6, seeds:0, sow:["spring"], feed:"light", locked:true,
               note:"Castanea dentata — sweeter and faster than people expect; it was bearing in five years before the blight took the species down to almost nothing. Plant it anyway. Some things are worth trying to bring back."},
   // a legacy planting: real oak and hickory don't mast until ~20 years old, peak
   // decades after that — genuinely outside any playthrough. It's here so the
   // choice to plant it can be made honestly: not a crop with a payoff, a gift
   // to whoever's still tending this ground when it's grown.
-  oakhickory:{name:"Oak & hickory", perennial:true, native:true, matureYears:20, harvestSeason:"autumn",
+  oakhickory:{name:"Oak & hickory", perennial:true, native:true, bearYears:12, matureYears:20, harvestSeason:"autumn",
               yield:150, seed:8, seeds:0, sow:["spring"], feed:"light", locked:true,
               note:"White oak and shagbark hickory. These take decades to mature."}
 };

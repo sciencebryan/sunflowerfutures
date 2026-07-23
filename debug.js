@@ -18,7 +18,7 @@ import { AXES } from "./ideology.js";
 import { toxLoad } from "./toxins.js";
 
 const DEBUG_UIDS = [
-  "e6aeba18-e2ee-44f1-b4a7-975559578495"
+  // "paste-your-supabase-uid-here"
 ];
 const DEBUG_EMAILS = [
   // "you@example.com"
@@ -132,7 +132,7 @@ async function initDebugTab() {
   sec.id = "tab-debug"; sec.style.display = "none";
   document.querySelector("main").appendChild(sec);
 
-  const TABS = ["village", "beyond", "works", "power", "water", "people", "journal"];
+  const TABS = ["village", "food", "power", "water", "works", "people", "beyond", "journal"];
   btn.onclick = () => {
     document.querySelectorAll("nav button").forEach(x => x.classList.remove("on"));
     btn.classList.add("on");

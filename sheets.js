@@ -2,6 +2,8 @@ import { $ } from "./dom.js";
 import { TRAITS, addRestore, built, gardenSlots } from "./defs.js";
 import { CROPS, FABS, PRESERVE, RESTORE_IN, SEASONS, SEASON_LEN, SITE_DEF, SYS } from "./data-economy.js";
 import { S } from "./state.js";
+import { SCALES, canAfford, celebDef, costOf, dayOfYear, holdCelebration, makeTradition } from "./celebrations.js";
+import { TRADITION_NAMES } from "./data-celebrations.js";
 import { jobName, jobSkill, workDef, workName } from "./day.js";
 import { canWork, dayOfSeason, roadReady, season, seasonIdx, seasonNote } from "./seasons.js";
 import { store } from "./store.js";
@@ -126,6 +128,7 @@ function openSowSheet(i, isForest){
     return;
   }
 
+  const MEADOW_SEED=4;
   for(const [id,c] of Object.entries(CROPS)){
     if(c.locked && !(S.crops && S.crops[id])) continue;
     if(isForest !== !!c.perennial) continue;   // forest shows perennials; beds show annuals
@@ -160,9 +163,13 @@ function openSowSheet(i, isForest){
   // valley's pollinators (and thence every bed's yield). the pure Terra-Nil choice:
   // retire ground from production and give it back to the wild.
   if(isForest && !bed.crop){
-    h+=`<button class="opt" data-crop="__meadow"><span><span class="l1">Wildflower meadow <span style="font-size:9px;color:var(--leaf)">POLLINATOR</span></span>
-      <div class="l2">Goldenrod, milkweed, aster, wild bergamot — no food for us to harvest, but the flowers bring pollinators, and our gardens produce more because of it.</div></span>
-      <span class="r">4 seed<br>gives no food</span></button>`;
+    // affordability handled exactly like the crop buttons above — without the
+    // dim/disabled pair this rendered as a live button that silently did
+    // nothing when seed was short, which reads as the game being broken.
+    const meadowAfford = S.res.seeds >= MEADOW_SEED;
+    h+=`<button class="opt ${meadowAfford?'':'dim'}" data-crop="__meadow" ${meadowAfford?'':'disabled'}><span><span class="l1">Wildflower meadow <span style="font-size:9px;color:var(--leaf)">POLLINATOR</span></span>
+      <div class="l2">Goldenrod, milkweed, aster, wild bergamot — no food for us to harvest, but the flowers bring pollinators, and our gardens produce more because of it.${meadowAfford?"":" · not enough seed"}</div></span>
+      <span class="r">${MEADOW_SEED} seed<br>gives no food</span></button>`;
   }
   if(bed.crop) h+=`<button class="opt" data-crop="__clear"><span class="l1">${isForest?"Dig it out":"Turn it under"}</span><span class="r">start again</span></button>`;
   openSheet(h);
@@ -171,7 +178,6 @@ function openSowSheet(i, isForest){
       const id=b.dataset.crop;
       if(id==="__clear"){ bed.crop=null; bed.growth=0; bed.days=0; bed.ready=false; bed.stored=0; bed.matured=false; bed.lastHarvestYear=undefined; bed.lastPickDay=undefined; }
       else if(id==="__meadow"){
-        const MEADOW_SEED=4;
         if(S.res.seeds < MEADOW_SEED) return;
         S.res.seeds -= MEADOW_SEED;
         // a meadow is a standing plot that yields no food; it's marked so the growth
@@ -331,4 +337,56 @@ function drawPartySheet(target){
 
 
 
-export { SOIL_WORD, closeSheet, openPartySheet, openPersonSheet, openSheet, openSowSheet, openSystemSheet };
+
+/* ---------- celebrations: pick a scale, then optionally name it ---------- */
+function openCelebrationSheet(id){
+  const def = celebDef(id); if(!def) return;
+  let h = `<h3>${def.name}</h3><div class="sub">${def.blurb}</div>`;
+  for(const sc of SCALES){
+    const c = costOf(def, sc.id);
+    const afford = canAfford(def, sc.id);
+    const cost = Object.entries(c).map(([k,v])=>`${v} ${k}`).join(" · ") || "nothing but the evening";
+    h += `<button class="opt ${afford?'':'dim'}" data-scale="${sc.id}" ${afford?'':'disabled'}>
+      <span><span class="l1">${sc.label}</span>
+      <div class="l2">${sc.note} · ${cost}${afford?"":" · not enough spare"}</div></span></button>`;
+  }
+  h += `<button class="opt" id="celebCancel" style="justify-content:center;margin-top:7px"><span class="l1">Not now</span></button>`;
+  openSheet(h);
+  document.querySelectorAll("[data-scale]").forEach(b=>{
+    b.onclick=()=>{
+      if(holdCelebration(id, b.dataset.scale)) openTraditionSheet(id);
+      else closeSheet();
+      store.save(S); renderAll();
+    };
+  });
+  $("celebCancel").onclick = closeSheet;
+}
+
+/* Offered once, right after a celebration: make this a yearly thing. */
+function openTraditionSheet(id){
+  const names = TRADITION_NAMES[id] || [];
+  const taken = new Set((S.traditions||[]).map(t=>t.day));
+  const clash = taken.has(dayOfYear(S.day));
+  if(clash){ closeSheet(); return; }   // already something on this date
+  openSheet(`<h3>Keep this?</h3>
+    <div class="sub">Every year on this day, for as long as the village can manage it. It gets a little stronger each time it's kept — and it's felt when it isn't.</div>
+    <div style="display:flex;flex-wrap:wrap;gap:7px;margin:10px 0">
+      ${names.map(n=>`<button class="chip" data-tname="${n}" style="cursor:pointer;padding:7px 12px;font-family:var(--serif);font-size:13.5px;border-radius:15px">${n}</button>`).join("")}
+    </div>
+    <input id="tradInput" placeholder="or call it something else" maxlength="32"
+      style="width:100%;padding:9px 11px;font-family:var(--serif);font-size:14.5px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)">
+    <button class="confirm" id="tradSave" style="margin-top:10px">Make it a tradition</button>
+    <button class="opt" id="tradSkip" style="justify-content:center;margin-top:7px"><span class="l1">Just this once</span></button>`);
+  document.querySelectorAll("[data-tname]").forEach(b=>{
+    b.onclick=()=>{ $("tradInput").value = b.dataset.tname; };
+  });
+  $("tradSave").onclick=()=>{
+    const v = $("tradInput").value;
+    if(!v || !v.trim()) return;
+    makeTradition(v);
+    closeSheet(); store.save(S); renderAll();
+  };
+  $("tradSkip").onclick=()=>{ closeSheet(); renderAll(); };
+}
+
+export { SOIL_WORD, openCelebrationSheet, closeSheet, openPartySheet, openPersonSheet, openSheet, openSowSheet, openSystemSheet };

@@ -19,6 +19,67 @@ let picrossPaintState = 0; // What color are we painting right now? (0, 1, or 2)
 let pz = null;   // {kind, lvl, paths|placed, sel}
 function setPz(v){ pz = v; }
 
+/* which tab each puzzle lives on — boards render into their host tab, and
+   entry cards are requested by that tab's render */
+const PUZ_TAB = {
+  water:"water", pipes:"water",
+  seed:"food",
+  wires:"power",
+  patch:"village",
+  picross:"beyond", fourier:"beyond"
+};
+const puzHost = () => $("tab-" + (PUZ_TAB[pz.kind] || "works"));
+
+const PUZ_TITLES = {
+  water:"Watershed", seed:"The seed frames", patch:"Patchwork — sealing the Commons",
+  wires:"The long wires", pipes:"The water mains", picross:"The scanner", fourier:"The radio"
+};
+const PUZ_DONE = {
+  water:"The water knows its way. Every bed drinks, nothing scours.",
+  seed:"Every frame is sown and sorted. The library holds.",
+  patch:"The Commons is as tight as patchwork gets.",
+  wires:"The lines run almost tight — only a trace is lost.",
+  pipes:"The mains run almost tight — only a trace is lost underground.",
+  picross:"Nothing left on the scanner worth digging for. For now.",
+  fourier:"The band is mapped. Someone out there answers."
+};
+
+/* an entry card for one puzzle, for its host tab's render */
+function puzzleEntryCard(kind){
+  const meta = PUZ_META[kind];
+  if(!meta) return "";
+  const n = S.puz[kind] || 0;
+  if(n >= meta.levels.length)
+    return `<div class="card grey"><div class="card-top"><div class="sysname">${PUZ_TITLES[kind]}</div></div><div class="blurb">${PUZ_DONE[kind]}</div></div>`;
+  const L = meta.levels[n];
+  return `<div class="card">
+    <div class="card-top"><div class="sysname">${PUZ_TITLES[kind]} — ${cap1(meta.noun)} ${L.n}</div><button class="go" data-pz="${kind}">Open</button></div>
+    <div class="blurb">${L.teach}</div>
+    <div class="blurb" style="margin-top:6px;color:var(--leaf)">${rewardPreview(kind)}</div>
+  </div>`;
+}
+const cap1 = w => w.charAt(0).toUpperCase()+w.slice(1);
+function bindPuzzleEntries(el){
+  el.querySelectorAll("[data-pz]").forEach(b=>{ b.onclick=()=>openPuzzle(b.dataset.pz); });
+}
+
+/* paints the open puzzle's board into its host tab. Each tab's render calls
+   this first and stops if it painted — the board replaces the tab content,
+   exactly as it used to replace tab-works. */
+function renderOpenPuzzle(tabId){
+  if(!pz) return false;
+  if(PUZ_TAB[pz.kind] !== tabId) return false;
+  if(pz.kind==="water") renderWater();
+  else if(pz.kind==="seed") renderSeed();
+  else if(pz.kind==="patch") renderPatch();
+  else if(pz.kind==="wires") renderWires();
+  else if(pz.kind==="pipes") renderPipes();
+  else if(pz.kind==="picross") renderPicross();
+  else if(pz.kind==="fourier") renderFourier();
+  else return false;
+  return true;
+}
+
 function cyclePatch(uid) {
   const patch = pz.placed.find(p => p.uid === uid);
   if (!patch) return;
@@ -30,154 +91,8 @@ function cyclePatch(uid) {
   patch.shape = variants[(idx + 1) % variants.length];
 }
 
-function worksIntro(){
-  const c=S.puz.circuit, w=S.puz.water;
-  return `<div class="card">
-    <div class="sysname">The workshop bench</div>
-    <div class="blurb">The long problems the village keeps coming back to: getting current where it's needed without burning the board, getting water where it's needed without losing the soil, sorting the seed so everything grows, sealing the drafts before winter, catching the light properly, and keeping a channel open to the world beyond. Solving one for good changes how the village works, permanently.</div>
-    <div class="loadlist" style="margin-top:8px">circuit — ${c}/${CIRCUIT_LEVELS.length} &nbsp;·&nbsp; watershed — ${w}/${WATER_LEVELS.length} &nbsp;·&nbsp; seed frame — ${S.puz.seed}/${SEED_LEVELS.length} &nbsp;·&nbsp; patchwork — ${S.puz.patch}/${PATCH_LEVELS.length} &nbsp;·&nbsp; heliostat — ${S.puz.focus}/${FOCUS_LEVELS.length} &nbsp;·&nbsp; the radio — ${S.puz.radio}/${SIGNAL_LEVELS.length} &nbsp;·&nbsp; the line run — ${S.puz.wires||0}/${WIRES_LEVELS.length} &nbsp;·&nbsp; the mains — ${S.puz.pipes||0}/${PIPES_LEVELS.length}</div>
-  </div>`;
-}
-
-function renderWorks(){
-  if(pz){
-    if(pz.kind==="circuit") renderCircuit();
-    else if(pz.kind==="water") renderWater();
-    else if(pz.kind==="seed") renderSeed();
-    else if(pz.kind==="patch") renderPatch();
-    else if(pz.kind==="focus") renderFocus();
-    else if(pz.kind==="wires") renderWires();
-    else if(pz.kind==="pipes") renderPipes();
-    else if(pz.kind==="picross") renderPicross();
-    else renderSignal();
-    return;
-  }
-  let h=worksIntro();
-  const c=S.puz.circuit, w=S.puz.water;
-  h+=`<div class="sectionlbl">Circuit salvage</div>`;
-  if(c>=CIRCUIT_LEVELS.length) h+=`<div class="card grey"><div class="sysname">The board is whole</div><div class="blurb">Nothing left to route. The grid runs as well as it ever will.</div></div>`;
-  else{
-    const L=CIRCUIT_LEVELS[c];
-    h+=`<div class="card">
-      <div class="card-top"><div class="sysname">Board ${L.n}</div><button class="go" data-pz="circuit">Open</button></div>
-      <div class="blurb">${L.teach}</div>
-      <div class="costchips"><span class="cost">${L.loads.length} load${L.loads.length>1?"s":""}</span><span class="cost">bus gives ${L.srcMax}A</span></div>
-      <div class="blurb" style="margin-top:6px;color:var(--leaf)">${rewardPreview("circuit")}</div>
-    </div>`;
-  }
-  h+=`<div class="sectionlbl">Watershed</div>`;
-  if(w>=WATER_LEVELS.length) h+=`<div class="card grey"><div class="sysname">The water knows its way</div><div class="blurb">Every bed drinks, nothing scours. The land holds what falls on it.</div></div>`;
-  else{
-    const L=WATER_LEVELS[w];
-    h+=`<div class="card">
-      <div class="card-top"><div class="sysname">Season ${L.n}</div><button class="go" data-pz="water">Open</button></div>
-      <div class="blurb">${L.teach}</div>
-      <div class="costchips"><span class="cost">rain ${L.rain}</span><span class="cost">${L.beds.length} bed${L.beds.length>1?"s":""}</span>${L.cisternTarget?`<span class="cost">store ${L.cisternTarget}</span>`:""}</div>
-      <div class="blurb" style="margin-top:6px;color:var(--leaf)">${rewardPreview("water")}</div>
-    </div>`;
-  }
-  h+=`<div class="sectionlbl">Seed frame</div>`;
-  if(S.puz.seed>=SEED_LEVELS.length) h+=`<div class="card grey"><div class="sysname">The library is sorted</div><div class="blurb">Every seed catalogued, every companion known. Nothing left to arrange.</div></div>`;
-  else{
-    const L=SEED_LEVELS[S.puz.seed];
-    h+=`<div class="card">
-      <div class="card-top"><div class="sysname">Frame ${L.n}</div><button class="go" data-pz="seed">Open</button></div>
-      <div class="blurb">${L.teach}</div>
-      <div class="costchips"><span class="cost">${L.slots.length} slots</span><span class="cost">${Object.values(L.supply).reduce((a,b)=>a+b,0)} seeds</span></div>
-      <div class="blurb" style="margin-top:6px;color:var(--leaf)">${rewardPreview("seed")}</div>
-    </div>`;
-  }
-  if(S.flags.gridTuned) h+=`<div class="sectionlbl">Grid tuned — the village draws one less, forever</div>`;
-  if(S.flags.keyline)   h+=`<div class="sectionlbl">Keyline cut — the gardens drink deeper</div>`;
-  if(S.flags.seedLibrary) h+=`<div class="sectionlbl">The seed library — crops keep a little better</div>`;
-
- h+=`<div class="sectionlbl">Spectral scans</div>`;
-  if(S.puz.picross>=PICROSS_LEVELS.length) h+=`<div class="card grey"><div class="sysname">The drives are clean</div><div class="blurb">Every cache mapped. There is no more interference to resolve.</div></div>`;
-  else{
-    const L=PICROSS_LEVELS[S.puz.picross];
-    h+=`<div class="card">
-      <div class="card-top"><div class="sysname">Scan ${L.n}</div><button class="go" data-pz="picross">Open</button></div>
-      <div class="blurb">${L.teach}</div>
-      <div class="costchips"><span class="cost">${L.grid[0].length}x${L.grid.length} grid</span></div>
-      <div class="blurb" style="margin-top:6px;color:var(--leaf)">${rewardPreview("picross")}</div>
-    </div>`;
-  }
-
-
-  h+=`<div class="sectionlbl">Patchwork &amp; insulation</div>`;
-  if(S.puz.patch>=PATCH_LEVELS.length) h+=`<div class="card grey"><div class="sysname">The drafts are sealed</div><div class="blurb">Every crack packed, every pane replaced. The heat stays where it belongs.</div></div>`;
-  else{
-    const L=PATCH_LEVELS[S.puz.patch];
-    h+=`<div class="card">
-      <div class="card-top"><div class="sysname">Draft ${L.n}</div><button class="go" data-pz="patch">Open</button></div>
-      <div class="blurb">${L.teach}</div>
-      <div class="costchips"><span class="cost">${L.leaks.length} leaks</span><span class="cost">${Object.values(L.supply).reduce((a,b)=>a+b,0)} patches</span></div>
-      <div class="blurb" style="margin-top:6px;color:var(--leaf)">${rewardPreview("patch")}</div>
-    </div>`;
-  }
-  if(S.flags.sealedTanks) h+=`<div class="sectionlbl">Tanks sealed — catchment gathers a fifth more water</div>`;
-  if(S.flags.draftProof)  h+=`<div class="sectionlbl">Drafts sealed — illness is a little rarer</div>`;
-
-  h+=`<div class="sectionlbl">Heliostat calibration</div>`;
-  if(S.puz.focus>=FOCUS_LEVELS.length) h+=`<div class="card grey"><div class="sysname">The arrays are locked</div><div class="blurb">Every mirror tracks true. The field drinks every drop of light it can.</div></div>`;
-  else{
-    const L=FOCUS_LEVELS[S.puz.focus];
-    h+=`<div class="card">
-      <div class="card-top"><div class="sysname">Array ${L.n}</div><button class="go" data-pz="focus">Open</button></div>
-      <div class="blurb">${L.teach}</div>
-      <div class="costchips"><span class="cost">${L.budget} mirrors</span></div>
-      <div class="blurb" style="margin-top:6px;color:var(--leaf)">${rewardPreview("focus")}</div>
-    </div>`;
-  }
-  if(S.flags.silveredPanels) h+=`<div class="sectionlbl">Silvered arrays — solar yields a fifth more</div>`;
-  if(S.flags.thermalStore)  h+=`<div class="sectionlbl">Thermal store — solar gives a baseline trickle in the rain</div>`;
-
-  h+=`<div class="sectionlbl">The radio</div>`;
-  if(S.puz.radio>=SIGNAL_LEVELS.length) h+=`<div class="card grey"><div class="sysname">The band is tuned</div><div class="blurb">Every frequency locked in. The antenna does the rest on its own now.</div></div>`;
-  else{
-    const L=SIGNAL_LEVELS[S.puz.radio];
-    h+=`<div class="card">
-      <div class="card-top"><div class="sysname">Frequency ${L.n}</div><button class="go" data-pz="radio">Open</button></div>
-      <div class="blurb">${L.teach}</div>
-      <div class="costchips"><span class="cost">${L.receivers.length} receiver${L.receivers.length>1?"s":""}</span><span class="cost">${L.budget} node${L.budget>1?"s":""}</span></div>
-      <div class="blurb" style="margin-top:6px;color:var(--leaf)">${rewardPreview("radio")}</div>
-    </div>`;
-  }
-  if(S.flags.radioContact) h+=`<div class="sectionlbl">The antenna reaches out — word of this place travels on its own now</div>`;
-
-  h+=`<div class="sectionlbl">The line run</div>`;
-  if((S.puz.wires||0)>=WIRES_LEVELS.length) h+=`<div class="card grey"><div class="sysname">The lines run tight</div><div class="blurb">Every joint posted true. Only a trace is lost between the turbine and the table now.</div></div>`;
-  else{
-    const L=WIRES_LEVELS[S.puz.wires||0];
-    h+=`<div class="card">
-      <div class="card-top"><div class="sysname">Run ${L.n}</div><button class="go" data-pz="wires">Open</button></div>
-      <div class="blurb">${L.teach}</div>
-      <div class="costchips"><span class="cost">${L.inv.reduce((a,t)=>a+t.count,0)} boards</span><span class="cost">${L.srcs.length} circuit${L.srcs.length>1?"s":""}</span></div>
-      <div class="blurb" style="margin-top:6px;color:var(--leaf)">${rewardPreview("wires")}</div>
-    </div>`;
-  }
-
-  h+=`<div class="sectionlbl">The water mains</div>`;
-  if((S.puz.pipes||0)>=PIPES_LEVELS.length) h+=`<div class="card grey"><div class="sysname">The mains hold pressure</div><div class="blurb">Every junction seated, every trench dry on the outside. Only a trace seeps away underground now.</div></div>`;
-  else{
-    const L=PIPES_LEVELS[S.puz.pipes||0];
-    h+=`<div class="card">
-      <div class="card-top"><div class="sysname">Main ${L.n}</div><button class="go" data-pz="pipes">Open</button></div>
-      <div class="blurb">${L.teach}</div>
-      <div class="costchips"><span class="cost">${L.cells.filter(Boolean).length} fittings</span><span class="cost">${L.cells.filter(c=>c==="K").length} standpipe${L.cells.filter(c=>c==="K").length>1?"s":""}</span></div>
-      <div class="blurb" style="margin-top:6px;color:var(--leaf)">${rewardPreview("pipes")}</div>
-    </div>`;
-  }
-
-  $("tab-works").innerHTML=h;
-  $("tab-works").querySelectorAll("[data-pz]").forEach(b=>{ b.onclick=()=>openPuzzle(b.dataset.pz); });
-}
-
 function openPuzzle(kind){
-  if(kind==="circuit"){
-    const L=CIRCUIT_LEVELS[S.puz.circuit];
-    pz={kind, L, paths:{}, sel:L.loads[0].name};
-  } else if(kind==="water") {
+  if(kind==="water") {
     const L=WATER_LEVELS[S.puz.water];
     pz={kind, L, placed:{}, sel:Object.keys(L.budget)[0], dir:"E"};
   } else if(kind==="seed") {
@@ -186,9 +101,9 @@ function openPuzzle(kind){
   } else if(kind==="patch") {
     const L=PATCH_LEVELS[S.puz.patch];
     pz={kind, L, placed:[], sel:Object.keys(L.supply)[0], uid:1};
-  } else if(kind==="focus") {
-    const L=FOCUS_LEVELS[S.puz.focus];
-    pz={kind, L, placed:{}};
+  } else if(kind==="fourier") {
+    const L=FOURIER_LEVELS[S.puz.fourier];
+    pz={kind, L, amps:L.amps.map(()=>0)};
   } else if(kind==="wires") {
     const L=WIRES_LEVELS[S.puz.wires];
     pz={kind, L, placed:{}, sel:0};
@@ -201,12 +116,11 @@ function openPuzzle(kind){
     const h=L.grid.length;
     pz={kind, L, state: Array(h).fill().map(() => Array(w).fill(0))};
   } else {
-    const L=SIGNAL_LEVELS[S.puz.radio];
-    pz={kind, L, placed:{}};
+    return;   // unknown kind — retired puzzles land here harmlessly
   }
-  renderWorks();
+  renderAll();   // the host tab repaints and finds pz open
 }
-function closePuzzle(){ pz=null; renderWorks(); }
+function closePuzzle(){ pz=null; renderAll(); }
 
 function showPuzzleComplete(rewardsArray, onContinue) {
   const overlay = document.createElement("div");
@@ -483,129 +397,6 @@ function sunflowerCelebration() {
 }*/
 
 /* ---------- circuit UI ---------- */
-function renderCircuit(){
-  const L=pz.L, r=circuitCheck(L,pz.paths);
-  const cellPx=Math.min(48, Math.floor((Math.min(window.innerWidth,620)-46)/L.w));
-  const sel=L.loads.find(l=>l.name===pz.sel);
-  const myPath=pz.paths[pz.sel]||[];
-  const started=myPath.length>0;
-
-  let h=`<div class="card">
-    <div class="pzhead"><div class="sysname">Board ${L.n}</div>
-      <div class="condpct ${r.overSource?'neg':''}">bus ${r.total} / ${L.srcMax}A</div></div>
-    <div class="pzteach">${L.teach}</div>
-
-    <div class="sectionlbl" style="margin:10px 0 6px">Wiring which load?</div>
-    <div class="pieces">`;
-  for(const ld of L.loads){
-    const lit=!!r.live[ld.name];
-    h+=`<button class="piece ${pz.sel===ld.name?'sel':''}" data-sel="${ld.name}">
-      ${ld.name} <span style="color:var(--ink-soft)">${ld.amps}A</span>
-      <span style="color:${lit?'var(--leaf)':'var(--rust)'};font-size:10px"> ${lit?"lit":ld.req?"dark · needed":"dark · optional"}</span></button>`;
-  }
-  h+=`</div>
-    <div class="blurb">${started
-      ? `Tap a neighbouring cell to extend ${pz.sel}'s run. Tap a cell already on the run to cut back to it.`
-      : `Tap the <b>BUS</b> to begin ${pz.sel}'s run.`}</div>
-
-    <div class="grid" style="grid-template-columns:repeat(${L.w},${cellPx}px)">`;
-
-  const onMy = (x,y)=>myPath.some(c=>c[0]===x&&c[1]===y);
-  for(let y=0;y<L.h;y++)for(let x=0;x<L.w;x++){
-    const k=cKey(x,y), capv=circuitCap(L,x,y), cur=r.map[k]||0;
-    const isSrc = L.src[0]===x&&L.src[1]===y;
-    const ld = L.loads.find(l=>l.p[0]===x&&l.p[1]===y);
-    let cls="cell", body="", extra="";
-    if(capv===0){ cls+=" blk"; }
-    else if(isSrc){ cls+=" src"; body="BUS"; }
-    else if(ld){
-      cls+=" load"+(r.live[ld.name]?" lit":"");
-      body=`<span style="font-size:9px">${ld.name}</span>`;
-      extra=`<span class="amp">${ld.amps}A</span>`;
-    } else if(L.junctions && L.junctions[k]!==undefined){
-      const need=L.junctions[k];
-      const energized = cur>=need;
-      cls+= energized ? " jopen" : " jcold";
-      if(cur>capv) cls+=" over";
-      body = `<b>${cur}</b>`;
-      extra = `<span class="cap">relay ≥${need}</span>`;
-    } else {
-      if(cur>capv) cls+=" over";
-      else if(cur>0) cls+=" on";
-      body = cur>0 ? `<b>${cur}</b>` : "";
-      if(capv<99) extra=`<span class="cap">max ${capv}</span>`;
-    }
-    if(!isSrc && !ld && onMy(x,y)) extra+=`<span style="position:absolute;top:1px;right:2px;font-size:8px;color:var(--leaf)">●</span>`;
-    h+=`<div class="${cls}" data-c="${x},${y}" style="height:${cellPx}px">${body}${extra}</div>`;
-  }
-  h+=`</div>`;
-
-  let msg="", cls="pzstatus";
-  if(r.solved){ msg="Every required load is lit and nothing is burning."; cls+=" good"; }
-  else if(r.over.length){ msg="A cell is carrying more current than it can. It will burn."; cls+=" bad"; }
-  else if(r.overSource){ msg=`The bus can only give ${L.srcMax}A. Something has to go dark.`; cls+=" bad"; }
-  else if(r.coldJunctions&&r.coldJunctions.length){ msg=`A relay isn't carrying enough current to close. Route more through it.`; cls+=" bad"; }
-  else if(r.missing.length){ msg=`Still dark: ${r.missing.join(", ")}.`; }
-  h+=`<div class="${cls}">${msg}</div>
-    <div class="pzbar">
-      <button data-act="undo">Undo a step</button>
-      <button data-act="drop">Unwire ${pz.sel}</button>
-      <button data-act="clear">Clear the board</button>
-      <button data-act="back">Leave it</button>
-      ${r.solved?`<button data-act="commit" style="border-color:var(--leaf);color:var(--leaf);font-weight:600">Wire it in</button>`:""}
-    </div>
-    <div class="blurb" style="margin-top:9px;line-height:1.5">
-      Numbers in a cell are the current running through it. Where two runs share a cell, the current <b>adds up</b>.
-      <span style="opacity:.7">max n</span> is what that cell can carry before it burns. Dark cells are burnt through — nothing crosses them.
-      ${L.junctions?`<br><span style="color:var(--sun)">A <b>relay</b> cell (marked <b>relay ≥n</b>) only closes when at least n current runs through it. Route enough through to wake it.</span>`:""}
-    </div>
-  </div>`;
-  $("tab-works").innerHTML=h;
-
-  $("tab-works").querySelectorAll("[data-sel]").forEach(b=>{ b.onclick=()=>{pz.sel=b.dataset.sel; renderCircuit();}; });
-  $("tab-works").querySelectorAll("[data-c]").forEach(el=>{
-    el.onclick=()=>{
-      const [x,y]=el.dataset.c.split(",").map(Number);
-      if(circuitCap(L,x,y)===0) return;
-      const name=pz.sel;
-      let p=pz.paths[name]||[];
-      if(L.src[0]===x&&L.src[1]===y){ pz.paths[name]=[[x,y]]; renderCircuit(); return; }
-      if(!p.length) return;
-      const idx=p.findIndex(c=>c[0]===x&&c[1]===y);
-      if(idx>=0){ pz.paths[name]=p.slice(0,idx+1); renderCircuit(); return; }
-      const last=p[p.length-1];
-      if(!circuitAdj(last,[x,y])) return;
-      if(last[0]===sel.p[0] && last[1]===sel.p[1]) return;          // already arrived
-      const otherLoad=L.loads.find(l=>l.name!==name && l.p[0]===x && l.p[1]===y);
-      if(otherLoad) return;                                          // can't cross another terminal
-      pz.paths[name]=[...p,[x,y]];
-      renderCircuit();
-    };
-  });
-  $("tab-works").querySelectorAll("[data-act]").forEach(b=>{
-    b.onclick=()=>{
-      const a=b.dataset.act;
-      if(a==="undo"){ const p=pz.paths[pz.sel]; if(p&&p.length>1) p.pop(); else delete pz.paths[pz.sel]; renderCircuit(); }
-      else if(a==="drop"){ delete pz.paths[pz.sel]; renderCircuit(); }
-      else if(a==="clear"){ pz.paths={}; renderCircuit(); }
-      else if(a==="back"){ closePuzzle(); }
-      else if(a==="commit"){
-        
-        const extra=grantReward("circuit");
-        {
-          const solvers=[byId("nadia"),byId("ilya")].filter(p=>p&&p.status!=="away");
-          const credit = solvers.length ? solvers.map(p=>p.name).join(" and ")
-                       : (bestPresent("hands") ? bestPresent("hands").name : "Somebody");
-          S.pending.push(`${credit} got board ${L.n} routed, and it held.${extra}`);
-        }
-        finishPuzzle("circuit");
-      }
-    };
-  });
-}
-
-/* ---------- watershed UI ---------- */
-const DIRGLYPH={E:"→",W:"←",S:"↓",N:"↑"};
 function waterUsed(){ const u={}; for(const v of Object.values(pz.placed)){ const k=v.split(":")[0]; u[k]=(u[k]||0)+1; } return u; }
 function wetShade(v,maxv){
   if(v<=0.05) return "transparent";
@@ -689,11 +480,11 @@ function renderWater(){
     </div>
     <div class="blurb" style="margin-top:9px">Tap a cell to place the selected piece; tap it again to lift it. ▲ berm · ≈ swale · ▣ cistern · arrow channel</div>
   </div>`;
-  $("tab-works").innerHTML=h;
+  puzHost().innerHTML=h;
 
-  $("tab-works").querySelectorAll("[data-p]").forEach(b=>{ b.onclick=()=>{pz.sel=b.dataset.p; renderWater();}; });
-  $("tab-works").querySelectorAll("[data-d]").forEach(b=>{ b.onclick=()=>{pz.dir=b.dataset.d; renderWater();}; });
-  $("tab-works").querySelectorAll("[data-w]").forEach(el=>{
+  puzHost().querySelectorAll("[data-p]").forEach(b=>{ b.onclick=()=>{pz.sel=b.dataset.p; renderWater();}; });
+  puzHost().querySelectorAll("[data-d]").forEach(b=>{ b.onclick=()=>{pz.dir=b.dataset.d; renderWater();}; });
+  puzHost().querySelectorAll("[data-w]").forEach(el=>{
     el.onclick=()=>{
       const [x,y]=el.dataset.w.split(",").map(Number);
       const k=cKey(x,y);
@@ -705,7 +496,7 @@ function renderWater(){
       renderWater();
     };
   });
-  $("tab-works").querySelectorAll("[data-act]").forEach(b=>{
+  puzHost().querySelectorAll("[data-act]").forEach(b=>{
     b.onclick=()=>{
       const a=b.dataset.act;
       if(a==="clear"){ pz.placed={}; renderWater(); }
@@ -813,10 +604,10 @@ function renderSeed(){
     </div>
     <div class="blurb" style="margin-top:9px">Pick a seed, then tap a slot to place it; tap a filled slot to lift it. The band colour is the slot's light.</div>
   </div>`;
-  $("tab-works").innerHTML=h;
+  puzHost().innerHTML=h;
 
-  $("tab-works").querySelectorAll("[data-s]").forEach(b=>{ b.onclick=()=>{ pz.sel=b.dataset.s; renderSeed(); }; });
-  $("tab-works").querySelectorAll("[data-seed]").forEach(el=>{
+  puzHost().querySelectorAll("[data-s]").forEach(b=>{ b.onclick=()=>{ pz.sel=b.dataset.s; renderSeed(); }; });
+  puzHost().querySelectorAll("[data-seed]").forEach(el=>{
     el.onclick=()=>{
       const [x,y]=el.dataset.seed.split(",").map(Number);
       const k=cKey(x,y);
@@ -828,7 +619,7 @@ function renderSeed(){
       renderSeed();
     };
   });
-  $("tab-works").querySelectorAll("[data-act]").forEach(b=>{
+  puzHost().querySelectorAll("[data-act]").forEach(b=>{
     b.onclick=()=>{
       const a=b.dataset.act;
       if(a==="clear"){ pz.placed={}; renderSeed(); }
@@ -845,91 +636,6 @@ function renderSeed(){
 
 /* ---------- radio UI ---------- */
 /* ---------- signal UI (the radio) ---------- */
-function renderSignal(){
-  const L=pz.L, r=signalCheck(L,pz.placed);
-  const cellPx=Math.min(58, Math.floor((Math.min(window.innerWidth,620)-46)/L.w));
-
-  let h=`<div class="card">
-    <div class="pzhead"><div class="sysname">Frequency ${L.n}</div>
-      <div class="condpct ${r.used>L.budget?'neg':''}">${L.budget-r.used} node${(L.budget-r.used)===1?"":"s"} left</div></div>
-    <div class="pzteach">${L.teach}</div>
-
-    <div class="grid" style="grid-template-columns:repeat(${L.w},${cellPx}px)">`;
-
-  for(let y=0;y<L.h;y++)for(let x=0;x<L.w;x++){
-    const k=cKey(x,y);
-    const isBlk=L.blocked.some(b=>b[0]===x&&b[1]===y);
-    const rec=r.recStatus.find(rc=>rc.x===x&&rc.y===y);
-    const hasNode=pz.placed[k];
-    const sig=r.map[k]||0;
-    let cls="cell", body="", style=`height:${cellPx}px;`;
-    if(sig>0 && !isBlk && !rec) style+=`background:rgba(147,164,131,${Math.min(0.8,sig*0.2)});`;
-    if(isBlk && !rec){ cls+=" blk"; }
-    else if(rec){
-      cls+=" load"+(rec.match?" lit":rec.over?" over":"");
-      body=`<span style="font-size:15px;font-weight:700">${rec.got}</span><span class="cap">/ ${rec.v}</span>`;
-    } else if(hasNode){
-      cls+=" on";
-      body=`<span style="font-size:20px;color:var(--leaf);font-weight:700">+</span>`;
-    } else if(sig>0){
-      body=`<span style="font-size:11px;opacity:.45">${sig}</span>`;
-    }
-    h+=`<div class="${cls}" data-rx="${x},${y}" style="${style}">${body}</div>`;
-  }
-  h+=`</div>`;
-
-  let msg="", mcls="pzstatus";
-  if(r.solved){ msg="Every receiver is matched exactly, and no node spent past the budget."; mcls+=" good"; }
-  else if(r.recStatus.some(rc=>rc.over)){ msg="Too much signal hitting a receiver (highlighted)."; mcls+=" bad"; }
-  else if(r.used>L.budget){ msg=`Too many nodes out at once — only ${L.budget}.`; mcls+=" bad"; }
-  else { msg=`Place ${L.budget-r.used} more node${(L.budget-r.used)===1?"":"s"} to match the targets.`; }
-  h+=`<div class="${mcls}">${msg}</div>
-    <div class="pzbar">
-      <button data-act="clear">Clear the grid</button>
-      <button data-act="back">Leave it</button>
-      ${r.solved?`<button data-act="commit" style="border-color:var(--leaf);color:var(--leaf);font-weight:600">Lock the frequency</button>`:""}
-    </div>
-    <div class="blurb" style="margin-top:9px">Tap a space to place a node — it broadcasts to itself and the four cells around it, and overlapping fields add. Tap again to pull it up. A receiver needs its exact number, no more.</div>
-  </div>`;
-  $("tab-works").innerHTML=h;
-
-  $("tab-works").querySelectorAll("[data-rx]").forEach(el=>{
-    el.onclick=()=>{
-      const [x,y]=el.dataset.rx.split(",").map(Number);
-      const k=cKey(x,y);
-      if(L.receivers.some(rc=>rc.x===x&&rc.y===y)) return;
-      if(L.blocked.some(b=>b[0]===x&&b[1]===y)) return;
-      if(pz.placed[k]) delete pz.placed[k];
-      else { if(r.used>=L.budget) return; pz.placed[k]=true; }
-      renderSignal();
-    };
-  });
-  $("tab-works").querySelectorAll("[data-act]").forEach(b=>{
-    b.onclick=()=>{
-      const a=b.dataset.act;
-      if(a==="clear"){ pz.placed={}; renderSignal(); }
-      else if(a==="back"){ closePuzzle(); }
-      else if(a==="commit"){
-        
-        const extra=grantReward("radio");
-        S.pending.push(`The frequency locked in clean and stayed there.${extra}`);
-        finishPuzzle("radio");
-      }
-    };
-  });
-}
-
-/* ---------- patchwork UI ---------- */
-// tints for laid patches, cycled by placement order. rust is deliberately
-// absent — it stays reserved for the overlap/error state.
-const PATCH_TINTS=[
-  {line:"#44622F", bg:"rgba(68,98,47,0.20)"},    // leaf
-  {line:"#4C7286", bg:"rgba(76,114,134,0.22)"},  // water
-  {line:"#B88124", bg:"rgba(184,129,36,0.22)"},  // sun
-  {line:"#6E5A7E", bg:"rgba(110,90,126,0.20)"},  // dusk violet
-  {line:"#7D8E6C", bg:"rgba(125,142,108,0.26)"}, // moss
-  {line:"#5B6770", bg:"rgba(91,103,112,0.20)"}   // slate
-];
 function renderPatch(){
   const L=pz.L, r=patchCheck(L,pz.placed);
   const cellPx=Math.min(50, Math.floor((Math.min(window.innerWidth,620)-46)/L.w));
@@ -989,10 +695,10 @@ function renderPatch(){
     </div>
     <div class="blurb" style="margin-top:9px">Pick a patch, then tap a space to lay it down — its corner lands where you tap. Tap a laid patch to pull it back up.</div>
   </div>`;
-  $("tab-works").innerHTML=h;
+  puzHost().innerHTML=h;
 
-  $("tab-works").querySelectorAll("[data-patch]").forEach(b=>{ b.onclick=()=>{ pz.sel=b.dataset.patch; renderPatch(); }; });
-$("tab-works").querySelectorAll("[data-px]").forEach(el => {
+  puzHost().querySelectorAll("[data-patch]").forEach(b=>{ b.onclick=()=>{ pz.sel=b.dataset.patch; renderPatch(); }; });
+puzHost().querySelectorAll("[data-px]").forEach(el => {
     el.onpointerdown = (e) => {
       // 1. Get cell coordinates and check for existing patch
       const [x, y] = el.dataset.px.split(",").map(Number);
@@ -1042,7 +748,7 @@ $("tab-works").querySelectorAll("[data-px]").forEach(el => {
             renderPatch();
           } else {
             // Movement = Drag. Check if we dropped it off the board.
-            const gridRect = $("tab-works").querySelector(".grid").getBoundingClientRect();
+            const gridRect = puzHost().querySelector(".grid").getBoundingClientRect();
             const isOutside = ev.clientX < gridRect.left || ev.clientX > gridRect.right ||
                               ev.clientY < gridRect.top || ev.clientY > gridRect.bottom;
             
@@ -1080,7 +786,7 @@ $("tab-works").querySelectorAll("[data-px]").forEach(el => {
       renderPatch();
     };
   });
-  $("tab-works").querySelectorAll("[data-act]").forEach(b=>{
+  puzHost().querySelectorAll("[data-act]").forEach(b=>{
     b.onclick=()=>{
       const a=b.dataset.act;
       if(a==="clear"){ pz.placed=[]; renderPatch(); }
@@ -1105,98 +811,6 @@ $("tab-works").querySelectorAll("[data-px]").forEach(el => {
 }
 
 /* ---------- focus UI (heliostat calibration) ---------- */
-function renderFocus(){
-  const L=pz.L, r=focusCheck(L,pz.placed);
-  const srcs=focusSrcs(L), targets=focusTargets(L);
-  const cellPx=Math.min(56, Math.floor((Math.min(window.innerWidth,620)-46)/L.w));
-  const unlit=r.hit.filter(h=>!h).length;
-
-  let h=`<div class="card">
-    <div class="pzhead"><div class="sysname">Array ${L.n}</div>
-      <div class="condpct ${r.used>L.budget?'neg':''}">${L.budget-r.used} mirror${(L.budget-r.used)===1?"":"s"} left</div></div>
-    <div class="pzteach">${L.teach}</div>
-
-    <div style="position:relative;margin:10px auto 0;width:${L.w*cellPx}px">
-      
-      <div class="grid" style="grid-template-columns:repeat(${L.w},${cellPx}px);margin:0;position:relative;z-index:2">`;
-  for(let y=0;y<L.h;y++)for(let x=0;x<L.w;x++){
-    const k=cKey(x,y);
-    const isSrc=srcs.some(s=>s.x===x&&s.y===y);
-    const ti=targets.findIndex(t=>t.x===x&&t.y===y);
-    const isBlk=L.blocked.some(b=>b[0]===x&&b[1]===y);
-    const mirror=pz.placed[k];
-    let cls="cell", body="", style=`height:${cellPx}px;`;
-    if(isBlk){ cls+=" blk"; }
-    else if(isSrc){ cls+=" src"; body="☀"; style+="font-size:18px;"; }
-    else if(ti>=0){
-      cls+=" load"+(r.hit[ti]?" lit":"");
-      body=targets[ti].pass?"◇":"▣";
-      style+="font-size:18px;";
-    }
-    else if(mirror){ body=`<span style="font-size:22px;font-weight:700;color:var(--ink)">${mirror}</span>`; }
-    h+=`<div class="${cls}" data-fx="${x},${y}" style="${style}">${body}</div>`;
-  }
-  h+=`<svg style="position:absolute;inset:0;z-index:1;pointer-events:none" width="${L.w*cellPx}" height="${L.h*cellPx}">
-        ${r.beams.map(pts=>`<polyline points="${pts.map(p=>`${p[0]*cellPx+cellPx/2},${p[1]*cellPx+cellPx/2}`).join(" ")}"
-          stroke="var(--sun)" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"
-          style="filter:drop-shadow(0 0 4px var(--sun))"/>`).join("")}
-      </svg></div></div>`;
-
-  let msg="", mcls="pzstatus";
-  if(r.solved){ msg="The light connects. The array hums."; mcls+=" good"; }
-  else if(r.hitTarget && r.used>L.budget){ msg="Connected, but with too many mirrors."; mcls+=" bad"; }
-  else if(r.used>L.budget){ msg="Out of mirrors."; mcls+=" bad"; }
-  else if(unlit){ msg=`${unlit} of ${targets.length} still dark. ${L.budget-r.used} mirror${(L.budget-r.used)===1?"":"s"} left to place.`; }
-  else { msg=`${L.budget-r.used} mirror${(L.budget-r.used)===1?"":"s"} left to place.`; }
-  h+=`<div class="${mcls}" style="margin-top:12px">${msg}</div>
-    <div class="pzbar">
-      <button data-act="clear">Clear the field</button>
-      <button data-act="back">Leave it</button>
-      ${r.solved?`<button data-act="commit" style="border-color:var(--leaf);color:var(--leaf);font-weight:600">Lock the alignment</button>`:""}
-    </div>
-    <div class="blurb" style="margin-top:9px">Tap a space to place a mirror (/). Tap again to flip it (\\). Tap a third time to clear it.${targets.some(t=>t.pass)?` A lens (◇) must catch the light, but the beam runs on through it; a boiler (▣) drinks the beam where it lands.`:""}</div>
-  </div>`;
-  $("tab-works").innerHTML=h;
-
-  $("tab-works").querySelectorAll("[data-fx]").forEach(el=>{
-    el.onclick=()=>{
-      const [x,y]=el.dataset.fx.split(",").map(Number);
-      const k=cKey(x,y);
-      if(srcs.some(s=>s.x===x&&s.y===y)) return;
-      if(targets.some(t=>t.x===x&&t.y===y)) return;
-      if(L.blocked.some(b=>b[0]===x&&b[1]===y)) return;
-      if(!pz.placed[k]) pz.placed[k]="/";
-      else if(pz.placed[k]==="/") pz.placed[k]="\\";
-      else delete pz.placed[k];
-      renderFocus();
-    };
-  });
-  $("tab-works").querySelectorAll("[data-act]").forEach(b=>{
-    b.onclick=()=>{
-      const a=b.dataset.act;
-      if(a==="clear"){ pz.placed={}; renderFocus(); }
-      else if(a==="back"){ closePuzzle(); }
-      else if(a==="commit"){
-        
-        const extra=grantReward("focus");
-        S.pending.push(`The array is aligned. Sunlight hits the boiler squarely.${extra}`);
-        finishPuzzle("focus");
-      }
-    };
-  });
-}
-
-
-
-
-
-
-
-/* ---------- the line run (wires) UI ---------- */
-// posts, clockwise from top-left, as x,y fractions of the cell
-const WIRE_POST = [[1/3,0],[2/3,0],[1,1/3],[1,2/3],[2/3,1],[1/3,1],[0,2/3],[0,1/3]];
-const WIRE_COLORS = {k:"var(--ink)", r:"var(--rust)", b:"#3d6b8a"};
-
 function wireTileSVG(wires, rot, px, opts={}){
   let h=`<svg width="${px}" height="${px}" viewBox="0 0 48 48" style="display:block">`;
   h+=`<rect x="1" y="1" width="46" height="46" rx="5" fill="${opts.bg||"var(--card)"}" stroke="var(--line)"/>`;
@@ -1261,15 +875,15 @@ function renderWires() {
     <div class="blurb" style="margin-top:6px;color:var(--leaf)">${rewardPreview("wires")}</div>
   </div>`;
 
-  $("tab-works").innerHTML = h;
+  puzHost().innerHTML = h;
 
   // 1. Bind Selection Buttons
-  $("tab-works").querySelectorAll("[data-sel]").forEach(b => {
+  puzHost().querySelectorAll("[data-sel]").forEach(b => {
     b.onclick = () => { pz.sel = +b.dataset.sel; renderWires(); };
   });
 
   // 2. Bind Grid Interactions (Drag/Swap/Rotate)
-  $("tab-works").querySelectorAll("[data-cell]").forEach(el => {
+  puzHost().querySelectorAll("[data-cell]").forEach(el => {
     el.onpointerdown = (e) => {
       const [x, y] = el.dataset.cell.split(",").map(Number);
       const key = `${x},${y}`;
@@ -1281,7 +895,7 @@ function renderWires() {
       const onPointerUp = (ev) => {
         el.releasePointerCapture(ev.pointerId);
         const targetEl = document.elementFromPoint(ev.clientX, ev.clientY)?.closest("[data-cell]");
-        const gridRect = $("tab-works").querySelector(".grid").getBoundingClientRect();
+        const gridRect = puzHost().querySelector(".grid").getBoundingClientRect();
         const isOutside = ev.clientX < gridRect.left || ev.clientX > gridRect.right || ev.clientY < gridRect.top || ev.clientY > gridRect.bottom;
 
         if (isOutside) {
@@ -1308,7 +922,7 @@ function renderWires() {
   });
 
   // 3. Bind Footer Buttons
-  $("tab-works").querySelectorAll("[data-act]").forEach(b => {
+  puzHost().querySelectorAll("[data-act]").forEach(b => {
     b.onclick = () => {
       const a = b.dataset.act;
       if (a === "clear") { pz.placed = {}; renderWires(); }
@@ -1385,10 +999,10 @@ function renderPipes() {
     </div>
   </div>`;
 
-  $("tab-works").innerHTML = h;
+  puzHost().innerHTML = h;
 
   // 1. Bind Tapping (Rotation only, no dragging!)
-  $("tab-works").querySelectorAll("[data-idx]").forEach(el => {
+  puzHost().querySelectorAll("[data-idx]").forEach(el => {
     el.onpointerdown = () => {
       const i = parseInt(el.dataset.idx);
       const type = L.cells[i];
@@ -1402,7 +1016,7 @@ function renderPipes() {
   });
 
   // 2. Bind Footer Buttons
-  $("tab-works").querySelectorAll("[data-act]").forEach(b => {
+  puzHost().querySelectorAll("[data-act]").forEach(b => {
     b.onclick = () => {
       const a = b.dataset.act;
       if (a === "back") { closePuzzle(); }
@@ -1487,17 +1101,19 @@ export function renderPicross() {
     <button class="go ${picrossMode === 2 ? 'active' : ''}" id="pmode-cross">× Mark</button>
   </div>`;
 
-  h += `<div class="picross-board">`;
-  
-  h += `<div class="top-clues">`;
+  const gw=L.grid[0].length, gh=L.grid.length;
+  const cell = Math.min(20, Math.floor((Math.min(window.innerWidth,620)-90)/gw));
+  h += `<div class="picross-board" style="grid-template-columns:auto repeat(1,max-content)">`;
+
+  h += `<div class="top-clues" style="grid-template-columns:repeat(${gw},${cell}px)">`;
   colClues.forEach(clue => { h += `<div>${clue.join("<br>")}</div>`; });
   h += `</div>`;
   
-  h += `<div class="left-clues">`;
+  h += `<div class="left-clues" style="grid-template-rows:repeat(${gh},${cell}px)">`;
   rowClues.forEach(clue => { h += `<div>${clue.join(" ")}</div>`; });
   h += `</div>`;
   
-  h += `<div class="puzzle-grid" id="p-grid">`;
+  h += `<div class="puzzle-grid" id="p-grid" style="grid-template-columns:repeat(${gw},${cell}px);grid-template-rows:repeat(${gh},${cell}px)">`;
   for (let r = 0; r < L.grid.length; r++) {
     for (let c = 0; c < L.grid[0].length; c++) {
       const st = pz.state[r][c];
@@ -1508,10 +1124,10 @@ export function renderPicross() {
   h += `</div></div>`;
   h += `<div class="blurb" style="margin-top:16px;text-align:center;">Drag to paint. Desktop: right-click to mark.</div>`;
   
-  $("tab-works").innerHTML = h;
+  puzHost().innerHTML = h;
 
   // Setup UI Buttons
-  $("tab-works").querySelector("[data-act='back']").onclick = closePuzzle;
+  puzHost().querySelector("[data-act='back']").onclick = closePuzzle;
   
   $("pmode-fill").onclick = () => { picrossMode = 1; renderPicross(); };
   $("pmode-cross").onclick = () => { picrossMode = 2; renderPicross(); };
@@ -1614,4 +1230,87 @@ function checkPicrossWin() {
 
 
 
-export { closePuzzle, openPuzzle, renderWorks, setPz };
+
+/* ---------- fourier UI (the radio) ----------
+   Target wave behind static; player wave overlaid live. Quarter-step
+   amplitude buttons per harmonic; no spectrum shown anywhere. Exact match
+   (discrete steps) finishes the frequency. */
+function fourierWave(amps, x){
+  let y=0; for(let i=0;i<amps.length;i++) y += amps[i]*Math.sin((i+1)*x);
+  return y;
+}
+function fourierMismatch(){
+  const t=pz.L.amps, a=pz.amps;
+  let m=0; for(let i=0;i<t.length;i++) m += Math.abs(t[i]-a[i]);
+  return m;
+}
+function drawFourier(){
+  const cv=document.getElementById("fourierCv");
+  if(!cv) return;
+  const ctx=cv.getContext("2d");
+  const W=cv.width, H=cv.height, mid=H/2, scale=H/5.4;
+  ctx.clearRect(0,0,W,H);
+  ctx.strokeStyle="rgba(0,0,0,0.15)"; ctx.beginPath(); ctx.moveTo(0,mid); ctx.lineTo(W,mid); ctx.stroke();
+  const mm=fourierMismatch();
+  // the target, under static that clears as the match improves
+  ctx.strokeStyle="#5B6770"; ctx.lineWidth=2; ctx.beginPath();
+  for(let px=0;px<=W;px++){
+    const x=px/W*2*Math.PI*2;
+    const noise=(Math.random()-0.5)*mm*0.35*scale;
+    const y=mid - fourierWave(pz.L.amps,x)*scale + noise;
+    px?ctx.lineTo(px,y):ctx.moveTo(px,y);
+  }
+  ctx.stroke();
+  // the player's wave
+  ctx.strokeStyle="#B88124"; ctx.lineWidth=2; ctx.beginPath();
+  for(let px=0;px<=W;px++){
+    const x=px/W*2*Math.PI*2;
+    const y=mid - fourierWave(pz.amps,x)*scale;
+    px?ctx.lineTo(px,y):ctx.moveTo(px,y);
+  }
+  ctx.stroke();
+}
+function renderFourier(){
+  const L=pz.L;
+  const lo = L.signed ? -1 : 0;
+  let h=`<div class="card">
+    <div class="pzhead"><div class="sysname">Frequency ${L.n}</div>
+      <div class="condpct">${L.amps.length} tone${L.amps.length>1?"s":""}</div></div>
+    <div class="pzteach">${L.teach}</div>
+    <canvas id="fourierCv" width="560" height="200" style="width:100%;max-width:560px;display:block;margin:8px auto;background:var(--paper);border:1px solid var(--line);border-radius:6px"></canvas>
+    <div class="blurb" style="text-align:center">The grey line is what the antenna hears. The gold one is yours. Static thins as they agree.</div>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-top:10px">`;
+  for(let i=0;i<pz.amps.length;i++){
+    h+=`<div style="text-align:center">
+      <div style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-soft)">tone ${i+1}</div>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
+        <button class="go" data-fq="${i}" data-d="-1" ${pz.amps[i]<=lo?"disabled":""}>−</button>
+        <span style="font-family:ui-monospace,monospace;min-width:42px;display:inline-block">${pz.amps[i].toFixed(2)}</span>
+        <button class="go" data-fq="${i}" data-d="1" ${pz.amps[i]>=1?"disabled":""}>+</button>
+      </div>
+    </div>`;
+  }
+  h+=`</div>
+    <div style="margin-top:12px;text-align:center"><button class="go" data-act="back">Leave it</button></div>
+  </div>`;
+  puzHost().innerHTML=h;
+  puzHost().querySelector("[data-act='back']").onclick=closePuzzle;
+  puzHost().querySelectorAll("[data-fq]").forEach(b=>{
+    b.onclick=()=>{
+      const i=+b.dataset.fq, d=+b.dataset.d;
+      pz.amps[i]=Math.round((pz.amps[i]+d*0.25)*100)/100;
+      if(fourierMismatch()===0){
+        S.pending.push("The wave sat down onto the signal and the static went quiet. A clear channel, held.");
+        finishPuzzle("fourier");
+        return;
+      }
+      renderFourier();
+    };
+  });
+  drawFourier();
+  // idle shimmer: the static crawls even when the player is thinking
+  if(pz._anim) cancelAnimationFrame(pz._anim);
+  (function loop(){ if(!pz||pz.kind!=="fourier")return; drawFourier(); pz._anim=requestAnimationFrame(()=>setTimeout(loop,120)); })();
+}
+
+export { bindPuzzleEntries, closePuzzle, openPuzzle, puzzleEntryCard, renderOpenPuzzle, setPz };

@@ -271,9 +271,11 @@ const SIGNAL_REWARD = {
 };
 
 const PATCH_REWARD = {
-  2:{flag:"sealedTanks", desc:"the catchment tanks are sealed tight: catchment gathers 20% more water"},
-  4:{flag:"draftProof", desc:"the commons and sickbed are draft-proofed: illness is a little rarer"},
-  6:{scrap:15, parts:5, desc:"the last of the big drafts sealed, leaving a pile of good surplus materials: +15 scrap, +5 parts"}
+  // no flags: the commons' draught-proofing is read straight off S.puz.patch —
+  // each finished draft adds insulation (see the hearth math in day.js).
+  2:{desc:"the worst of the window drafts are sealed: the Commons holds its warmth a little better"},
+  4:{desc:"door sweeps and sill gaskets fitted: the building breathes less in every season"},
+  6:{scrap:8, desc:"the last big leaks found and stopped — the Commons is as tight as patchwork gets, and +8 scrap of surplus material"}
 };
 
 const FOCUS_REWARD = {
@@ -417,9 +419,9 @@ const WIRES_LEVELS = [
 const WIRES_REWARD = {
   1:{desc:"power loss in the lines drops by a third of what remains"},
   2:{desc:"power loss drops again — the climb to the ridge stops bleeding current"},
-  3:{desc:"power loss drops again — the shared trench carries clean"},
+  3:{flag:"gridTuned", desc:"power loss drops again, and the whole grid is rewired true: the village draws 1 less power, forever"},
   4:{desc:"power loss drops again — red and black each keep their own"},
-  5:{desc:"the lines run almost tight — only a trace is lost between the turbine and the table"}
+  5:{flag:"relayGrid", desc:"the lines run almost tight, and the relay boards self-balance: systems wear 10% slower"}
 };
 
 
@@ -428,6 +430,31 @@ const WIRES_REWARD = {
    ============================================================ */
 
 // The library of puzzle layouts (1 = filled, 0 = empty)
+/* ================= fourier: the radio =================
+   Wave-matching. Each level is a target signal — a sum of sine harmonics —
+   shown as a waveform behind static. The player sets each harmonic's
+   amplitude in quarter steps (0..1, later levels allow inverted, -1..1)
+   until their wave lies exactly on the target. The amplitude spectrum is
+   NEVER shown: the whole skill is reading components out of the waveform —
+   zero-crossings give the fundamental, ripple gives the higher harmonics.
+   Amplitudes are discrete, so solutions are exact, no tolerance-fiddling.
+   amps[i] is the target amplitude of harmonic i+1 (i.e. sin((i+1)x)).
+   `signed` unlocks negative steps (a flipped harmonic — phase, without
+   the trigonometry). */
+const FOURIER_LEVELS = [
+  {n:1, amps:[1],             signed:false, teach:"One clear carrier under the static. Bring the dial to it."},
+  {n:2, amps:[0.75,0.5],      signed:false, teach:"Two tones braided together. The slow one sets the shape; the quick one rides it."},
+  {n:3, amps:[1,0,0.5],       signed:false, teach:"Something in the ripple. Count the crossings — not every harmonic is present."},
+  {n:4, amps:[0.5,0.75,0,0.25], signed:false, teach:"A voice, almost. Four components, one of them silent."},
+  {n:5, amps:[1,-0.5,0.25],   signed:true,  teach:"One of these is upside down. A flipped tone pulls the wave the other way."},
+  {n:6, amps:[0.75,0.5,-0.25,0.25,0], signed:true, teach:"The whole band at once. Somebody is broadcasting, and this is their shape."}
+];
+const FOURIER_REWARD = {
+  2:{parts:4, desc:"a clean signal, twice: +4 parts off a channel that used to be static"},
+  4:{scrap:6, parts:3, desc:"the band's mapped past the near static: +6 scrap, +3 parts"},
+  6:{flag:"radioContact", desc:"the antenna reaches someone who reaches back — the road doesn't end at the maps anymore. Word of this place travels now, on its own, the way it always should have."}
+};
+
 const PICROSS_LEVELS = [
 
    {
@@ -507,16 +534,18 @@ const PICROSS_REWARD = {
 };
 
 const PUZ_META = { //this is our definitive puzzle list. keep it correct.
-  circuit:{levels:CIRCUIT_LEVELS, reward:CIRCUIT_REWARD, noun:"board"},
+  // circuit, radio(signal), and focus are retired. Their rewards moved:
+  // gridTuned/relayGrid -> wires ladder; silveredPanels/thermalStore/fineTools
+  // -> Works projects; radioContact -> the fourier capstone. Old S.puz counts
+  // for retired puzzles sit harmlessly in saves.
   water:{levels:WATER_LEVELS, reward:WATER_REWARD, noun:"season"},
   seed:{levels:SEED_LEVELS, reward:SEED_REWARD, noun:"frame"},
-  radio:{levels:SIGNAL_LEVELS, reward:SIGNAL_REWARD, noun:"frequency"},
   patch:{levels:PATCH_LEVELS, reward:PATCH_REWARD, noun:"draft"},
-  focus:{levels:FOCUS_LEVELS, reward:FOCUS_REWARD, noun:"array"},
   wires:{levels:WIRES_LEVELS, reward:WIRES_REWARD, noun:"run"},
   pipes:{levels:PIPES_LEVELS, reward:PIPES_REWARD, noun:"main"},
-  picross:{levels:PICROSS_LEVELS, reward: PICROSS_REWARD, noun: "scan"}
+  picross:{levels:PICROSS_LEVELS, reward: PICROSS_REWARD, noun: "scan"},
+  fourier:{levels:FOURIER_LEVELS, reward:FOURIER_REWARD, noun:"frequency"}
 };
 
 
-export { PUZ_META, CIRCUIT_LEVELS, CIRCUIT_REWARD, FOCUS_LEVELS, FOCUS_REWARD, PATCH_LEVELS, PATCH_REWARD, PATCH_SHAPES, PATCH_VARIANTS, PIPES_LEVELS, PIPES_REWARD, SEEDLINGS, SEED_COMPANION, SEED_LEVELS, SEED_REWARD, SEED_RIVAL, SIGNAL_LEVELS, SIGNAL_REWARD, WATER_LEVELS, WATER_PIECES, WATER_REWARD, WIRES_LEVELS, WIRES_REWARD, PICROSS_LEVELS, PICROSS_REWARD };
+export { FOURIER_LEVELS, FOURIER_REWARD, PUZ_META, CIRCUIT_LEVELS, CIRCUIT_REWARD, FOCUS_LEVELS, FOCUS_REWARD, PATCH_LEVELS, PATCH_REWARD, PATCH_SHAPES, PATCH_VARIANTS, PIPES_LEVELS, PIPES_REWARD, SEEDLINGS, SEED_COMPANION, SEED_LEVELS, SEED_REWARD, SEED_RIVAL, SIGNAL_LEVELS, SIGNAL_REWARD, WATER_LEVELS, WATER_PIECES, WATER_REWARD, WIRES_LEVELS, WIRES_REWARD, PICROSS_LEVELS, PICROSS_REWARD };

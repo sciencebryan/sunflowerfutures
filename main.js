@@ -19,13 +19,32 @@ import { initDebugTab } from "./debug.js";
 
 
 /* ================= tabs, timer, boot ================= */
-document.querySelectorAll("nav button").forEach(b=>{
-  b.onclick=()=>{
-    document.querySelectorAll("nav button").forEach(x=>x.classList.remove("on"));
-    b.classList.add("on");
-    ["village","beyond","works","power","water","people","journal"].forEach(t=>$("tab-"+t).style.display = b.dataset.tab===t?"":"none");
-  };
-});
+/* the eight tabs. Built from JS at load so index.html needs no edit:
+   the nav is rewritten in place, and any missing <section> (tab-food)
+   is created next to its siblings. */
+const TABS=[["village","Village"],["food","Food"],["power","Power"],["water","Water"],["works","Works"],["people","People"],["beyond","Beyond"],["journal","Journal"]];
+(function buildNav(){
+  const nav=document.querySelector("nav");
+  nav.innerHTML = TABS.map(([id,label])=>
+    `<button data-tab="${id}"${id==="village"?' class="on"':''}>${label}${id==="village"?'<span id="evdot" style="display:none" class="evdot"></span>':''}</button>`
+  ).join("");
+  const main=document.querySelector("main");
+  for(const [id] of TABS){
+    if(!document.getElementById("tab-"+id)){
+      const sec=document.createElement("section");
+      sec.id="tab-"+id; sec.style.display="none";
+      main.appendChild(sec);
+    }
+  }
+  document.querySelectorAll("nav button").forEach(b=>{
+    b.onclick=()=>{
+      document.querySelectorAll("nav button").forEach(x=>x.classList.remove("on"));
+      b.classList.add("on");
+      TABS.forEach(([t])=>{const el=$("tab-"+t); if(el) el.style.display = b.dataset.tab===t?"":"none";});
+      const dbg=$("tab-debug"); if(dbg && b.dataset.tab!=="debug") dbg.style.display="none";
+    };
+  });
+})();
 
 $("endDayBtn").onclick=endDayNow;
 $("resetBtn").onclick=()=>{

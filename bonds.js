@@ -125,6 +125,18 @@ function tickBondPair(bonds, pA, pB, famAmt) {
   if (compat < MISMATCH_T && ((pA.wb !== undefined && pA.wb < LOW_WB) || (pB.wb !== undefined && pB.wb < LOW_WB))) f *= 0.5;
   b.familiarity = Math.min(10, b.familiarity + f);
   b.affinity = clamp(b.affinity + f * AFF_RATE * compat, -10, 10);
+  if(b.affinity > (b.peakAff||0)) b.peakAff = b.affinity;   // remembered high-water mark, for the cooling lines
+}
+
+/* what music, if any, a person makes — rolled once at creation. About 4 in
+   10 people are musical; instruments are rarer than voices. */
+function rollMusic(){
+  if(Math.random() > 0.4) return [];
+  const out=[];
+  if(Math.random() < 0.6) out.push("singing");
+  if(Math.random() < 0.4) out.push("clapping");
+  if(Math.random() < 0.55) out.push(["guitar","ukulele","hand drum","fiddle"][Math.floor(Math.random()*4)]);
+  return out.length ? out : ["singing"];
 }
 
 /* --- founding ---
@@ -164,4 +176,4 @@ function dumpBonds(S) {
   console.table(S.people.map(p => ({ name: p.name, personality: p.personality })));
 }
 
-export { PERSONALITIES, P_REL, bondKey, bondOf, compatibility, dumpBonds, isMismatched, moreBothered, personalityTerm, rollPersonality, seedFounderBonds, setIdeologyTermFn, termBreakdown, tickBondPair };
+export { PERSONALITIES, rollMusic, P_REL, bondKey, bondOf, compatibility, dumpBonds, isMismatched, moreBothered, personalityTerm, rollPersonality, seedFounderBonds, setIdeologyTermFn, termBreakdown, tickBondPair };

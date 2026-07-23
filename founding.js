@@ -110,7 +110,7 @@ async function startNewGame(visualIds, founderIds){
   document.querySelectorAll("nav button").forEach(x=>x.classList.remove("on"));
   const vb=document.querySelector('nav button[data-tab="village"]');
   if(vb) vb.classList.add("on");
-  ["village","beyond","works","power","water","people","journal"].forEach(t=>{ const el=$("tab-"+t); if(el) el.style.display = t==="village"?"":"none"; });
+  ["village","food","power","water","works","people","beyond","journal"].forEach(t=>{ const el=$("tab-"+t); if(el) el.style.display = t==="village"?"":"none"; });
   const dbg=$("tab-debug"); if(dbg) dbg.style.display="none";   // the dev ledger, if injected, hides with the rest
   renderAll();                   // paint the new village
 }

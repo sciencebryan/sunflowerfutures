@@ -4,7 +4,7 @@ import { PUZ_META } from "./data-puzzles.js";
 import { AGES } from "./seasons.js";
 import { NEWCOMERS, ROSTER, VISUALS } from "./defs.js";
 import { clamp } from "./helpers.js";
-import { rollPersonality, seedFounderBonds } from "./bonds.js";
+import { rollMusic, rollPersonality, seedFounderBonds } from "./bonds.js";
 import { seedIdeology } from "./ideology.js";
 
 
@@ -30,7 +30,7 @@ function newSites(){
 function freshPerson(def){
   // personality: hidden chemistry, rolled fresh per person per game — never
   // rendered, never derived from anything visible (see bonds.js)
-  const p = {...def, age: AGES[def.id] ?? 30, years:0, perm:null, wb:78+Math.floor(Math.random()*10), job:null, streak:0, status:"ok", downDays:0, mem:null, toxins:0, personality: rollPersonality(), practice:{specific:{}, broad:{hands:0,green:0,care:0,wild:0}}};
+  const p = {...def, age: AGES[def.id] ?? 30, years:0, perm:null, wb:78+Math.floor(Math.random()*10), job:null, streak:0, status:"ok", downDays:0, mem:null, toxins:0, personality: rollPersonality(), music: rollMusic(), practice:{specific:{}, broad:{hands:0,green:0,care:0,wild:0}}};
   // ideology: hidden stance vector, seeded from who they already are
   // (stats + trait), so it needs the finished person — hence after the spread
   p.ideology = seedIdeology(p);
@@ -82,7 +82,11 @@ function newState(){
                           // neighborsAsk event) and spent automatically when this village is the
                           // one in trouble — see the "neighbors" block in simulateDay. Decays
                           // slowly if never called in; this is reciprocity, not a bank account.
-    festivalCooldown: 0, festivalBoostDays: 0,  // a deliberate sink for surplus food/oil — see holdFestival()
+    festivalCooldown: 0, festivalBoostDays: 0,  // boostDays still drives the daily aura; see celebrations.js
+    celebCd: {},        // per-kind cooldowns — a bonfire and a feast rest separately
+    traditions: [],     // named celebrations that come back on the same day every year
+    mournedDeaths: 0,   // deaths already marked by a remembrance
+    lastCelebration: null,
     groundwaterContam: 0,  // HIDDEN. What's in the water table, 0-100. Seeded by the landfill
                            // visual, read only by the well. Rain is always clean; this is the
                            // cost of the reliable supply, and it is never shown to anyone.
@@ -140,8 +144,12 @@ function applyFounding(s, visualIds){
       const apples = fx.orchardApples || 0;
       for(let i=0;i<fx.forestStart;i++){
         if(i<apples){
+          // a long-abandoned orchard: these trees are already at full bearing
+          // age, not merely started. Backdate to matureYears so the first
+          // autumn here gives a real crop, not a sapling's handful.
           s.forest.push({crop:"apple", growth:0, days:0, ready:false, stored:0, fertility:75,
-                         plantedDay: -(SEASON_LEN*4*2)});   // ~2 years already grown
+                         matured:true, firstBorne:true,
+                         plantedDay: -(SEASON_LEN*4*(CROPS.apple.matureYears||4))});
         } else {
           s.forest.push({crop:null, growth:0, days:0, ready:false, stored:0, fertility:75, plantedDay:0});
         }
@@ -302,6 +310,10 @@ function migrate(s){
   if(s.neighborStanding===undefined) s.neighborStanding=0;
   if(s.forecast===undefined) s.forecast=null;
   if(s.festivalCooldown===undefined) s.festivalCooldown=0;
+  if(!s.celebCd) s.celebCd={};
+  if(!s.traditions) s.traditions=[];
+  if(s.mournedDeaths===undefined) s.mournedDeaths=0;
+  if(s.lastCelebration===undefined) s.lastCelebration=null;
   if(s.festivalBoostDays===undefined) s.festivalBoostDays=0;
   if(s.compost===undefined) s.compost=0;
   if(s.groundwaterContam===undefined) s.groundwaterContam=0;
@@ -322,6 +334,7 @@ function migrate(s){
   // ideology: hidden stance vector added later — seeded from stats+trait now
   for(const p of s.people) if(!p.ideology) p.ideology=seedIdeology(p);
   for(const p of s.people) if(p.toxins===undefined) p.toxins=0;
+  for(const p of s.people) if(!p.music) p.music=rollMusic();
   if(s.legitimacy===undefined) s.legitimacy=70;
   if(!s.conflictSeq) s.conflictSeq=1;
   if(!s.activeConflicts) s.activeConflicts=[];
@@ -369,6 +382,21 @@ function migrate(s){
     s.beds.push({crop:null,growth:0,days:0,ready:false,stored:0,fertility:75,plantedDay:0});
   // restoration metrics — absent from any pre-restoration save
   if(!s.restore) s.restore = {mycosphere:0, aquifer:0, pollinator:0, seen:false, restored:false};
+  // repair: bring home anyone stranded "away" with no expedition backing them.
+  // The old objp crash in tickExpeditions could strand the rest of a party
+  // mid-return, leaving people permanently away to nowhere, "back in ? days".
+  // Cheap to check every load, and it can never fire wrongly — an away person
+  // without an expedition is always a bug.
+  {
+    const onRoad = new Set();
+    for(const ex of (s.expeditions||[])) for(const pid of (ex.party||[])) onRoad.add(pid);
+    for(const p of s.people){
+      if(p.status==="away" && !onRoad.has(p.id)){
+        p.status="ok"; p.job=null;
+        p.mem=p.mem||`Came home, day ${s.day}.`;
+      }
+    }
+  }
   return s;
 }
 let S = null;

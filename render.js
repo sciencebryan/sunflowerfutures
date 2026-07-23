@@ -3,14 +3,15 @@ import { S } from "./state.js";
 import { $ } from "./dom.js";
 import { SKILL_INFO, TRAITS, built, decayOf, isVisible, waterCapEff } from "./defs.js";
 import { eventDef, eventView, exWhere } from "./events.js";
-import { CROPS, FABS, FAB_RATE, FOREST_PLOT_COST, MAX_FOREST_PLOTS, POWER_DEMANDS, PRACTICE_SPECIFIC_CAP, PRESERVE, PROJECTS, RESTORE_GATE, RESTORE_HIGH, RESTORE_LOW, SEASON_LEN, SITE_DEF, STACKABLE, SYS, WATER_DEMANDS } from "./data-economy.js";
+import { CROPS, FABS, FAB_RATE, FOREST_PLOT_COST, MAX_FOREST_PLOTS, POWER_DEMANDS, PRACTICE_SPECIFIC_CAP, PRESERVE, PROJECTS, RESTORE_GATE, RESTORE_HIGH, RESTORE_LOW, SEASONS, SEASON_LEN, SITE_DEF, STACKABLE, SYS, WATER_DEMANDS } from "./data-economy.js";
 import { Cap, byId, clamp, eff, effStat, isAre, pick, poss, practiceOf, siteName, siteRemainFrac, subj, wbFloor } from "./helpers.js";
-import { SOIL_WORD, openPartySheet, openPersonSheet, openSowSheet, openSystemSheet } from "./sheets.js";
+import { SOIL_WORD, openCelebrationSheet, openPartySheet, openPersonSheet, openSowSheet, openSystemSheet } from "./sheets.js";
 import { assignPhrase, workDef } from "./day.js";
 import { store } from "./store.js";
 import { FORAGE_FLAVOR } from "./data-events.js";
-import { renderWorks } from "./puzzle-ui.js";
+import { bindPuzzleEntries, puzzleEntryCard, renderOpenPuzzle } from "./puzzle-ui.js";
 import { openConflictSheet } from "./mediation.js";
+import { CELEBRATIONS, canAfford, celebDef, costOf, forgetTradition, gatesOk, onCooldown } from "./celebrations.js";
 import { syncNavTop } from "./main.js";
 
 
@@ -176,57 +177,14 @@ function seasonBanner(){
   </div>`;
 }
 
-// Spends banked surplus on purpose: an immediate spirits bump for everyone
-// present, plus a few days of afterglow (folded into the daily aura calc —
-// see S.festivalBoostDays in simulateDay). The only deliberate sink for a
-// good year's food; without one, surplus just sits until it spoils.
-function holdFestival(){
-  const FEST_COST=30, FEST_COOLDOWN=40, FEST_MARGIN=20;
-  const stores=S.res.food+S.preserved;
-  if((S.festivalCooldown||0)>0) return;
-  if(stores < FEST_COST+FEST_MARGIN) return;
-  // spend fresh first, then preserved, same order the famine logic already uses
-  let need=FEST_COST;
-  const fromFresh=Math.min(S.res.food, need); S.res.food-=fromFresh; need-=fromFresh;
-  const fromPreserved=Math.min(S.preserved, need); S.preserved-=fromPreserved;
-  const usedOil = (S.oil||0)>=3;
-  if(usedOil) S.oil -= 3;
-
-  S.festivalBoostDays = 3;
-  S.festivalCooldown = FEST_COOLDOWN;
-  for(const p of S.people){ if(p.status!=="away") p.wb=clamp(p.wb+10, wbFloor(p), 100); }
-
-  // flavor draws on the real diet log, so a festival after a varied harvest
-  // reads differently than one thrown from the last of the jars
-  const recentKinds = new Set(S.dietLog.filter(e=>S.day-e.day<=21).map(e=>e.crop));
-  const richTable = recentKinds.size>=3;
-  const lines = usedOil
-    ? [`A festival, and everything on the table fried bright in oil for once — ${richTable?"half of it grown this year":"whatever the stores could spare"}. Nobody kept count of the servings.`,
-       "Someone got the whole commons singing before the plates were even cleared."]
-    : [`A festival on nothing but what was banked, and it was enough. ${richTable?"A season's worth of different things, all out at once.":"Plain food, plenty of it, and no one rationing tonight."}`,
-       "Whatever the day's work was, it waited."];
-  S.pending.push(pick(lines));
-  S.journal.unshift({day:S.day, weather:S.weather, event:true,
-    lines:[`A festival was held.${usedOil?" Oil, spent on purpose, not saved.":""} ${FEST_COST} food given over, on purpose, to a night nobody worked.`,
-           "It will happen again, someday, when there's enough to spare again."]});
-}
-
-function renderVillage(){
-  const resting = S.people.filter(p=>p.job===null&&p.status==="ok").length;
-  const away = S.people.filter(p=>p.status==="away").length;
-  const laidup = S.people.filter(p=>p.status==="down"||p.status==="spent").length;
-
-  // Build the top dashboard
-  let h = seasonBanner();
-//  h += `<div class="sectionlbl">${S.people.length} villagers · ${resting} resting · ${laidup} laid up · ${away} away</div>`;
-//  h += salvageChips();
-  h += renderEvent();
-  h += powerCard();
-
+function sysSection(ids, builtOnly){
+    let h="";
   for(const def of SYS){
+    if(ids && !ids.includes(def.id)) continue;
     const st=S.sys[def.id];
     if(!st.built && !isVisible(def)) continue;
     if(!st.built){
+      if(builtOnly) continue;   // build cards belong to Works
       const afford=Object.entries(def.cost).every(([k,v])=>S.res[k]>=v);
       const canStart = afford && !S.project;
       const costHtml=Object.entries(def.cost).map(([k,v])=>`<span class="cost ${S.res[k]>=v?'':'short'}">${v} ${k}</span>`).join("");
@@ -240,10 +198,21 @@ function renderVillage(){
       </div>`;
       continue;
     }
+    if(!builtOnly) continue;   // built systems render on their domain tab
     const c=st.cond;
     const crew=S.people.filter(p=>p.job===def.id);
     const F=S.flags;
     const dec = decayOf(def);
+    // compact by default when healthy: one line — name, condition, wear, keeper.
+    // Degrading or unstaffed systems arrive already expanded. Tap toggles.
+    const needsEyes = c<50 || (dec>0.8 && crew.length===0);
+    if(!needsEyes && !expandedSys.has(def.id)){
+      h+=`<button class="card" data-expand="${def.id}" style="text-align:left;cursor:pointer;width:100%;padding:8px 12px">
+        <div class="card-top" style="margin:0"><div class="sysname" style="font-size:13px">${def.name}</div>
+        <div class="condpct">${c.toFixed(0)} · −${dec.toFixed(1)}/day · ${crew.length?crew.map(p=>p.name).join(", "):"unkept"}</div></div>
+      </button>`;
+      continue;
+    }
     const netDay = crew.filter(p=>p.status==="ok").reduce((a,p)=>{
       let hd=effStat(p,"hands",def.id)+(p.trait==="Tinkerer"?1.5:0)+(p.trait==="Cautious"?-0.5:0);
       return a+hd*1.6*eff(p)*(F.toolLibrary?1.2:1)*(S.sys[def.id].cond>=85?0.45:1);},0) - dec;
@@ -271,6 +240,10 @@ function renderVillage(){
       ${c<35?`<div class="warnline">Failing. Output is badly reduced.</div>`:""}
     </div>`;
   }
+  return h;
+}
+function gardensSection(){
+  let h="";
   {
     const sn=season();
     const tenders=S.people.filter(p=>p.job==="garden");
@@ -323,6 +296,10 @@ function renderVillage(){
     h+=`</div>`;
   }
 
+  return h;
+}
+function valleySection(){
+  let h="";
   // --- restoration: three ecological metrics, shown once the village begins healing land ---
   if(S.restore && S.restore.seen){
     const r=S.restore;
@@ -347,14 +324,33 @@ function renderVillage(){
     h+=rh;
   }
 
-  // --- Chopping Wood ---
-  h+=`<div class="card">
+  return h;
+}
+function woodpileSection(){
+  let h="";
+  const burn = S.flags.woodStove ? (S.flags.rocketHeater?1.5:3) : 0;
+  const daysFuel = burn>0 ? Math.floor((S.res.wood||0)/burn) : Infinity;
+  const sn=season();
+  const winterLeft = sn.id==="winter" ? (SEASON_LEN - dayOfSeason(S.day)) : null;
+  let fuelLine = "";
+  if(burn>0){
+    if(winterLeft!==null) fuelLine = daysFuel>=winterLeft
+      ? `${daysFuel} days of burning in the pile; winter has ${winterLeft} to run. It holds.`
+      : `${daysFuel} days of burning in the pile against ${winterLeft} more of winter. It does not hold.`;
+    else if(sn.id==="autumn") fuelLine = `${daysFuel} days of burning stored. A winter is ${SEASON_LEN}.`;
+    else fuelLine = `${daysFuel} days of winter burning stored.`;
+  }
+  h+=`<div class="card" ${burn>0&&winterLeft!==null&&daysFuel<winterLeft?'style="border-color:var(--rust)"':''}>
     <div class="card-top"><div class="sysname">The tree line</div><div class="condpct">${S.res.wood.toFixed(0)} wood</div></div>
     <div class="blurb">Felling deadwood and hauling it back. You will need it when the deep freeze comes.</div>
     <div class="rolerow">${roleChip("woodcut","hauler","no one")}</div>
     <div class="sysmeta"><span class="outline-note">${S.report.woodWhy||"nobody chopping today"}</span></div>
+    ${fuelLine?`<div class="sysmeta"><span class="outline-note">${fuelLine}</span></div>`:""}
   </div>`;
-
+  return h;
+}
+function forestSection(){
+  let h="";
   // --- the food forest: perennial ground, separate from the kitchen beds ---
   {
     const forest = S.forest||[];
@@ -399,6 +395,10 @@ function renderVillage(){
     }
   }
 
+  return h;
+}
+function sickbedSection(){
+  let h="";
   const down=S.people.filter(p=>p.status==="down"||p.status==="spent");
   h+=`<div class="card">
     <div class="card-top"><div class="sysname">The sickbed</div><div class="condpct">${down.length} laid up</div></div>
@@ -407,6 +407,10 @@ function renderVillage(){
     <div class="sysmeta"><span class="outline-note">${down.length?down.map(p=>p.name).join(", "):"everyone is on their feet"} · uses care</span></div>
   </div>`;
 
+  return h;
+}
+function preserveSection(){
+  let h="";
   // putting food by
   {
     const methods=Object.values(PRESERVE).filter(m=>S.flags[m.flag]);
@@ -421,6 +425,10 @@ function renderVillage(){
     </div>`;
   }
 
+  return h;
+}
+function oilSection(){
+  let h="";
   // --- pressing oil, once the press is built ---
   if(S.flags.oilPress){
     h+=`<div class="card">
@@ -431,24 +439,44 @@ function renderVillage(){
     </div>`;
   }
 
-  // --- a festival: the one deliberate sink for a good year's surplus ---
-  {
-    const FEST_COST=30, FEST_COOLDOWN=40;
-    const stores=S.res.food+S.preserved;
-    const canAfford = stores >= FEST_COST + 20;   // never lets a festival eat into winter margin
-    const onCooldown = (S.festivalCooldown||0)>0;
-    const hasOil = (S.oil||0)>=3;
-    const canHold = canAfford && !onCooldown;
-    h+=`<div class="card ${canHold?'buildable':''}">
-      <div class="card-top"><div class="sysname">Hold a festival</div>
-        <button class="go ${canHold?'ready':''}" data-festival="1" ${canHold?"":"disabled"}>Hold it</button></div>
-      <div class="blurb">A night the stores can afford, given over on purpose. Everyone eats well, nobody works, and it's the only good reason to spend a surplus instead of banking it against a worse winter.</div>
-      <div class="costchips"><span class="cost ${stores>=FEST_COST?'':'short'}">${FEST_COST} food</span>${hasOil?`<span class="cost">3 oil, if you have it — a richer table</span>`:""}<span class="cost">lifts spirits for 3 days</span></div>
-      ${onCooldown?`<div class="sysmeta"><span class="outline-note">Too soon again — give it ${S.festivalCooldown} more day${S.festivalCooldown===1?"":"s"}.</span></div>`
-        :!canAfford?`<div class="sysmeta"><span class="outline-note">Needs a real surplus — ${FEST_COST} food to spend, and ${20} left over after.</span></div>`:""}
+  return h;
+}
+function festivalSection(){
+  let h="";
+  h+=`<div class="sectionlbl">Celebrations</div>`;
+  for(const def of CELEBRATIONS){
+    if(!gatesOk(def) && !onCooldown(def)) continue;   // gated kinds stay hidden until relevant
+    const cd = onCooldown(def);
+    const afford = canAfford(def, "proper");
+    const ok = !cd && afford && gatesOk(def);
+    const c = costOf(def, "proper");
+    const chips = Object.entries(c).map(([k,v])=>`<span class="cost ${(k==="food"?(S.res.food+S.preserved):(S.res[k]||0))>=v?'':'short'}">${v} ${k}</span>`).join("")
+      || `<span class="cost">costs nothing but the evening</span>`;
+    h+=`<div class="card ${ok?'buildable':''}">
+      <div class="card-top"><div class="sysname">${def.name}</div>
+        <button class="go ${ok?'ready':''}" data-celeb="${def.id}" ${ok?"":"disabled"}>Hold it</button></div>
+      <div class="blurb">${def.blurb}</div>
+      <div class="costchips">${chips}<span class="cost">lifts spirits · brings people closer</span></div>
+      ${cd?`<div class="sysmeta"><span class="outline-note">Too soon again — ${S.celebCd[def.id]} more day${S.celebCd[def.id]===1?"":"s"}.</span></div>`
+        :!afford?`<div class="sysmeta"><span class="outline-note">Not enough spare${def.margin?`, with ${def.margin} to be left over after`:""}.</span></div>`:""}
     </div>`;
   }
-
+  if((S.traditions||[]).length){
+    h+=`<div class="sectionlbl">What the village keeps</div>`;
+    for(const t of S.traditions){
+      const sn=SEASONS[Math.floor((t.day-1)/SEASON_LEN)%4];
+      h+=`<div class="card grey">
+        <div class="card-top"><div class="sysname">${t.name}</div>
+          <div class="condpct">${t.timesHeld} year${t.timesHeld===1?"":"s"}</div></div>
+        <div class="blurb">${celebDef(t.kind)?.name||"A celebration"}, kept every ${sn.name.toLowerCase()}, day ${((t.day-1)%SEASON_LEN)+1}. Begun in year ${t.founded}.${t.missed?` Missed ${t.missed} time${t.missed===1?"":"s"}.`:""}</div>
+        <div class="sysmeta"><button class="go" data-forget="${t.name}">Let it lapse</button></div>
+      </div>`;
+    }
+  }
+  return h;
+}
+function worksSection(){
+  let h="";
   h+=`<div class="sectionlbl">Work &amp; projects</div>`;
   h+=salvageChips();
   if(S.project){
@@ -519,14 +547,63 @@ function renderVillage(){
 //  const laidup=S.people.filter(p=>p.status==="down"||p.status==="spent").length;
 //  h+=`<div class="sectionlbl">${S.people.length} villagers · ${resting} resting · ${laidup} laid up · ${away} away</div>`;
 
-  $("tab-village").innerHTML=h;
-  $("tab-village").querySelectorAll("[data-open]").forEach(el=>{
+  return h;
+}
+function hearthSection(){
+  const sn=season();
+  const hp=(S.report&&S.report.hearth)||null;
+  if(sn.id==="spring"||sn.id==="autumn"){
+    return `<div class="card grey"><div class="card-top"><div class="sysname">The hearth</div></div>
+      <div class="blurb">Mild weather. The building asks nothing of anyone this season.</div></div>`;
+  }
+  if(!hp) return "";
+  const rows = hp.parts.map(p=>`<div class="budgetline"><span style="padding-left:12px">· ${p[0]}</span><span>+${p[1].toFixed(2)}</span></div>`).join("");
+  const short = hp.safety < 0.85;
+  return `<div class="card" style="border-color:${short?'var(--rust)':'var(--line)'}">
+    <div class="card-top"><div class="sysname">The hearth</div><div class="condpct">${hp.safety.toFixed(2)} of 0.85</div></div>
+    <div class="blurb">${sn.id==="winter"?"What stands between the village and the cold.":"What keeps the worst of the heat out of the rooms."}</div>
+    ${rows||'<div class="budgetline"><span style="padding-left:12px">· nothing built</span><span>+0.00</span></div>'}
+    ${short?`<div class="warnline">Short of comfortable. Everyone is losing a little spirit to it, every day${sn.id==="winter"?", and a deep freeze would find the building unready":""}.</div>`
+          :`<div class="outline-note" style="margin-top:6px">The building holds.</div>`}
+  </div>`;
+}
+function triageSection(){
+  let h="";
+  const bits=[];
+  if(S.project){ const def=workDef(); if(def) bits.push(`${S.project.kind==="build"?"raising the "+def.name.toLowerCase():def.name} — ${clamp(S.project.progress/def.work*100,0,100).toFixed(0)}%`); }
+  if(S.fabProject){ const d=FABS.find(x=>x.id===S.fabProject.id); if(d) bits.push(`fabricating ${d.name.toLowerCase()} — ${clamp(S.fabProject.progress/d.work*100,0,100).toFixed(0)}%`); }
+  for(const ex of S.expeditions||[]){
+    const names=ex.party.map(pid=>{const p=byId(pid);return p?p.name:null}).filter(Boolean).join(", ");
+    bits.push(`${names} out ${ex.type==="forage"?"foraging":ex.type==="explore"?"ranging":"salvaging"} — back in ${ex.daysLeft} day${ex.daysLeft===1?"":"s"}`);
+  }
+  // the single most urgent repair across every built system
+  let worst=null, worstU=0;
+  for(const def of SYS){
+    const st=S.sys[def.id]; if(!st||!st.built) continue;
+    const u=(100-st.cond)*Math.max(0.4,decayOf(def));
+    if(st.cond<70 && u>worstU){ worstU=u; worst=def; }
+  }
+  if(worst){
+    const where=["turbine","solar","battery"].includes(worst.id)?"Power":["catchment","irrigation"].includes(worst.id)?"Water":"below";
+    bits.push(`most worn: ${worst.name.toLowerCase()} at ${S.sys[worst.id].cond.toFixed(0)} — see ${where}`);
+  }
+  if(!bits.length){
+    h+=`<div class="card grey"><div class="blurb">Nothing needs you right now. The village is running. Come back when it isn't — or don't, and see what the journal says.</div></div>`;
+  } else {
+    h+=`<div class="card"><div class="card-top"><div class="sysname">In motion</div></div>
+      ${bits.map(b=>`<div class="budgetline"><span>${b}</span></div>`).join("")}</div>`;
+  }
+  return h;
+}
+function bindTabActions(el){
+  
+  el.querySelectorAll("[data-open]").forEach(el=>{
     el.onclick=()=>openSystemSheet(el.dataset.open);
   });
-  $("tab-village").querySelectorAll("[data-sow]").forEach(b=>{
+  el.querySelectorAll("[data-sow]").forEach(b=>{
     b.onclick=()=>openSowSheet(+b.dataset.sow);
   });
-  $("tab-village").querySelectorAll("[data-fab]").forEach(b=>{
+  el.querySelectorAll("[data-fab]").forEach(b=>{
     b.onclick=()=>{
       const def=FABS.find(x=>x.id===b.dataset.fab);
       if(S.fabProject) return;
@@ -537,7 +614,7 @@ function renderVillage(){
       store.save(S); renderAll();
     };
   });
-  $("tab-village").querySelectorAll("[data-proj]").forEach(b=>{
+  el.querySelectorAll("[data-proj]").forEach(b=>{
     b.onclick=()=>{
       const proj=PROJECTS.find(p=>p.id===b.dataset.proj);
       for(const [k,v] of Object.entries(proj.cost)) S.res[k]-=v;
@@ -546,7 +623,7 @@ function renderVillage(){
       store.save(S); renderAll();
     };
   });
-  $("tab-village").querySelectorAll("[data-build]").forEach(b=>{
+  el.querySelectorAll("[data-build]").forEach(b=>{
     b.onclick=()=>{
       const def=SYS.find(s=>s.id===b.dataset.build);
       for(const [k,v] of Object.entries(def.cost)) S.res[k]-=v;
@@ -555,7 +632,7 @@ function renderVillage(){
       store.save(S); renderAll();
     };
   });
-  $("tab-village").querySelectorAll("[data-raise]").forEach(b=>{
+  el.querySelectorAll("[data-raise]").forEach(b=>{
     b.onclick=()=>{
       const id=b.dataset.raise;
       const meta=STACKABLE[id];
@@ -574,10 +651,10 @@ function renderVillage(){
       store.save(S); renderAll();
     };
   });
-  $("tab-village").querySelectorAll("[data-forest]").forEach(b=>{
+  el.querySelectorAll("[data-forest]").forEach(b=>{
     b.onclick=()=>openSowSheet(+b.dataset.forest, true);
   });
-  $("tab-village").querySelectorAll("[data-clearplot]").forEach(b=>{
+  el.querySelectorAll("[data-clearplot]").forEach(b=>{
     b.onclick=()=>{
       S.forest = S.forest || [];
       if(S.forest.length>=MAX_FOREST_PLOTS) return;
@@ -588,10 +665,7 @@ function renderVillage(){
       store.save(S); renderAll();
     };
   });
-  $("tab-village").querySelectorAll("[data-festival]").forEach(b=>{
-    b.onclick=()=>{ holdFestival(); store.save(S); renderAll(); };
-  });
-  $("tab-village").querySelectorAll("[data-evopt]").forEach(b=>{
+  el.querySelectorAll("[data-evopt]").forEach(b=>{
     b.onclick=()=>{
       const def=eventDef(S.event.defId);
       const ev=eventView();
@@ -607,7 +681,46 @@ function renderVillage(){
   });
 }
 
+  el.querySelectorAll("[data-expand]").forEach(b=>{ b.onclick=()=>{ expandedSys.add(b.dataset.expand); renderAll(); }; });
+  el.querySelectorAll("[data-celeb]").forEach(b=>{ b.onclick=()=>openCelebrationSheet(b.dataset.celeb); });
+  el.querySelectorAll("[data-forget]").forEach(b=>{ b.onclick=()=>{ forgetTradition(b.dataset.forget); store.save(S); renderAll(); }; });
+  bindPuzzleEntries(el);
+}
+function renderVillage(){
+  if(renderOpenPuzzle("village")) return;
+  let h="";
+  h += renderEvent();
+  h += powerCard();
+  h += triageSection();
+  h += hearthSection();
+  h += woodpileSection();
+  h += sysSection(["commons"], true);
+  h += valleySection();
+  h += puzzleEntryCard("patch");
+  $("tab-village").innerHTML=h;
+  bindTabActions($("tab-village"));
+}
+function renderFood(){
+  if(renderOpenPuzzle("food")) return;
+  let h="";
+  h += gardensSection();
+  h += forestSection();
+  h += sysSection(["aquaponics"], true);
+  h += preserveSection();
+  h += oilSection();
+  h += puzzleEntryCard("seed");
+  $("tab-food").innerHTML=h;
+  bindTabActions($("tab-food"));
+}
+function renderWorks(){
+  let h="";
+  h += sysSection(null, false);   // everything not yet raised
+  h += worksSection();            // current project, project menu, fabrication
+  $("tab-works").innerHTML=h;
+  bindTabActions($("tab-works"));
+}
 function renderBeyond(){
+  if(renderOpenPuzzle("beyond")) return;
   let h=salvageChips();
 
   if(S.expeditions.length){
@@ -681,10 +794,13 @@ function renderBeyond(){
     <div class="blurb">There is nowhere left you haven't walked. What the village needs now, it will have to grow or make.</div></div>`;
   }
 
+  h += puzzleEntryCard("picross");
+  h += puzzleEntryCard("fourier");
   $("tab-beyond").innerHTML=h;
   $("tab-beyond").querySelectorAll("[data-send]").forEach(b=>{
     b.onclick=()=>openPartySheet(b.dataset.send);
   });
+  bindPuzzleEntries($("tab-beyond"));
 }
 
 function skillDots(p){
@@ -771,6 +887,8 @@ function renderPeople(){
       ${p.mem?`<div class="mem">${p.mem}</div>`:""}
     </button>`;
   }
+  h += sickbedSection();
+  h += festivalSection();
   $("tab-people").innerHTML=h;
   $("tab-people").querySelectorAll("[data-p]").forEach(el=>{
     el.onclick=()=>openPersonSheet(el.dataset.p);
@@ -778,6 +896,7 @@ function renderPeople(){
   $("tab-people").querySelectorAll("[data-conflict]").forEach(el=>{
     el.onclick=()=>openConflictSheet(el.dataset.conflict);
   });
+  bindTabActions($("tab-people"));
 }
 
 function renderJournal(){
@@ -846,6 +965,7 @@ function setAlloc(side, id, val){
 }
 
 function renderPowerTab(){
+  if(renderOpenPuzzle("power")) return;
   const el=$("tab-power"); if(!el) return;
   const r=S.report||{};
   const alP=(S.alloc&&S.alloc.power)||{};
@@ -878,11 +998,15 @@ function renderPowerTab(){
       :`<div class="outline-note" style="margin-top:6px">The budget clears on a day like yesterday.</div>`}
   </div>`;
   h+=`<div class="card">${allocRows(POWER_DEMANDS,"power")||'<div class="blurb">Nothing here draws power yet.</div>'}</div>`;
+  h += sysSection(["turbine","solar","battery"], true);
+  h += puzzleEntryCard("wires");
   el.innerHTML=h;
   bindAllocButtons("tab-power");
+  bindTabActions(el);
 }
 
 function renderWaterTab(){
+  if(renderOpenPuzzle("water")) return;
   const el=$("tab-water"); if(!el) return;
   const r=S.report||{}; const wp=r.waterParts||{};
   const alW=(S.alloc&&S.alloc.water)||{};
@@ -914,11 +1038,15 @@ function renderWaterTab(){
       :`<div class="outline-note" style="margin-top:6px">The budget clears on a day like yesterday.</div>`}
   </div>`;
   h+=`<div class="card">${allocRows(WATER_DEMANDS,"water")}</div>`;
+  h += sysSection(["catchment","irrigation"], true);
+  h += puzzleEntryCard("water");
+  h += puzzleEntryCard("pipes");
   el.innerHTML=h;
   bindAllocButtons("tab-water");
+  bindTabActions(el);
 }
 
-function renderAll(){ renderHeader(); renderVillage(); renderBeyond(); renderWorks(); renderPowerTab(); renderWaterTab(); renderPeople(); renderJournal(); if(typeof syncNavTop==="function") syncNavTop(); }
+function renderAll(){ renderHeader(); renderVillage(); renderFood(); renderBeyond(); renderWorks(); renderPowerTab(); renderWaterTab(); renderPeople(); renderJournal(); if(typeof syncNavTop==="function") syncNavTop(); }
 
 
 
