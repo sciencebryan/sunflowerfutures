@@ -10,6 +10,13 @@
           · oneDown · peakDrop */
 
 const MOMENT_TIERS = { t1: 1.5, t2: 4, t3: 7 };   // min pair affinity per tier
+// what a real evening of instruction is worth, as broad practice. Compare
+// PRACTICE_BROAD_GROWTH (0.005/day worked): this is roughly a fortnight of
+// doing the job, which is about right for being shown properly by someone
+// who is genuinely better at it. The teacher gets a tenth — you learn a
+// thing twice by explaining it.
+const TEACH_RATE = 0.08, TEACH_TEACHER_SHARE = 0.1;
+
 const MOMENT_AFF   = { 1: 0.15, 2: 0.2, 3: 0.25, visit: 0.25, ambient: 0, cooling: 0 };
 const MOMENT_DAILY_P = 0.35;      // chance any moment fires on a given day
 const MOMENT_PAIR_COOLDOWN = 18;  // days before the same pair gets another line
@@ -30,7 +37,7 @@ const MOMENTS = [
   {t:"{A} has been secretly leaving the last of the tea for {B}.", tier:2},
   {t:"{A} and {B} fell asleep in the commons with {document} open between them.", tier:2},
   {t:"{A} and {B} have so many inside jokes now that it's hard to follow their conversations.", tier:2},
-  {t:"{A} has been teaching {B} {skill}, and {B} is getting the hang of it.", tier:2, needs:["hasSkillGap"]},
+  {t:"{A} has been teaching {B} {skill}, and {B} is getting the hang of it.", tier:2, needs:["hasSkillGap"], effect:"teach"},
   {t:"{A} and {B} sat out on the porch through the storm, listening to the rain and the thunder.", tier:2, needs:["rain"]},
 
   // --- tier 3: deepest ---
@@ -93,4 +100,4 @@ const JOB_PLACE = {
 const INSTRUMENTS = ["guitar","ukulele","hand drum","fiddle"];
 const MUSIC_MODES = ["singing","clapping",...INSTRUMENTS];
 
-export { DOC_BY_LEAN, INSTRUMENTS, JOB_PLACE, MOMENTS, MOMENT_AFF, MOMENT_DAILY_P, MOMENT_PAIR_COOLDOWN, MOMENT_TIERS, MUSIC_MODES, SKILL_TEACH, TOOL_BY_JOB };
+export { DOC_BY_LEAN, TEACH_RATE, TEACH_TEACHER_SHARE, INSTRUMENTS, JOB_PLACE, MOMENTS, MOMENT_AFF, MOMENT_DAILY_P, MOMENT_PAIR_COOLDOWN, MOMENT_TIERS, MUSIC_MODES, SKILL_TEACH, TOOL_BY_JOB };

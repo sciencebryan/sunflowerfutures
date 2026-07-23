@@ -1104,13 +1104,16 @@ export function renderPicross() {
 
   const gw=L.grid[0].length, gh=L.grid.length;
   const cell = Math.min(20, Math.floor((Math.min(window.innerWidth,620)-90)/gw));
-  h += `<div class="picross-board" style="grid-template-columns:auto repeat(1,max-content)">`;
+  // no column override here: the stylesheet's `max-content max-content` is
+  // what keeps a row's clues on one line. Setting the first column to `auto`
+  // let it shrink under its content, so "3 1 2" wrapped and stacked.
+  h += `<div class="picross-board">`;
 
   h += `<div class="top-clues" style="grid-template-columns:repeat(${gw},${cell}px)">`;
   colClues.forEach(clue => { h += `<div>${clue.join("<br>")}</div>`; });
   h += `</div>`;
   
-  h += `<div class="left-clues" style="grid-template-rows:repeat(${gh},${cell}px)">`;
+  h += `<div class="left-clues" style="grid-template-rows:repeat(${gh},${cell}px);white-space:nowrap">`;
   rowClues.forEach(clue => { h += `<div>${clue.join(" ")}</div>`; });
   h += `</div>`;
   

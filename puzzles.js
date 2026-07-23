@@ -430,8 +430,11 @@ function generatePicrossClues(grid) {
   };
 
   const rowClues = grid.map(row => extract(row));
-  // Map columns by extracting the c-th index of every row
-  const colClues = Array(16).fill().map((_, c) => extract(grid.map(row => row[c])));
+  // Map columns by extracting the c-th index of every row. Width comes from
+  // the grid itself — hardcoding 16 here generated phantom "0" columns for
+  // every level narrower than 16.
+  const w = grid[0].length;
+  const colClues = Array(w).fill().map((_, c) => extract(grid.map(row => row[c])));
   
   return { rowClues, colClues };
 }

@@ -15,9 +15,10 @@
      visit, and the caretaker bond tick already covers it */
 
 import { S } from "./state.js";
-import { byId, pick, poss, objp } from "./helpers.js";
+import { byId, pick, poss, objp, growPractice, practiceOf } from "./helpers.js";
 import { bondKey, bondOf } from "./bonds.js";
-import { DOC_BY_LEAN, JOB_PLACE, MOMENTS, MOMENT_AFF, MOMENT_DAILY_P, MOMENT_PAIR_COOLDOWN, MOMENT_TIERS, SKILL_TEACH, TOOL_BY_JOB } from "./data-moments.js";
+import { DOC_BY_LEAN, JOB_PLACE, MOMENTS, MOMENT_AFF, MOMENT_DAILY_P, MOMENT_PAIR_COOLDOWN, MOMENT_TIERS, SKILL_TEACH, TEACH_RATE, TEACH_TEACHER_SHARE, TOOL_BY_JOB } from "./data-moments.js";
+import { PRACTICE_BROAD_CAP } from "./data-economy.js";
 
 const present = p => p && p.status !== "away";
 const upright = p => present(p) && p.status !== "down";
@@ -38,14 +39,20 @@ const GATES = {
   peakDrop:     (c) => (c.b.peakAff||0) >= 3 && c.b.affinity < (c.b.peakAff||0) * 0.55
 };
 
-function skillGapOf(A, B){
-  let best = null, gap = 1.5;   // needs a real gap, not a sliver
+/* Which stat A could actually teach B — returns the KEY, so the moment can
+   both name the skill and credit it. Needs a real gap, not a sliver, and
+   B has to have somewhere left to grow. */
+function skillKeyOf(A, B){
+  let best = null, gap = 1.5;
   for(const k of Object.keys(SKILL_TEACH)){
     const d = (A[k]||0) - (B[k]||0);
-    if(d >= gap){ gap = d; best = k; }
+    if(d < gap) continue;
+    if((practiceOf(B).broad[k]||0) >= PRACTICE_BROAD_CAP*0.98) continue;   // nothing left to show them
+    gap = d; best = k;
   }
-  return best && SKILL_TEACH[best];
+  return best;
 }
+const skillGapOf = (A,B) => { const k = skillKeyOf(A,B); return k && SKILL_TEACH[k]; };
 function leanOf(p){
   let best = "care", v = -1;
   for(const k of ["green","wild","care","hands"]) if((p[k]||0) > v){ v = p[k]; best = k; }
@@ -135,6 +142,18 @@ function tickMoments(lines){
 
   const m = pick(pool);
   lines.push(m.solo ? m.t : fill(m.t, c));
+
+  // named effects — a moment that claims something happened should make it so.
+  // "getting the hang of it" is the only one so far that describes a
+  // mechanical outcome rather than a feeling, so it has to pay out.
+  if(m.effect === "teach"){
+    const k = skillKeyOf(c.A, c.B);
+    if(k){
+      const pb = practiceOf(c.B), pa = practiceOf(c.A);
+      pb.broad[k] = growPractice(pb.broad[k]||0, PRACTICE_BROAD_CAP, TEACH_RATE);
+      pa.broad[k] = growPractice(pa.broad[k]||0, PRACTICE_BROAD_CAP, TEACH_RATE*TEACH_TEACHER_SHARE);
+    }
+  }
   c.b.lastMoment = S.day;
   if(m.once){ c.b.momentsSeen = c.b.momentsSeen || []; c.b.momentsSeen.push(m.t); }
 

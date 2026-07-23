@@ -126,6 +126,12 @@ function applyPracticeUpdate(snap){
 function dinnerLine(){
   const cook = working("cook")[0];
   const starving = (S.res.food + S.preserved) < 3 || (S.hungerDays||0) > 0;
+  // today's facts from the food block, so this line can't contradict them:
+  // fromJars > 0 means the fresh stores ran out and the shelves covered it —
+  // whatever else is true, this was not a night of plenty.
+  const fromJars = (S.report && S.report.fromJars) || 0;
+  const variety  = (S.report && S.report.varietyMood) || 0;
+  const leanNight = fromJars > 0.2;
   // gather what's available. Sunflower is excluded from the fresh-veg list --
   // it shows up as oil instead (see oilBit), so it isn't named twice in one line.
   const freshCrops = [...new Set(S.dietLog.filter(e=>S.day-e.day<=5 && e.crop!=="sunflower").map(e=>e.crop))];
@@ -169,6 +175,24 @@ function dinnerLine(){
   const fishBit = hasFish ? pick1(["the day's fish","trout from the tanks","fish, fresh from the tanks"]) : "";
   const forageBit = hasForaged ? pick1(["mushrooms someone found on the ridge","wild-picked greens","what the foragers gathered"]) : "";
 
+  // the shelves were opened to cover the day: say so, and don't dress it up
+  if(leanNight){
+    const kept = keptBit || "what was put by";
+    return pick1([
+      `Dinner came up out of the jars tonight — ${kept}. The fresh stores didn't reach.`,
+      `${Cap(cook.name)} opened the shelves to make up the difference. ${Cap(kept)}, and enough of it.`,
+      `Not much came in today, so the stores went out: ${kept}.`
+    ]);
+  }
+  // the same thing, again, for weeks
+  if(variety <= -0.4){
+    const one = freshNames[0] || (fishBit ? "fish" : "the stores");
+    return pick1([
+      `${Cap(one)} again. Nobody complained out loud about it.`,
+      `Another supper of ${one}. It feeds people. That is the most that can be said for it.`,
+      `${Cap(one)}, the same as last week and the week before.`
+    ]);
+  }
   // high quality + real variety -> a proper spread
   if(quality>=3.5 && components>=3){
     const parts=[];
@@ -377,6 +401,8 @@ function simulateDay(){
   }
 
   S.returnedToday = [];   // expeditions.js fills this as parties come home; moments read it
+  S.report.fromJars = 0;  // today's meal facts, rebuilt each day for dinnerLine()
+  S.report.varietyMood = 0;
   tickExpeditions(lines);
 
   // gift return, if any
@@ -691,7 +717,11 @@ function simulateDay(){
     const fromJars = Math.min(S.preserved, short);
     S.preserved -= fromJars;
     const still = short - fromJars;
-    if(fromJars>0.2 && S.day%5===0) lines.push("Dinner came out of jars or cans tonight.");
+    // NOT narrated here. dinnerLine() is the single owner of meal narration —
+    // three generators describing the same supper from different data is how
+    // you get "dinner came out of jars" directly above "raspberries, fish
+    // fresh from the tanks". It records the fact and moves on.
+    S.report.fromJars = fromJars;
     if(still>0){ hunger = Math.min(1, still/foodOut); }
     f=0;
   }
@@ -1221,8 +1251,9 @@ function simulateDay(){
   else if(wx.id==="overcast") wxLine = built("turbine") ? "Grey all day, the turbine spinning in the wind." : "Grey day.";
   else                   wxLine = built("catchment") ? "Rain on the catchment roof — a good kind of noise." : "Rain all day.";
   lines.unshift(wxLine);
-  if(varietyMood <= -0.4 && S.day%6===0) lines.push(`Another week of little but ${(function(){const c=S.dietLog.filter(e=>S.day-e.day<=14).map(e=>CROPS[e.crop]?CROPS[e.crop].name.toLowerCase():e.crop); return c[c.length-1]||"the same thing";})()}.`);
-  else if(varietyMood >= 0.4 && S.day%9===0) lines.push("The table had a bit of everything tonight.");
+  // monotony and abundance are ALSO the meal's business — handed to dinnerLine
+  // rather than pushed here, so the table is described once, by one voice.
+  S.report.varietyMood = varietyMood;
   if(brownout) lines.push(built("aquaponics")
     ? "We didn't have enough electricity to run everything today. Brownout. The fish tanks went quiet for a while."
     : "We didn't have enough electricity to run everything today. Brownout. The pump slowed to a trickle and we spent the evening in the dark.");
@@ -1297,7 +1328,9 @@ function simulateDay(){
   }
 
   // what's for dinner -- not every night, so it stays a small pleasure to notice
-  if(S.day % 3 === 0){
+  // every third night, plus every second night while the shelves are carrying
+  // the village — running down the winter stores is worth hearing about
+  if(S.day % 3 === 0 || ((S.report.fromJars||0) > 0.2 && S.day % 2 === 0)){
     const dl = dinnerLine();
     if(dl) lines.push(dl);
   }
@@ -1327,7 +1360,11 @@ function simulateDay(){
     S.reputation = clamp((S.reputation??0.55) + (instantRep-(S.reputation??0.55))*0.03, 0, 1);
   }
 
-  S.report={gen,draw,cap,foodIn,foodOut,waterIn:wIn,waterOut:wOut,brownout,thirst, preserveWhy:S._preserveWhy||"", pressWhy:S._pressWhy||"",
+  const hearthKeep = S.report && S.report.hearth;   // written back in the temperature
+                                                   // block, long before this wholesale
+                                                   // rebuild — carry it or the hearth
+                                                   // card has nothing to read
+  S.report={hearth:hearthKeep, gen,draw,cap,foodIn,foodOut,waterIn:wIn,waterOut:wOut,brownout,thirst, preserveWhy:S._preserveWhy||"", pressWhy:S._pressWhy||"",
     waterParts:{drink:drinkUse, garden:gardenWater*wateredBeds*irrAl, gardenFull:gardenWater*wateredBeds, cook:1*cookAl, clean:1*cleanAl, perBed:gardenWater},
     powerLoss, waterLoss,
     genWhy:genWhy.join(" · ")||"nothing built that makes power", gardenWhy:gWhy.join(" · "), aquaWhy:S._aquaWhy||"", gardenFood, aquaFood, woodWhy:S._woodWhy||""};
