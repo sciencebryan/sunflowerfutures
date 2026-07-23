@@ -141,31 +141,6 @@ function renderEvent(){
   return h;
 }
 
-function powerCard(){
-  const r=S.report;
-  const bal=r.gen-r.draw;
-  const parts=SYS.filter(d=>built(d.id)&&d.draw>0).map(d=>`${d.name.toLowerCase()} ${d.draw}`).join(" · ")||"nothing yet";
-  const madeWhy=r.genWhy||"";
-  const red=(S.f||{}).drawReduce?` · gravity feed saves ${(S.f||{}).drawReduce}`:"";
-  return `<div class="card" style="border-color:${r.brownout?'var(--rust)':'var(--line)'}">
-    <div class="card-top"><div class="sysname">Power</div>
-      <div class="condpct">${r.gen.toFixed(1)} made · ${r.draw.toFixed(1)} used</div></div>
-    <div class="blurb">
-      Generation is a <i>flow</i>, not a store: what the sun and wind give today, the village spends today.
-      Surplus charges the battery; the battery covers the days they don't give enough.
-    </div>
-    <div class="sysmeta" style="margin-top:7px">
-      <span class="outline-note">made: ${madeWhy}</span>
-    </div>
-    <div class="sysmeta" style="margin-top:3px">
-      <span class="outline-note">draw: ${parts}${red}</span>
-      <span class="outline-note">${bal>=0?`+${bal.toFixed(1)} to the cell`:`${bal.toFixed(1)} from the cell`}</span>
-    </div>
-    ${r.brownout?`<div class="warnline">Brownout. Nothing left in the cell — ${built("aquaponics")?"the fish tanks and the water pump run":"the water pump runs"} at half, and it wears on everyone.</div>`
-      :`<div class="outline-note" style="margin-top:6px">Cell ${S.res.charge.toFixed(1)} / ${(r.cap||0).toFixed(0)}${(r.cap||0)<9?" — the bank is small. It could be reconditioned.":""}</div>`}
-  </div>`;
-}
-
 function seasonBanner(){
   const s=season();
   const left=SEASON_LEN-dayOfSeason(S.day)+1;
@@ -209,9 +184,12 @@ function sysSection(ids, builtOnly){
     // Degrading or unstaffed systems arrive already expanded. Tap toggles.
     const needsEyes = c<50 || (dec>0.8 && crew.length===0);
     if(!needsEyes && !expandedSys.has(def.id)){
-      h+=`<button class="card" data-expand="${def.id}" style="text-align:left;cursor:pointer;width:100%;padding:8px 12px">
-        <div class="card-top" style="margin:0"><div class="sysname" style="font-size:13px">${def.name}</div>
-        <div class="condpct">${c.toFixed(0)} · −${dec.toFixed(1)}/day · ${crew.length?crew.map(p=>p.name).join(", "):"unkept"}</div></div>
+      // deliberately NOT .card — that class carries 20px padding, a shadow and
+      // a bordered card-top, which is most of why a "compact" card wasn't
+      const bar = c>=60?"var(--leaf)":c>=35?"var(--sun)":"var(--rust)";
+      h+=`<button class="sysrow" data-expand="${def.id}" style="display:flex;align-items:center;gap:9px;width:100%;padding:6px 11px;margin:0;background:var(--card);border:none;border-left:2px solid ${bar};border-radius:2px;text-align:left;cursor:pointer;font-size:12.5px;line-height:1.35">
+        <span style="font-family:var(--serif);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${def.name}</span>
+        <span style="font-family:ui-monospace,monospace;font-size:11px;color:var(--ink-soft);white-space:nowrap">${c.toFixed(0)} · −${dec.toFixed(1)} · ${crew.length?crew.map(p=>p.name).join(", "):"unkept"}</span>
       </button>`;
       continue;
     }
@@ -232,7 +210,7 @@ function sysSection(ids, builtOnly){
         ${n<meta.max?`<button class="go ${canRaise?'ready':''}" data-raise="${def.id}" ${canRaise?"":"disabled"}>Raise another (${costStr})</button>`:`<span class="outline-note">${meta.place} is full</span>`}</div>`;
     }
     h+=`<div class="card">
-      <div class="card-top"><div class="sysname">${def.name}${STACKABLE[def.id]&&(S[STACKABLE[def.id].stateKey]||1)>1?` ×${S[STACKABLE[def.id].stateKey]}`:""}</div><div class="condpct">${c.toFixed(0)}%</div></div>
+      <div class="card-top"><div class="sysname">${def.name}${STACKABLE[def.id]&&(S[STACKABLE[def.id].stateKey]||1)>1?` ×${S[STACKABLE[def.id].stateKey]}`:""}</div><div class="condpct">${c.toFixed(0)}%${needsEyes?"":` <button data-collapse="${def.id}" style="margin-left:7px;font-size:14px;line-height:1;color:var(--ink-soft);cursor:pointer;background:none;border:none">⌃</button>`}</div></div>
       <div class="blurb">${def.blurb}</div>
       <div class="cbar"><div class="fill ${condClass(c)}" style="width:${c}%"></div></div>
       ${roles}
@@ -682,6 +660,7 @@ function bindTabActions(el){
     };
   });
   el.querySelectorAll("[data-expand]").forEach(b=>{ b.onclick=()=>{ expandedSys.add(b.dataset.expand); renderAll(); }; });
+  el.querySelectorAll("[data-collapse]").forEach(b=>{ b.onclick=(e)=>{ e.stopPropagation(); expandedSys.delete(b.dataset.collapse); renderAll(); }; });
   el.querySelectorAll("[data-celeb]").forEach(b=>{ b.onclick=()=>openCelebrationSheet(b.dataset.celeb); });
   el.querySelectorAll("[data-forget]").forEach(b=>{ b.onclick=()=>{ forgetTradition(b.dataset.forget); store.save(S); renderAll(); }; });
   bindPuzzleEntries(el);
@@ -690,7 +669,6 @@ function renderVillage(){
   if(renderOpenPuzzle("village")) return;
   let h="";
   h += renderEvent();
-  h += powerCard();
   h += triageSection();
   h += hearthSection();
   h += woodpileSection();

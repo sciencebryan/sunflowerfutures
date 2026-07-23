@@ -1,4 +1,4 @@
-import { PUZ_META, CIRCUIT_LEVELS, CIRCUIT_REWARD, FOCUS_LEVELS, FOCUS_REWARD, PATCH_LEVELS, PATCH_REWARD, PATCH_SHAPES, PATCH_VARIANTS, PIPES_LEVELS, PIPES_REWARD, SEEDLINGS, SEED_COMPANION, SEED_LEVELS, SEED_REWARD, SEED_RIVAL, SIGNAL_LEVELS, SIGNAL_REWARD, WATER_LEVELS, WATER_PIECES, WATER_REWARD, WIRES_LEVELS, WIRES_REWARD, PICROSS_LEVELS, PICROSS_REWARD } from "./data-puzzles.js";
+import { PUZ_META, FOURIER_LEVELS, FOURIER_REWARD, PATCH_LEVELS, PATCH_REWARD, PATCH_SHAPES, PATCH_VARIANTS, PIPES_LEVELS, PIPES_REWARD, SEEDLINGS, SEED_COMPANION, SEED_LEVELS, SEED_REWARD, SEED_RIVAL, WATER_LEVELS, WATER_PIECES, WATER_REWARD, WIRES_LEVELS, WIRES_REWARD, PICROSS_LEVELS, PICROSS_REWARD } from "./data-puzzles.js";
 import { S } from "./state.js";
 import { $ } from "./dom.js";
 import { store } from "./store.js";
@@ -177,7 +177,8 @@ function finishPuzzle(kind) {
   
   // If the level itself has raw rewards (like Picross parts or rewardText)
   if (L.rewardText) myRewards.push(L.rewardText);
-  if (L.parts && (!r || !r.parts)) myRewards.push(`Recovered +${L.parts} parts`);
+  // only the generic line when the level didn't already say it in its own words
+  if (L.parts && !L.rewardText && (!r || !r.parts)) myRewards.push(`Recovered +${L.parts} parts`);
 
   // 2. Show the modal
   showPuzzleComplete(myRewards, () => {
@@ -1210,21 +1211,22 @@ function handlePicrossClick(el, actionType) {
 }
 
 function checkPicrossWin() {
+  if (!pz || pz.solved) return;   // this fires on every paint AND on pointer-up:
+                                  // without the guard a winning click opens the
+                                  // completion modal twice
   const L = pz.L;
-  const isWin = L.grid.every((row, r) => 
+  const isWin = L.grid.every((row, r) =>
     row.every((val, c) => (val === 1 ? pz.state[r][c] === 1 : pz.state[r][c] !== 1))
   );
+  if (!isWin) return;
 
-  if (isWin) {
-    S.pending.push(L.rewardText);
-    
-    // Apply reward (e.g., if level yields parts)
-    if (L.parts) S.res.parts += L.parts;
-    //should probably update this so it uses finishpuzzle() oh well
-    // Advance progress
-    S.puz.picross++;
-    closePuzzle();
-  }
+  pz.solved = true;
+  S.pending.push(L.rewardText);
+  // finishPuzzle handles the rest — the sunflower modal, the level's own
+  // `parts`/`rewardText`, advancing S.puz.picross, saving, and rolling into
+  // the next scan. It already has a branch for levels that carry their own
+  // rewards, which is exactly picross's shape.
+  finishPuzzle("picross");
 }
 
 
