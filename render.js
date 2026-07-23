@@ -177,6 +177,8 @@ function seasonBanner(){
   </div>`;
 }
 
+// which built systems the player has manually expanded this session
+const expandedSys = new Set();
 function sysSection(ids, builtOnly){
     let h="";
   for(const def of SYS){
