@@ -15,28 +15,34 @@
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 
 /* --- personality ---
-   Three arbitrary types, assigned at random when a person first exists
+   Four arbitrary types, assigned at random when a person first exists
    (freshPerson, and the birth literal in day.js). Never shown, never
    derived from anything visible — this is chemistry with no tell.
 
-   The relation table is DIRECTIONAL: P_REL[a][b] is how a feels about b's
-   type, not a shared fact about the pair. In the pure 3-cycle below, every
-   cross-type pair nets out the same once averaged (one dislike + one
-   neutral); the direction survives for flavor — moreBothered() says who's
-   carrying the friction, for journal lines that want it.
-   dislike is weighted heavier than like (-2 vs +1): one grating presence
-   costs more than one pleasant one pays. */
-const PERSONALITIES = ["A", "B", "C"];
+   The table is SYMMETRIC now (circumplex-derived: the four types abstract
+   a warm/cold × dominant/yielding grid, but nothing in-game ever names
+   those axes). P_REL[a][b] === P_REL[b][a] by construction. Texture the
+   table deliberately keeps: same-type is more often a mild liability than
+   a bonus (only B-B runs warm — birds of a feather don't reliably flock);
+   A-B and C-D are the two genuinely good matches; A-C is the one truly
+   bad one; C is the type that struggles with itself.
+   Range −3.0..+2.5. At PERSONA_W=0.25 and MISMATCH_T=0.6, exactly two
+   combinations flag mismatched from personality alone: A-C and C-C —
+   ~19% of pairs under a uniform draw. Occasional, specific friction,
+   not a coin flip at character creation. */
+const PERSONALITIES = ["A", "B", "C", "D"];
 const P_REL = {
-  A: { A: +1, B: -2, C: 0 },
-  B: { A: 0, B: +1, C: -2 },
-  C: { A: -2, B: 0, C: +1 }
+  A: { A: -1.0, B: +2.5, C: -3.0, D: -0.5 },
+  B: { A: +2.5, B: +1.0, C:  0.0, D: -1.0 },
+  C: { A: -3.0, B:  0.0, C: -2.0, D: +2.0 },
+  D: { A: -0.5, B: -1.0, C: +2.0, D: -1.5 }
 };
 
 const rollPersonality = () => PERSONALITIES[Math.floor(Math.random() * PERSONALITIES.length)];
 
-/* Averaged both directions: +1 for a same-type pair, -1 for any cross-type
-   pair (in the pure cycle), 0 if either person somehow lacks a type. */
+/* Averaged both directions — a no-op average now that the table is
+   symmetric, kept so the callers and the debug breakdown don't care
+   whether the table is directional. 0 if either person lacks a type. */
 function personalityTerm(pA, pB) {
   const a = pA && pA.personality, b = pB && pB.personality;
   if (!a || !b || !P_REL[a] || !P_REL[b]) return 0;
@@ -44,8 +50,10 @@ function personalityTerm(pA, pB) {
 }
 
 /* Which of the two is more bothered by the other, or null if it's mutual.
-   Not used by any math — exists so milestone-3 flavor text can say
-   "X seems more bothered by this than Y does" without new state. */
+   Under the symmetric 4-type table this is ALWAYS null — friction is
+   mutual by construction. Kept as a stable no-op so any flavor-text call
+   site keeps working; if a directional table ever returns, this comes
+   back to life without touching its callers. */
 function moreBothered(pA, pB) {
   const a = pA && pA.personality, b = pB && pB.personality;
   if (!a || !b) return null;
@@ -63,7 +71,11 @@ function moreBothered(pA, pB) {
    stress. The clamp floor is negative on purpose: once milestone 2 adds
    the ideology term, personality friction + opposed values can push a
    pair's compatibility below zero, and shared work starts costing warmth. */
-const PERSONA_W = 0.6;
+/* PERSONA_W retuned for the 4-type table: its raw spread (−3.0..+2.5) is
+   nearly twice the old 3-cycle's, so the old 0.6 weight over-flagged.
+   At 0.25, personality alone can pull compatibility to 0.25 at worst
+   (1 + 0.25×−3) — never below zero without ideology stacking on top. */
+const PERSONA_W = 0.25;
 const IDEO_W = 0.9;
 
 /* ideology.js registers its term here at module load — dependency injection
@@ -76,7 +88,7 @@ function setIdeologyTermFn(fn) { ideologyTermFn = fn; }
 function compatibility(pA, pB) {
   const ideo = ideologyTermFn ? ideologyTermFn(pA, pB) : 0;
   const t = 1 + PERSONA_W * personalityTerm(pA, pB) + IDEO_W * ideo;
-  return clamp(t, -0.5, 2);
+  return clamp(t, -0.75, 2);
 }
 
 /* The two weighted terms separately — the friction layer reads whichever is
@@ -89,8 +101,11 @@ function termBreakdown(pA, pB) {
 }
 
 /* "Negatively-compatible" for the friction layer: well below neutral.
-   Personality cross-type alone (0.4) qualifies; a good ideology match can
-   lift a cross-type pair back out of it. */
+   From personality alone, only A-C (compat 0.25) and C-C (0.5) qualify;
+   a good ideology match can lift even those back out, and a bad one can
+   drag milder pairs (A-A, D-D, B-D) under the line. Threshold unchanged
+   from the ideology tuning pass — it also gates the values-driven
+   mismatch path, so it stays put and PERSONA_W carries the retune. */
 const MISMATCH_T = 0.6;
 const isMismatched = (pA, pB) => compatibility(pA, pB) < MISMATCH_T;
 
@@ -152,9 +167,13 @@ function seedFounderBonds(s) {
   const ppl = s.people;
   for (let i = 0; i < ppl.length; i++) {
     for (let j = i + 1; j < ppl.length; j++) {
+      // floor at +0.5: with the 4-type table an unlucky draw (A-C, or
+      // same-type friction plus opposed ideology) could otherwise start a
+      // founding pair NEGATIVE — but the founders made the road together
+      // and chose this. They start cool at worst, never adversarial.
       s.bonds[bondKey(ppl[i].id, ppl[j].id)] = {
         familiarity: FOUNDER_FAM,
-        affinity: clamp(FOUNDER_FAM * 0.6 * compatibility(ppl[i], ppl[j]), -10, 10)
+        affinity: clamp(Math.max(0.5, FOUNDER_FAM * 0.6 * compatibility(ppl[i], ppl[j])), -10, 10)
       };
     }
   }

@@ -9,6 +9,8 @@ import { SOIL_WORD, openCelebrationSheet, openPartySheet, openPersonSheet, openS
 import { assignPhrase, workDef } from "./day.js";
 import { store } from "./store.js";
 import { FORAGE_FLAVOR } from "./data-events.js";
+import { composition, jarComposition, pantryTotal, jarsTotal, stockMacros } from "./larder.js";
+import { FOOD_COMP, MAC_GRACE, MAX_COMPANIONS, PRES_KEEP } from "./data-food.js";
 import { bindPuzzleEntries, puzzleEntryCard, renderOpenPuzzle } from "./puzzle-ui.js";
 import { openConflictSheet } from "./mediation.js";
 import { CELEBRATIONS, canAfford, celebDef, costOf, forgetTradition, gatesOk, onCooldown } from "./celebrations.js";
@@ -90,7 +92,7 @@ function renderHeader() {
 
   $("hudMaterials").innerHTML = [
     ["Scrap", Math.round(S.res.scrap)], ["Parts", Math.round(S.res.parts)],
-    ["Wood", Math.round(S.res.wood || 0)], ["Seeds", Math.round(S.res.seeds || 0)],
+    ["Wood", Math.round(S.res.wood || 0)], ["Seeds", Object.values(S.seedStock||{}).reduce((a,b)=>a+b,0)],
     ["Meds", Math.round(S.res.meds || 0)]
   ].map(x => ledgerItem(x[0], x[1])).join("");
 
@@ -105,7 +107,7 @@ function salvageChips(){
     {n: "Scrap", v: S.res.scrap},
     {n: "Parts", v: S.res.parts},
     {n: "Wood", v: S.res.wood},    
-    {n: "Seeds", v: S.res.seeds},
+    {n: "Seeds", v: Object.values(S.seedStock||{}).reduce((a,b)=>a+b,0)},
     {n: "Meds", v: S.res.meds}
   ];
   return `
@@ -501,10 +503,12 @@ function worksSection(){
       <div class="rolerow">${roleChip("fab","hands","no hands on it")}</div>
     </div>`;
   }
+  const anyShopBuilt = FABS.some(d=>S.fabs[d.id]);
   for(const def of FABS){
     if(S.fabs[def.id]){
+      const feedNote = def.feed ? ` · eats ${def.feed.per} ${def.feed.res}/${def.gives}` : "";
       h+=`<div class="card grey"><div class="card-top"><div class="sysname">${def.name}</div>
-        <div class="condpct">+${FAB_RATE[def.gives].toFixed(2)} ${def.gives}/day</div></div>
+        <div class="condpct">+${FAB_RATE[def.gives].toFixed(2)} ${def.gives}/day when worked${feedNote}</div></div>
         <div class="blurb">${def.blurb}</div></div>`;
       continue;
     }
@@ -520,6 +524,14 @@ function worksSection(){
       <div class="costchips">${costHtml}<span class="cost">then +${FAB_RATE[def.gives].toFixed(2)} ${def.gives}/day, forever</span></div>
       ${!afford?`<div class="sysmeta"><span class="outline-note">Need ${missing.join(", ")}.</span></div>`:S.fabProject?`<div class="sysmeta"><span class="outline-note">Finish the current fabrication first.</span></div>`:""}
     </div>`;
+  }
+  // the shops share one pair of hands: a single staffing chip for the lot.
+  // While something's under construction the worker's day goes to that
+  // instead, and the built shops sit cold — the card above says so.
+  if(anyShopBuilt && !S.fabProject){
+    h+=`<div class="card"><div class="card-top"><div class="sysname">Running the shops</div></div>
+      <div class="blurb">Nothing produces unless someone's in the shops, and each eats its feedstock as it runs.</div>
+      <div class="rolerow">${roleChip("fab","hands","cold — nobody's working them")}</div></div>`;
   }
 
 //  const resting=S.people.filter(p=>p.job===null&&p.status==="ok").length;
@@ -678,9 +690,48 @@ function renderVillage(){
   $("tab-village").innerHTML=h;
   bindTabActions($("tab-village"));
 }
+/* The larder — what is actually on the shelves, and what it adds up to
+   nutritionally. This is the one place the food composition is shown; the
+   HUD still carries a single total, because that's what you glance at.
+   Deliberately NOT a macro dashboard: the bar is a read on whether the
+   village is eating a whole diet, and the only number is the count of each
+   thing. Deficiency itself never shows a figure — it leaks through the
+   journal, same as every other hidden system. */
+function larderSection(){
+  const fresh = composition(), kept = jarComposition();
+  if(!fresh.length && !kept.length)
+    return `<div class="sectionlbl">The larder</div><div class="card grey"><div class="blurb">Nothing on the shelves.</div></div>`;
+  const m = stockMacros();
+  const pct = x => Math.round(x*100);
+  const md = S.macDays || {p:0,f:0};
+  // the words, not the numbers — and only once a shortfall is real
+  const flag = md.p > MAC_GRACE ? "Everything here is bulk and sugar. Nobody's getting much to build on."
+             : md.f > MAC_GRACE ? "It's all lean. People eat their fill and get up hungry."
+             : "";
+  const chip = (x,label,cls) => `<span class="cost" style="background:${cls}">${label} ${pct(x)}%</span>`;
+  const row = e => `<span class="cost${e.fast?" short":""}">${e.n.toFixed(0)} ${e.name}${e.fast?" ·":""}</span>`;
+  let h = `<div class="sectionlbl">The larder — ${pantryTotal().toFixed(0)} fresh${kept.length?`, ${jarsTotal().toFixed(0)} put by`:""}</div>
+    <div class="card">
+      <div class="costchips">${fresh.map(row).join("")}</div>
+      ${fresh.some(e=>e.fast)?`<div class="sysmeta"><span class="outline-note">· won't keep — these get eaten first</span></div>`:""}`;
+  if(kept.length){
+    const byMethod = {};
+    for(const e of kept){ (byMethod[e.method] = byMethod[e.method] || []).push(`${e.n.toFixed(0)} ${e.name}`); }
+    h += `<div class="sysmeta" style="margin-top:6px">${Object.entries(byMethod)
+      .map(([meth,list])=>`<span class="outline-note"><b>${meth}</b>: ${list.join(", ")}</span>`).join("<br>")}</div>`;
+  }
+  h += `<div class="costchips" style="margin-top:8px">
+      ${chip(m.c,"starch","rgba(200,150,60,.18)")}${chip(m.f,"fat","rgba(90,140,70,.18)")}${chip(m.p,"protein","rgba(170,80,50,.18)")}
+    </div>
+    ${flag?`<div class="sysmeta"><span class="outline-note">${flag}</span></div>`:""}
+  </div>`;
+  return h;
+}
+
 function renderFood(){
   if(renderOpenPuzzle("food")) return;
   let h="";
+  h += larderSection();
   h += gardensSection();
   h += forestSection();
   h += sysSection(["aquaponics"], true);
@@ -895,7 +946,7 @@ function renderJournal(){
 // resolve here, not in the data)
 function allocGateOpen(gate){
   if(!gate) return true;
-  if(gate==="fab") return !!S.fabProject || ["seedSaving","forge","machineShop"].some(id=>S.flags[id]);
+  if(gate==="fab") return !!S.fabProject || Object.values(S.fabs||{}).some(Boolean);
   if(gate.startsWith("flag:")) return !!S.flags[gate.slice(5)];
   return built(gate);
 }
@@ -952,8 +1003,9 @@ function renderPowerTab(){
   const live = POWER_DEMANDS.filter(d=>allocGateOpen(d.gate));
   const rows = live.map(d=>{
     const a = alv(d.id);
-    const active = d.id==="fab" ? !!S.fabProject : true;   // shops only draw mid-project
-    return {d, a, drawNow: active ? d.draw*a : 0, idle: d.id==="fab" && !S.fabProject};
+    const fabLive = !!S.fabProject || (Object.values(S.fabs||{}).some(Boolean) && S.people.some(p=>p.job==="fab"));
+    const active = d.id==="fab" ? fabLive : true;   // shops draw while building OR while staffed
+    return {d, a, drawNow: active ? d.draw*a : 0, idle: d.id==="fab" && !fabLive};
   });
   const rawDraw = rows.reduce((s,x)=>s+x.drawNow,0);
   const reduce = ((S.f||{}).drawReduce||0) + (S.flags.gridTuned?1:0);

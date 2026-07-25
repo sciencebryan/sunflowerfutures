@@ -261,7 +261,7 @@ const SEED_REWARD = {
   2:{seeds:6, desc:"a drawer of sorted seed: +6 seeds"},
   4:{crop:"turnip", desc:"a new crop for the beds: turnips, quick and frost-hardy"},
   6:{crop:"sunflower", desc:"a new crop: sunflowers, for oil and for spirits"},
-  8:{crop:"amaranth", seeds:8, flag:"seedLibrary", desc:"the seed library opens: amaranth to plant, +8 seeds, and every crop keeps a little better"}
+  8:{crop:"amaranth", seeds:8, flag:"seedLibrary", desc:"the seed library opens: amaranth to plant with 8 of its seed, and every crop keeps a little better"}
 };
 
 const SIGNAL_REWARD = {

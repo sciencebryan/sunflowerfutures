@@ -6,6 +6,7 @@ import { renderAll } from "./render.js";
 import { CROPS, RESTORE_IN } from "./data-economy.js";
 import { cKey, circuitAdj, circuitCap, circuitCheck, focusCheck, focusSrcs, focusTargets, patchCheck, pipesCheck, seedCheck, seedSlotAt, signalCheck, waterSim, wireRot, wiresCheck, generatePicrossClues } from "./puzzles.js";
 import { bestPresent, byId } from "./helpers.js";
+import { addSeeds, grantSeedSpread } from "./seasons.js";
 import { addRestore } from "./defs.js";
 
 
@@ -196,15 +197,27 @@ function finishPuzzle(kind) {
           S.flags[v] = true;
           // Special logic for watershed terraces
           if (v === "terraces") {
-            S.beds.push({crop: null, growth: 0, days: 0, ready: false, stored: 0, fertility: 75, plantedDay: 0});
+            S.beds.push({crop: null, companions: [], growth: 0, days: 0, ready: false, stored: 0, fertility: 75, plantedDay: 0});
           }
         } 
         else if (k === "crop") {
           S.crops = S.crops || {};
           S.crops[v] = true;
+          // typed seeds: an unlock with nothing to plant is a dead gift —
+          // a new crop always comes with two plantings' worth of its seed.
+          // A reward that ALSO carries its own `seeds` count (the seed
+          // library's amaranth drawer) grants that instead, of this crop.
+          const cd = CROPS[v];
+          if (cd && !(r.seeds)) addSeeds(v, (cd.seed || 1) * 2);
+          if (cd && r.seeds) { addSeeds(v, r.seeds); }
         } 
+        else if (k === "seeds") {
+          // a drawer of sorted seed, typed: attached to the reward's crop if
+          // it has one (handled above), otherwise spread over what's known
+          if (!r.crop) grantSeedSpread(v);
+        }
         else {
-          // Standard resource increments (parts, seeds)
+          // Standard resource increments (parts, scrap, meds)
           S.res[k] = (S.res[k] || 0) + v;
         }
       }
@@ -246,7 +259,7 @@ function grantReward(kind){
   for(const [k,v] of Object.entries(r)){
     if(k==="flag"){
       S.flags[v]=true;
-      if(v==="terraces") S.beds.push({crop:null,growth:0,days:0,ready:false,stored:0,fertility:75,plantedDay:0});
+      if(v==="terraces") S.beds.push({crop:null,companions:[],growth:0,days:0,ready:false,stored:0,fertility:75,plantedDay:0});
       continue;
     }
     if(k==="desc") continue;

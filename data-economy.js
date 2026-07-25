@@ -217,19 +217,20 @@ const SITE_LOOT_TABLE = {
 // · {discover:true} needs S.discovered[id] (a founding choice or a specific
 // expedition site turning it up). No gate = visible to a new village on day one.
 const PROJECTS = [
+  {id:"seedSaving",  name:"Seed saving",           cost:{scrap:3},           work:16, blurb:"Screens, envelopes, and a steady eye for the best plants. Every harvest returns half again the seed."},
   {id:"toolLibrary", name:"Tool library",          cost:{scrap:12},          work:18, blurb:"Sorted, sharpened, and where you left it. All repairs work 20% better."},
   {id:"rootCellar",  name:"Root cellar",           cost:{scrap:8},           work:14, blurb:"Cool, dark, and relatively rat-proof. Holds far more food, and food spoils far slower."},
   {id:"dryRacks",    name:"Drying racks",          cost:{scrap:4},           work:10, blurb:"Sun, air, patience. Fresh food becomes dried for storage — losing a fifth on the way."},
-  {id:"crocks",      name:"Fermenting crocks",     cost:{scrap:5, seeds:2},  work:12, blurb:"Salt, time, and the right microbial community. Pretty good for preserving food, even if not everyone loves the smell."},
+  {id:"crocks",      name:"Fermenting crocks",     cost:{scrap:6},           work:12, blurb:"Salt, time, and the right microbial community. Pretty good for preserving food, even if not everyone loves the smell."},
   {id:"canning",     name:"Canning kitchen",       cost:{scrap:6, parts:5},  work:18, blurb:"Jars, lids, and heat. The fastest way to preserve food, but it requires power.", gate:{flag:"dryRacks"}},
-  {id:"gardenBeds",  name:"New beds",              cost:{scrap:5, seeds:4},  work:14, blurb:"More ground turned, more trellis raised. Another pair of hands can work the gardens."},
+  {id:"gardenBeds",  name:"New beds",              cost:{scrap:6},           work:14, blurb:"More ground turned, more trellis raised. Another pair of hands can work the gardens."},
   {id:"batteryRecond",name:"Battery reconditioning",cost:{parts:6},          work:14, gate:{sys:"battery"}, blurb:"New cells in old shells. The power bank's capacity is nearly doubled."},
   {id:"panelWash",   name:"Panel wash rig",        cost:{scrap:5},           work:10, gate:{sys:"solar"}, blurb:"A squeegee on a long pole, mostly. Solar array wears slower."},
   {id:"bearings",    name:"Spare bearings",        cost:{parts:8},           work:14, gate:{sys:"turbine"}, blurb:"Machined to fit. The turbine wears much slower."},
   {id:"dripRetrofit",name:"Drip retrofit",         cost:{scrap:6, parts:4},  work:14, gate:{sys:"irrigation"}, blurb:"Every joint resealed. Irrigation wears slower, gardens drink less."},
   {id:"graywater",   name:"Graywater loop",        cost:{scrap:7, parts:3},  work:16, gate:{sys:"irrigation"}, blurb:"Wash water and rinse water, filtered through sand and reed, sent back to the beds. The gardens take far less from the cisterns."},
-  {id:"coldFrames",  name:"Cold frames",           cost:{scrap:6, seeds:6},  work:16, gate:{sys:"irrigation"}, blurb:"Miniature greenhouses to keep the garden growing straight through winter frost, and you can sow out of season."},
-  {id:"herbalStores",name:"Herbal stores",         cost:{meds:6, seeds:3},   work:12, gate:{discover:true}, blurb:"Dried, labeled, jarred. Illness is briefer and less frequent."},
+  {id:"coldFrames",  name:"Cold frames",           cost:{scrap:8},           work:16, gate:{sys:"irrigation"}, blurb:"Miniature greenhouses to keep the garden growing straight through winter frost, and you can sow out of season."},
+  {id:"herbalStores",name:"Herbal stores",         cost:{meds:6},            work:12, gate:{discover:true}, blurb:"Dried, labeled, jarred. Illness is briefer and less frequent."},
   {id:"oilPress",    name:"Oil press",             cost:{scrap:7, parts:3},  work:14, gate:{crop:"sunflower"}, blurb:"A hand crank and a screw. Turns seed into oil, if someone's willing to stand there and turn it."},
   {id:"compost",     name:"Compost bins",          cost:{scrap:3},           work:8,  blurb:"Rotten food and vegetable scraps are composted. Discarded food contributes to soil fertility."},
   {id:"woodStove", name:"Masonry Heater", cost:{scrap:10, parts:4}, work:16, blurb:"A heavy stone hearth in the Commons. Burns wood slowly and holds the heat for hours. Crucial for winter survival."},
@@ -296,19 +297,29 @@ const CROPS = {
   // the headless-bot balance for the later game shouldn't be disturbed on a guess.
   // If this over-corrects, these are the first numbers to walk back — check
   // against a fresh save at day 90 before tightening further.
-  radish:  {name:"Radishes",  work:14, minDays:14,  yield:16, seed:1, seeds:1, sow:["spring","summer","autumn"], feed:"light",  note:"Fast, thin, and better than nothing."},
-  greens:  {name:"Greens",    work:20, minDays:20,  yield:24, seed:1, seeds:1, sow:["spring","summer","autumn"], feed:"light",  note:"Cut and come again, until it bolts."},
-  beans:   {name:"Beans",     work:32, minDays:26,  yield:40, seed:2, seeds:3, sow:["spring","summer"],          feed:"legume", locked:true, note:"Feeds you, then feeds the soil, then feeds you again."},
-  squash:  {name:"Squash",    work:44, minDays:44,  yield:58, seed:2, seeds:2, sow:["spring","summer"],          feed:"heavy", locked:true, note:"Slow, heavy, and it keeps all winter in a cold room."},
-  potatoes:{name:"Potatoes",  work:38, minDays:40,  yield:53, seed:3, seeds:3, sow:["spring"],                   feed:"heavy", locked:true, note:"Dull, heavy, and the reason anyone survived anything. Keep back the small ones to plant."},
-  grain:   {name:"Grain",     work:56, minDays:50,  yield:84, seed:3, seeds:4, sow:["spring","autumn"], hardy:true, feed:"heavy", locked:true, note:"The one crop frost won't kill: plant it in autumn and it sleeps under the snow, ready in spring. Slow, but it feeds a winter."},
-  peas:    {name:"Peas",      work:36, minDays:28,  yield:52, seed:2, seeds:3, sow:["spring","summer"],
+  //
+  // TIMING & WINDOWS (the 1/3-scale pass): the game year is 120 days against
+  // a real 365, so every annual's minDays is now its real days-to-first-
+  // harvest divided by ~3 — a radish is a sprint again, squash is a season.
+  // `window` is the picking span in days: once ready, a bed bears
+  // yield/window per tended day for `window` days (see the picking loop in
+  // day.js), then returns its `seeds` (typed, to seedStock). Yields were
+  // rescaled alongside so food per day-of-bed-occupancy stays near the
+  // playtested rate — shorter cycles alone would have re-inflated the food
+  // budget the note above cut.
+  radish:  {name:"Radishes",  work:11, minDays:9,  window:3,  yield:12, seed:1, seeds:1, sow:["spring","summer","autumn"], feed:"light",  note:"Fast, thin, and better than nothing."},
+  greens:  {name:"Greens",    work:14, minDays:10,  window:10, yield:24, seed:1, seeds:1, sow:["spring","summer","autumn"], feed:"light",  note:"Cut and come again, until it bolts."},
+  beans:   {name:"Beans",     work:26, minDays:18,  window:7,  yield:38, seed:2, seeds:3, sow:["spring","summer"],          feed:"legume", locked:true, note:"Feeds you, then feeds the soil, then feeds you again."},
+  squash:  {name:"Squash",    work:40, minDays:32,  window:4,  yield:48, seed:2, seeds:2, sow:["spring","summer"],          feed:"heavy", locked:true, note:"Slow, heavy, and it keeps all winter in a cold room."},
+  potatoes:{name:"Potatoes",  work:36, minDays:33,  window:2,  yield:46, seed:3, seeds:3, sow:["spring"],                   feed:"heavy", locked:true, note:"Dull, heavy, and the reason anyone survived anything. Keep back the small ones to plant."},
+  grain:   {name:"Grain",     work:48, minDays:40,  window:2,  yield:68, seed:3, seeds:4, sow:["spring","autumn"], hardy:true, feed:"heavy", locked:true, note:"The one crop frost won't kill: plant it in autumn and it sleeps under the snow, ready in spring. Slow, but it feeds a winter."},
+  peas:    {name:"Peas",      work:30, minDays:21,  window:5,  yield:48, seed:2, seeds:3, sow:["spring","summer"],
             sowWindow:{spring:[1,12], summer:[22,30]}, feed:"legume", locked:true,
             note:"Wants the cold shoulders of the year, not the middle of it. Early spring, or the very end of summer as it breaks toward autumn — never the heat between."},
   // discovered through the seed-frame puzzles; locked until then
-  turnip:  {name:"Turnips",   work:22, minDays:24,  yield:34, seed:1, seeds:1, sow:["spring","summer","autumn"], hardy:true, locked:true, feed:"light", note:"Homely and dependable. Shrugs off an early frost and keeps in the cellar."},
-  sunflower:{name:"Sunflowers",work:40, minDays:40, yield:44, seed:2, seeds:4, sow:["spring","summer"],          locked:true, feed:"heavy", note:"Oil for the lamps, seed for the birds, and a wall of gold that lifts the whole village."},
-  amaranth:{name:"Amaranth",  work:34, minDays:42,  yield:56, seed:2, seeds:3, sow:["spring","summer","autumn"], locked:true, feed:"light", note:"Grain and greens both, and it grows where little else will. An old, stubborn plant."},
+  turnip:  {name:"Turnips",   work:20, minDays:18,  window:4,  yield:30, seed:1, seeds:1, sow:["spring","summer","autumn"], hardy:true, locked:true, feed:"light", note:"Homely and dependable. Shrugs off an early frost and keeps in the cellar."},
+  sunflower:{name:"Sunflowers",work:34, minDays:28, window:2,  yield:36, seed:2, seeds:4, sow:["spring","summer"],          locked:true, feed:"heavy", note:"Oil for the lamps, seed for the birds, and a wall of gold that lifts the whole village."},
+  amaranth:{name:"Amaranth",  work:32, minDays:30,  window:4,  yield:45, seed:2, seeds:3, sow:["spring","summer","autumn"], locked:true, feed:"light", note:"Grain and greens both, and it grows where little else will. An old, stubborn plant."},
   // perennials: planted once, never resown. They take years to earn their keep,
   // then keep giving with almost no labor — see the perennial handling in the
   // growth loop. Each bears in exactly one season; the rest of the year they
@@ -389,18 +400,24 @@ const PRESERVE = {
    (see the "fabrication" phase in simulateDay). This is the endgame pivot: fabs let
    the village stop depending on finite salvage sites. Fields: id, name, cost, work,
    gives (a key into S.res / FAB_RATE), blurb. */
+/* Each shop, once built, produces FAB_RATE[gives] per day — but ONLY while
+   someone works the fab job and the feedstock holds: `feed` is {res, per},
+   the resource consumed per unit of output (see the fab phase in day.js).
+   Nothing comes from nothing. Seed saving is no longer a fab — it moved to
+   PROJECTS as a one-time bench that multiplies harvest seed return. */
 const FABS = [
-  {id:"seedSaving", name:"Seed saving",   cost:{seeds:4},           work:16, gives:"seeds",
-   blurb:"Save the best, sow the best. A steady source of seeds"},
   {id:"forge",      name:"The forge",     cost:{scrap:16, parts:4}, work:30, gives:"scrap",
-   blurb:"Charcoal, bellows, an anvil off a truck axle. Turning garbage into useful scrap."},
+   feed:{res:"wood", per:1.2},
+   blurb:"Charcoal, bellows, an anvil off a truck axle. Wood in, worked scrap out."},
   {id:"machineShop",name:"Machine shop",  cost:{scrap:20, parts:12},work:40, gives:"parts",
-   blurb:"Tools and equipment to produce the parts we need to fix things."},
-  {id:"apothecary", name:"Apothecary",    cost:{seeds:8, meds:4},   work:26, gives:"meds",
-   blurb:"A medicinal herb garden and a good book. Medicine we can grow."}
+   feed:{res:"scrap", per:2},
+   blurb:"Tools and equipment to turn rough scrap into the parts we need to fix things."},
+  {id:"apothecary", name:"Apothecary",    cost:{wood:8, meds:4},    work:26, gives:"meds",
+   feed:{res:"food", per:2},
+   blurb:"A medicinal herb garden and a good book. Garden output in, medicine out."}
 ];
 
-const FAB_RATE = {seeds:0.35, scrap:0.9, parts:0.5, meds:0.25};
+const FAB_RATE = {scrap:0.9, parts:0.5, meds:0.25};
 
 const SEASONS = [
   {id:"spring", name:"Spring", wx:[0.38,0.28,0.34],

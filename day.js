@@ -1,5 +1,5 @@
 import { S } from "./state.js";
-import { ELDER, canRoad, canWork, dayOfSeason, generateFallbackChildName, rollWeather, scaledWeather, season, seasonIdx, seasonNote, yearOf } from "./seasons.js";
+import { ELDER, canRoad, canWork, dayOfSeason, generateFallbackChildName, grantSeedSpread, rollWeather, scaledWeather, season, seasonIdx, seasonNote, yearOf } from "./seasons.js";
 import { AC_DRAW, WELL_DRAW, AQUA_STAGNANT_WEAR, BATTERY_UNIT, CANNING_DRAW, CROPS, DAY_MS, FABS, FAB_DRAW, FAB_RATE, JOB_PRACTICE, LOSS_DECAY, MAX_FOREST_PLOTS, NO_CLEANING_SICK, OFFLINE_CAP, POLLINATOR_YIELD, POWER_LOSS_BASE, PRACTICE_BROAD_CAP, PRACTICE_BROAD_DECAY, PRACTICE_BROAD_GROWTH, PRACTICE_SPECIFIC_CAP, PRACTICE_SPECIFIC_DECAY, PRACTICE_SPECIFIC_GROWTH, PRESERVE, PROJECTS, RESTORE_IN, SEASONS, SEASON_LEN, SOLAR_UNIT, SYS, TURBINE_UNIT, WATER_LOSS_BASE, WITHER_CHANCE, YIELD_SOIL_FLOOR, YIELD_TEND_MAX, YIELD_TEND_SCALE } from "./data-economy.js";
 import { Cap, byId, clamp, decayPractice, eff, effStat, growPractice, hasHave, isAre, mult, objp, pick, poss, practiceOf, subj, wbFloor, working } from "./helpers.js";
 import { TRAITS, VISUALS, addRes, addRestore, built, decayOf, foodCap, stepRestoration, waterCapEff } from "./defs.js";
@@ -10,6 +10,10 @@ import { maybeSpawnEvent, resetSeasonFlares, tickDepartures, tickDinnerBonds, ti
 import { store } from "./store.js";
 import { rollMusic, rollPersonality } from "./bonds.js";
 import { driftIdeology, seedIdeology } from "./ideology.js";
+import { addFood, addForage, addPreserved, bestMethodFor, cookRecipe, decayStock, eatFresh, eatJars,
+         pantryTotal, preserveInto, resync, tickMacros } from "./larder.js";
+import { COMP_FERT, COMP_YIELD, FOOD_COMP, FOOD_DATA, MAX_COMPANIONS, PRES_METHOD_OF, RIVAL_YIELD } from "./data-food.js";
+import { SEED_COMPANION, SEED_RIVAL } from "./data-puzzles.js";
 import { tickConflicts } from "./mediation.js";
 import { tickMoments } from "./moments.js";
 import { tickCelebCooldowns, tickTraditions } from "./celebrations.js";
@@ -408,7 +412,7 @@ function simulateDay(){
   // gift return, if any
   if(S.giftDay && S.day>=S.giftDay){
     if(S.giftGood){
-      S.res.seeds+=5; S.res.parts+=3;
+      grantSeedSpread(5); S.res.parts+=3;
       lines.push("Before dawn, someone left a crate at the gate. Seeds, some parts, a pencil drawing of a bicycle.");
     }
     S.giftDay=null;
@@ -440,7 +444,11 @@ function simulateDay(){
   const wellAl    = F.well              ? alv("well")   : 0;
   const acAl      = (F.acUnit && isSummer) ? alv("ac")   : 0;
   const canningAl = F.canning           ? alv("canning") : 0;
-  const fabAl     = S.fabProject        ? alv("fab")     : 0;
+  // fab draws power when there's fab WORK: a project under construction, or a
+  // built shop with someone assigned to run it. Idle shops draw nothing.
+  if(wx.id==="rain") S.lastRainDay = S.day;   // mushroom flushes follow the weather
+  const fabActive = !!S.fabProject || (S.people.some(p=>p.job==="fab") && Object.values(S.fabs||{}).some(Boolean));
+  const fabAl     = fabActive           ? alv("fab")     : 0;
   const sysDraw=id=>SYS.find(d=>d.id===id).draw;
   const rawDraw = sysDraw("catchment")*pumpAl + sysDraw("aquaponics")*aquaAl
                 + sysDraw("commons")*commonsAl
@@ -473,7 +481,7 @@ function simulateDay(){
   const aquaEff    = brownout ? Math.min(aquaAl,0.5) : aquaAl;
   const commonsLit = !brownout && commonsAl>0;
   const canningOn  = !brownout && canningAl>0;
-  const fabPowered = !brownout && (S.fabProject ? fabAl>0 : true);
+  const fabPowered = !brownout && (fabActive ? fabAl>0 : true);
 
   // --- water ---
   const irr = built("irrigation") ? mult(S.sys.irrigation.cond) : 0;
@@ -536,6 +544,7 @@ function simulateDay(){
     const aquaFactor = aquaEff>=1 ? 1 : aquaEff>=0.5 ? 0.7 : 0.35;
     if(aquaEff===0){ S.sys.aquaponics.cond = clamp(S.sys.aquaponics.cond - AQUA_STAGNANT_WEAR, 0, 100); }
     aquaFood = aquaBase*mult(S.sys.aquaponics.cond)*aquaFactor;
+    addFood("fish", aquaFood);   // the tanks give fish, and fish is the valley's protein
     S._aquaWhy=[`tending ${aquaBase.toFixed(1)}`,`condition ×${mult(S.sys.aquaponics.cond).toFixed(2)}`]
       .concat(aquaFactor<1?[brownout?`brownout ×${aquaFactor}`:`pumps ${aquaEff===0?"off":"slow"} ×${aquaFactor}`]:[])
       .concat(aquaEff===0?["still water is souring the system"]:[]).join(" · ");
@@ -558,6 +567,39 @@ function simulateDay(){
   const fertilityMult = f => 0.6 + 0.4*clamp(Number.isFinite(f)?f:75, 0, 100)/100;
   const feedDelta = feed => feed==="legume" ? 15 : feed==="heavy" ? -12 : -4;   // light/undefined = -4
 
+  /* --- companion planting ---
+     A bed holds a primary crop plus up to MAX_COMPANIONS interplantings,
+     scored against the SAME companion/rival grid the seed-frame puzzle
+     teaches (bean·corn·squash·root·herb·bramble). Solving the frame and
+     planting a bed are therefore the same knowledge, which is what that
+     puzzle's companion data was built for.
+     Effects are deliberately modest — real companion planting is a real
+     but small effect, and the one genuinely large piece of it (a legume
+     feeding its neighbours) shows up as FERTILITY at harvest rather than
+     as yield, because that's the mechanism. */
+  const compCat = id => FOOD_COMP[id] || null;
+  const pairIn = (list,a,b) => list.some(([x,y]) => (x===a&&y===b) || (x===b&&y===a));
+  function companionScore(bed){
+    const prim = compCat(bed.crop);
+    const mates = (bed.companions||[]).map(compCat).filter(Boolean);
+    let good = 0, bad = 0;
+    if(prim) for(const m of mates){
+      if(pairIn(SEED_COMPANION, prim, m)) good++;
+      else if(pairIn(SEED_RIVAL, prim, m)) bad++;
+    }
+    // the companions also have to live with each other
+    for(let i=0;i<mates.length;i++) for(let j=i+1;j<mates.length;j++){
+      if(pairIn(SEED_COMPANION, mates[i], mates[j])) good++;
+      else if(pairIn(SEED_RIVAL, mates[i], mates[j])) bad++;
+    }
+    const legumes = (bed.companions||[]).filter(c=>compCat(c)==="bean").length;
+    return {good, bad, legumes};
+  }
+  const companionMult = bed => {
+    const s = companionScore(bed);
+    return clamp(1 + s.good*COMP_YIELD + s.bad*RIVAL_YIELD, 0.5, 1.6);
+  };
+
   // What a bed actually sets, decided ONCE on the day it comes ready and never
   // revisited — a stand left waiting on hands doesn't keep fattening. Yield is
   // a function of how well the bed was grown (tending banked beyond what the
@@ -568,7 +610,7 @@ function simulateDay(){
     const tend = 1 + YIELD_TEND_MAX*(1 - Math.exp(-Math.max(0, tendRatio-1)/YIELD_TEND_SCALE));
     const soil = YIELD_SOIL_FLOOR + (1-YIELD_SOIL_FLOOR)*clamp(Number.isFinite(bed.fertility)?bed.fertility:75,0,100)/100;
     const bloom = 1 + POLLINATOR_YIELD*(polR/100);
-    return Math.max(0, crop.yield*tend*soil*bloom*(F.contourBeds?1.15:1) - (fo.nibble||0));
+    return Math.max(0, crop.yield*tend*soil*bloom*companionMult(bed)*(F.contourBeds?1.15:1) - (fo.nibble||0));
   };
   const PEREN_PICK_DAYS = [6, 12, 18, 24];   // a perennial bears on these days of its harvest season
 
@@ -578,16 +620,24 @@ function simulateDay(){
   // want years. They don't compete for space or for the gardener's day.
   const annualPlanted = S.beds.filter(b=>b.crop).length;
 
-  // shared harvest bookkeeping, used by both the beds and the forest
+  // shared harvest bookkeeping — the food forest's whole-plot pick. Annual
+  // beds no longer come through here: they bear across a window (below) and
+  // return TYPED seed when the stand is spent. Perennials return no seed.
   const bringIn = (plot, crop, placeLabel, isPeren) => {
     gardenFood += plot.stored;
-    if(crop.seeds) S.res.seeds += crop.seeds;
+    addFood(plot.crop, plot.stored);
     S.dietLog.push({crop:plot.crop, day:S.day, amt:plot.stored});
     plot.fertility = clamp((plot.fertility??75) + feedDelta(crop.feed)*(isPeren?0.25:1), 10, 100);
-    // sunflower gives up a byproduct on top of what's eaten fresh -- seed set
-    // aside for pressing, not a cut of the food value itself
-    if(plot.crop==="sunflower") S.res.rawSeed = (S.res.rawSeed||0) + plot.stored*0.5;
-    lines.push(`${placeLabel} came in: ${plot.stored.toFixed(0)} of ${crop.name.toLowerCase()}${crop.seeds?`, and ${crop.seeds} seed saved`:""}.`);
+    lines.push(`${placeLabel} came in: ${plot.stored.toFixed(0)} of ${crop.name.toLowerCase()}.`);
+  };
+
+  // typed seed returned at the end of an annual stand: the crop's own seed,
+  // half again more if the seed-saving bench is built (the one place that
+  // project pays out — see PROJECTS.seedSaving)
+  const seedReturn = crop => {
+    const base = crop.seeds||0;
+    if(!base) return 0;
+    return base + (S.flags.seedSaving ? Math.max(1, Math.round(base*0.6)) : 0);
   };
 
   // --- kitchen garden: annuals grow with tending, then wait on hands to harvest ---
@@ -602,12 +652,12 @@ function simulateDay(){
       if(crop.hardy){ continue; }
       if(!F.coldFrames){
         if(bed.growth>0.5) lines.push(`The ${crop.name.toLowerCase()} in bed ${S.beds.indexOf(bed)+1} died with the first hard frost.`);
-        bed.crop=null; bed.growth=0; bed.days=0; bed.ready=false; bed.stored=0; bed.fertility=clamp((bed.fertility??75)-2,10,100); continue;
+        bed.crop=null; bed.companions=[]; bed.growth=0; bed.days=0; bed.ready=false; bed.stored=0; bed.picked=0; bed.fertility=clamp((bed.fertility??75)-2,10,100); continue;
       }
     }
     if(irrAl===0 && Math.random()<WITHER_CHANCE){
       lines.push(`With the irrigation shut off, the ${crop.name.toLowerCase()} in bed ${S.beds.indexOf(bed)+1} died.`);
-      bed.crop=null; bed.growth=0; bed.days=0; bed.ready=false; bed.stored=0;
+      bed.crop=null; bed.companions=[]; bed.growth=0; bed.days=0; bed.ready=false; bed.stored=0; bed.picked=0;
       bed.fertility=clamp((bed.fertility??75)-2,10,100); continue;
     }
     const perBed = tenders.length ? tendPts/Math.max(1,annualPlanted) : 0;
@@ -633,13 +683,53 @@ function simulateDay(){
       bed.ready = true;
     }
   }
+  // --- the picking window: an annual doesn't come in all at once ---
+  // A ready bed bears stored/window food per day, for `window` days, and only
+  // on days someone is in the gardens (picking still waits on hands — unpicked
+  // days don't advance the window, the crop stands and waits, same as before).
+  // Seed return and the fertility hit settle once, when the stand is spent.
   for(const bed of S.beds){
     if(!bed.ready || !bed.crop) continue;
     const crop=CROPS[bed.crop];
-    if(crop.perennial) continue;
-    if(!tenders.length) continue;   // annual harvest waits on hands
-    bringIn(bed, crop, `Bed ${S.beds.indexOf(bed)+1}`, false);
-    bed.crop=null; bed.growth=0; bed.days=0; bed.ready=false; bed.stored=0;
+    if(!crop || crop.perennial) continue;
+    if(!tenders.length) continue;
+    const win = Math.max(1, crop.window||1);
+    const perDay = bed.stored/win;
+    bed.picked = (bed.picked||0) + 1;
+    gardenFood += perDay;
+    addFood(bed.crop, perDay);                     // into the pantry as itself
+    for(const c of (bed.companions||[])){          // interplantings bear too, thinly
+      const cd = CROPS[c];
+      if(!cd) continue;
+      const side = perDay*0.22;
+      gardenFood += side; addFood(c, side);
+      S.dietLog.push({crop:c, day:S.day, amt:side});
+    }
+    S.dietLog.push({crop:bed.crop, day:S.day, amt:perDay});
+    // sunflower's byproduct accrues per picking day — seed set aside for the
+    // press, not a cut of the food value itself
+    if(bed.crop==="sunflower") S.res.rawSeed = (S.res.rawSeed||0) + perDay*0.5;
+    const label = `Bed ${S.beds.indexOf(bed)+1}`;
+    if(bed.picked===1 && win>1){
+      lines.push(`${label}: the first ${crop.name.toLowerCase()} came in — ${perDay.toFixed(0)} food today, more ripening behind it.`);
+    }
+    if(bed.picked >= win){
+      const seeds = seedReturn(crop);
+      if(seeds){ S.seedStock = S.seedStock||{}; S.seedStock[bed.crop] = (S.seedStock[bed.crop]||0) + seeds; }
+      // companions return their own seed too, and a legume among them leaves
+      // the ground better than it found it — the real mechanism, as fertility
+      for(const c of (bed.companions||[])){
+        const cd = CROPS[c]; if(!cd || !cd.seeds) continue;
+        S.seedStock = S.seedStock||{};
+        S.seedStock[c] = (S.seedStock[c]||0) + Math.max(1, Math.round(cd.seeds*0.5));
+      }
+      const cs = companionScore(bed);
+      bed.fertility = clamp((bed.fertility??75) + feedDelta(crop.feed) + cs.legumes*COMP_FERT, 10, 100);
+      lines.push(win>1
+        ? `${label}: the last of the ${crop.name.toLowerCase()} — ${bed.stored.toFixed(0)} food over ${win} days${seeds?`, and ${seeds} seed saved back`:""}.`
+        : `${label} came in: ${bed.stored.toFixed(0)} of ${crop.name.toLowerCase()}${seeds?`, and ${seeds} seed saved`:""}.`);
+      bed.crop=null; bed.companions=[]; bed.growth=0; bed.days=0; bed.ready=false; bed.stored=0; bed.picked=0;
+    }
   }
 
   // --- food forest: perennials bear across their season, no tending needed ---
@@ -690,6 +780,7 @@ function simulateDay(){
     gWhy.push(planted?`${planted} bed${planted>1?"s":""} growing`:"nothing planted");
     if(!tenders.length && planted) gWhy.push("untended — growth crawls");
   }
+  if(fo.foodTrickle) addFood(S.crops&&S.crops.chestnut?"chestnut":"greens", fo.foodTrickle);
   const foodIn = aquaFood + gardenFood + (fo.foodTrickle||0);
   const cooks = working("cook");
   const cookStretch = cooks.length ? 1-0.03*Math.min(5,cooks[0].care) : 1;
@@ -698,48 +789,98 @@ function simulateDay(){
   // raising it tightens the food budget village-wide, see TUNING GUIDE above
   const mouths = S.people.reduce((a,p)=>a+(canWork(p)?0.85:0.5),0);
   const foodOut = mouths*cookStretch;
-  // Desperation gleaning: with nothing in the stores, people go out and dig.
-  // It is never enough, but a village can always claw at the ground. No lockout.
+  // Desperation gleaning: with nothing left for TONIGHT, people go out and dig.
+  // Gate on the projected end-of-day balance — stores at dawn PLUS whatever
+  // came in today (harvest, tanks, foraging returns) minus tonight's meal —
+  // not on the dawn stores alone. Without foodIn in the check, a 30-food
+  // radish harvest could land the same day everyone "went out to scrape
+  // bark", with no causal thread in the journal. Gleaning also takes only
+  // the real shortfall now: it is scraping, not a food source.
   let gleaned = 0;
-  if(S.res.food + S.preserved < 1 && season().forage>0){
-    const able = S.people.filter(p=>canWork(p) && p.status!=="away").length;
-    // near-subsistence: a starving village limps, it does not simply die.
-    // In winter the woods give almost nothing, which is the whole point of preserving.
-    gleaned = Math.max(1, able*0.62) * (S.larder??1) * season().forage;
-    S.larder = clamp((S.larder??1) - gleaned/260, 0.12, 1);
-    if(S.day%6===0) lines.push("Everyone who could stand went out foraging. Roots, bark, whatever they could find. It wasn't enough.");
-  }
-  let hunger=0;
-  let f = S.res.food + foodIn + gleaned - foodOut;
-  if(f<0){
-    // the fresh stores are gone; open the jars
-    const short = -f;
-    const fromJars = Math.min(S.preserved, short);
-    S.preserved -= fromJars;
-    const still = short - fromJars;
-    // NOT narrated here. dinnerLine() is the single owner of meal narration —
-    // three generators describing the same supper from different data is how
-    // you get "dinner came out of jars" directly above "raspberries, fish
-    // fresh from the tanks". It records the fact and moves on.
-    S.report.fromJars = fromJars;
-    if(still>0){ hunger = Math.min(1, still/foodOut); }
-    f=0;
-  }
-  // a big harvest can overtop the fresh store; jars catch what the shelves can't hold
-  if(f > foodCap()){
-    const over = f - foodCap();
-    const methods=Object.values(PRESERVE).filter(m=>S.flags[m.flag]);
-    if(methods.length){
-      const best=methods.reduce((a,b)=>a.loss<b.loss?a:b);
-      S.preserved += over*(1-best.loss);
-      lines.push(`The stores overflowed. Everyone spent the evening at the ${best.name.toLowerCase()}, and ${(over*(1-best.loss)).toFixed(0)} was preserved for later.`);
-    } else {
-      lines.push(`${over.toFixed(0)} of the harvest had nowhere to go and will spoil. Somebody should build a way to preserve food.`);
+  {
+    // pantryTotal() already includes today's harvest/tanks/trickle — the
+    // scalar S.res.food is still yesterday's until resync() runs below
+    const projected = pantryTotal() + S.preserved - foodOut;
+    if(projected < 1 && season().forage>0){
+      const able = S.people.filter(p=>canWork(p) && p.status!=="away").length;
+      // near-subsistence: a starving village limps, it does not simply die.
+      // In winter the woods give almost nothing, which is the whole point of preserving.
+      const scraped = Math.max(1, able*0.62) * (S.larder??1) * season().forage;
+      gleaned = Math.min(scraped, Math.max(0, 1 - projected));
+      S.larder = clamp((S.larder??1) - gleaned/260, 0.12, 1);
+      addForage(gleaned);   // typed, and whatever this season actually offers
+      if(S.day%6===0) lines.push(foodIn > 0.5
+        ? "What came in today was gone by dark. Everyone who could stand went out after it anyway — roots, bark, whatever they could find."
+        : "Everyone who could stand went out foraging. Roots, bark, whatever they could find. It wasn't enough.");
     }
-    f = foodCap();
   }
-  S.res.food = clamp(f,0,foodCap());
+  /* ---- the meal ----
+     Drawn out of the typed pantry most-perishable-first: the village eats
+     what is about to go over before it eats what keeps. That single rule is
+     what makes macros move on their own — a week when only berries are
+     ripening is a week of eating sugar, whether anyone chose it or not.
+     Only once the fresh is gone do the jars get opened. */
+  let hunger=0;
+  let macDrag=0, macCeil=100, macFloor=0;
+  {
+    const meal = eatFresh(foodOut);
+    let eaten = meal.mac;
+    let short = foodOut - meal.taken;
+    if(short > 1e-6){
+      const fromJarsDraw = eatJars(short);
+      // NOT narrated here. dinnerLine() is the single owner of meal narration —
+      // three generators describing the same supper from different data is how
+      // you get "dinner came out of jars" directly above "raspberries, fish
+      // fresh from the tanks". It records the fact and moves on.
+      S.report.fromJars = fromJarsDraw.taken;
+      eaten = {c:eaten.c+fromJarsDraw.mac.c, f:eaten.f+fromJarsDraw.mac.f, p:eaten.p+fromJarsDraw.mac.p};
+      short -= fromJarsDraw.taken;
+      if(short > 1e-6) hunger = Math.min(1, short/foodOut);
+    }
+    // what was actually eaten, not what was harvested — the honest input to
+    // the deficiency counters (see tickMacros)
+    S.report.ate = eaten;
+    const m = tickMacros(eaten, lines);
+    macDrag = m.drag; macCeil = m.ceil; macFloor = m.floor;
+
+    // someone at the hearth turns the day's ingredients into an actual dish
+    if(cooks.length) cookRecipe(lines);
+  }
+
+  // a big harvest can overtop the shelves; jars catch what they can't hold,
+  // and now the METHOD decides what can even be put by — you do not can a
+  // leaf, and the fragile things are exactly the ones that won't wait
+  {
+    const over = pantryTotal() - foodCap();
+    if(over > 0.5){
+      const methods = bestMethodFor(canningOn);
+      let put = 0; const kinds = [];
+      for(const m of methods){
+        if(put >= over-1e-6) break;
+        const r = preserveInto(over-put, m);
+        put += r.taken; kinds.push(...r.kinds);
+      }
+      const spoiled = over - put;
+      if(put > 0.5) lines.push(`The stores overflowed. Everyone spent the evening putting ${put.toFixed(0)} of it by${kinds.length?` — ${[...new Set(kinds)].slice(0,3).join(", ")}`:""}.`);
+      if(spoiled > 0.5){
+        // whatever's left over the cap, and whatever no method could touch
+        // what's lost is what wouldn't have kept anyway — the berries go
+        // before the squash does, which is both true and the right incentive
+        const p = S.pantry||[];
+        let need = spoiled;
+        const frag = [...p].sort((a,b)=>((FOOD_DATA[b.k]||{dk:0}).dk)-((FOOD_DATA[a.k]||{dk:0}).dk));
+        for(const e of frag){ const t=Math.min(e.n,need); e.n-=t; need-=t; if(need<=0) break; }
+        for(let i=p.length-1;i>=0;i--) if(p[i].n<=1e-6) p.splice(i,1);
+        lines.push(`${spoiled.toFixed(0)} of the harvest had nowhere to go and will spoil.${methods.length?"":" Somebody should build a way to preserve food."}`);
+      }
+    }
+  }
+
+  // overnight: everything on the shelves ages at its own rate
+  decayStock(lines);
+  resync();
   S.preserved = clamp(S.preserved, 0, S.flags.rootCellar?300:170);
+  let f = S.res.food;
 
   // the wild larder recovers slowly; foraging draws it down (see tickExpeditions)
   S.larder = clamp((S.larder??1) + 0.018, 0, 1);
@@ -763,6 +904,7 @@ function simulateDay(){
   }
 
   // --- preservation: hands turn fresh food into food that keeps ---
+  S._preserveWhy = "";   // reset daily, or yesterday's line reads as today's
   const preservers = working("preserve");
   if(preservers.length){
     const method = canningOn ? PRESERVE.canning
@@ -771,13 +913,18 @@ function simulateDay(){
     if(method){
       let rate = 0;
       for(const p of preservers) rate += method.rate*0.55 + effStat(p,"care","preserve")*0.4*eff(p);
-      const take = Math.min(S.res.food, rate);
-      if(take>0.2){
-        S.res.food -= take;
-        S.preserved += take*(1-method.loss);
-        const wasted = take*method.loss;
+      // the method decides what it can even touch now: drying takes almost
+      // anything, fermenting wants vegetables, canning can't handle a leaf.
+      // If nothing in the pantry suits today's method, the day is wasted —
+      // which is the argument for building more than one.
+      const r = preserveInto(rate, PRES_METHOD_OF[Object.keys(PRESERVE).find(k=>PRESERVE[k]===method)]);
+      if(r.taken>0.2){
+        const wasted = r.taken*method.loss;
         if(F.compost) S.compost = clamp((S.compost||0) + wasted*0.5, 0, 80);
-        S._preserveWhy = `${method.name.toLowerCase()} · ${take.toFixed(1)} put by, ${wasted.toFixed(1)} lost`;
+        S._preserveWhy = `${method.name.toLowerCase()} · ${r.taken.toFixed(1)} put by (${[...new Set(r.kinds)].slice(0,3).join(", ")}), ${wasted.toFixed(1)} lost`;
+        resync();
+      } else {
+        S._preserveWhy = `nothing in the stores takes ${method.name.toLowerCase()}`;
       }
     }
   }
@@ -810,17 +957,12 @@ function simulateDay(){
   }
 
 
-  // --- spoilage: fresh food does not keep; preserved food does ---
-  {
-    const heat = season().heat ? 1.7 : 1;
-    const rate = (F.rootCellar?0.007:0.020) * heat * (F.seedLibrary?0.9:1);
-    const lost = S.res.food * rate;
-    if(lost>0.05){
-      S.res.food -= lost; S.spoilMemo = lost;
-      if(F.compost) S.compost = clamp((S.compost||0) + lost*0.4, 0, 80);
-    }
-    else S.spoilMemo = 0;
-  }
+  // --- spoilage ---
+  // Gone: this was a flat percentage off one pooled number. Every food now
+  // rots at its own real rate inside the larder (decayStock, run at the end
+  // of the meal above) — pawpaws in days, squash over months. Summer heat
+  // still bites, applied there rather than here.
+  S.spoilMemo = S.spoilMemo || 0;
 
   // --- compost: what spoiled and what preserving wasted goes back into the ground ---
   // Spreads automatically onto whichever bed or forest plot is most worn, rather
@@ -851,11 +993,28 @@ function simulateDay(){
         S.fabProject=null;
       }
     }
-    // finished fabs produce, slowly, forever, without anyone leaving the valley
-    for(const def of FABS){
-      if(!S.fabs[def.id]) continue;
-      const r = FAB_RATE[def.gives] * (fabPowered?1:0.6);
-      addRes(def.gives, r);
+    // Built shops produce only when someone runs them, and they eat feedstock:
+    // the forge turns wood (charcoal) into scrap, the machine shop turns scrap
+    // into parts, the apothecary turns garden output into medicine. Nothing
+    // comes from nothing anymore. Construction takes the worker's whole day —
+    // shops sit cold while something new is going up. Output scales modestly
+    // with the worker's hands, and short feed throttles it instead of a hard
+    // stop (you make what the stock allows). NOTE addRes ignores non-positive
+    // amounts, so feed is deducted by direct subtraction, never through it.
+    if(!S.fabProject && fabWorkers.length){
+      const w = fabWorkers[0];
+      const skill = 0.75 + 0.1*effStat(w,"hands","fab");
+      for(const def of FABS){
+        if(!S.fabs[def.id]) continue;
+        let r = FAB_RATE[def.gives] * (fabPowered?1:0.6) * skill;
+        if(def.feed){
+          const have = S.res[def.feed.res]||0;
+          const need = r*def.feed.per;
+          if(have < need) r = have/def.feed.per;
+          if(r>0.001) S.res[def.feed.res] = Math.max(0, have - r*def.feed.per);
+        }
+        if(r>0.001) addRes(def.gives, r);
+      }
     }
   }
 
@@ -891,8 +1050,15 @@ function simulateDay(){
     const frac=S.res.food/foodCap();
     if(S.res.food>8 && Math.random() < 0.015 + 0.05*frac){
       const eatFrac=(0.12+Math.random()*0.14)*(F.rootCellar?0.45:1);
-      const eaten=S.res.food*eatFrac;
-      S.res.food=Math.max(0,S.res.food-eaten);
+      // rats work the shelves, not an abstraction: they take the sweet and
+      // the starchy first, which is the least perishable half of the store
+      const want = S.res.food*eatFrac;
+      const p = S.pantry||[];
+      let need = want;
+      for(const e of [...p].sort((a,b)=>b.n-a.n)){ const t=Math.min(e.n,need); e.n-=t; need-=t; if(need<=0) break; }
+      for(let i=p.length-1;i>=0;i--) if(p[i].n<=1e-6) p.splice(i,1);
+      const eaten = want-Math.max(0,need);
+      resync();
       lines.push(F.rootCellar
         ? `Rats got into what wasn't in the cellar — ${eaten.toFixed(0)} food gone.`
         : `Rats found the stores. ${eaten.toFixed(0)} food gone, and droppings in what's left. A root cellar would keep them out of most of it.`);
@@ -999,7 +1165,7 @@ function simulateDay(){
         lines.push(`The ${def.name.toLowerCase()} is up and running. ${def.draw>0?"It's using power.":""}`);
       } else {
         S.flags[def.id]=true;
-        if(def.id==="gardenBeds") S.beds.push({crop:null,growth:0,days:0,ready:false,stored:0,fertility:75,plantedDay:0});
+        if(def.id==="gardenBeds") S.beds.push({crop:null,companions:[],growth:0,days:0,ready:false,stored:0,fertility:75,plantedDay:0});
         lines.push(`The ${def.name.toLowerCase()} is finished. ${def.blurb}`);
       }
       S.people.forEach(p=>{if(p.job==="project")p.job=null;});
@@ -1048,6 +1214,28 @@ function simulateDay(){
   }
 
   // --- wellbeing ---
+  // Starvation is a CEILING, not a subtraction. The strain math below still
+  // runs (it sets the slope), but no amount of good company, warm hearth, or
+  // trait bonus can hold spirits above these caps while the village goes
+  // hungry — that's how a starving village once read 97 spirits. The caps
+  // collapse per consecutive lean day; thirst runs a step harsher.
+  // OFF-BY-ONE, deliberate: S.hungerDays/S.thirstDays are incremented AFTER
+  // this block (end of day), so on the first lean day they still read 0 —
+  // today is lean day (count+1), which maps to array index (count) directly.
+  // Thirst caps key off `thirst` (a real supply shortfall), NOT `thirstFelt`,
+  // so voluntary rationing keeps its existing mild bite without a cliff.
+  const HUNGER_CAP=[70,55,40,28,20], THIRST_CAP=[55,40,28,20,14];
+  const capAt=(arr,days)=>arr[Math.min(arr.length-1, Math.max(0, days||0))];
+  // A long deficiency puts its own, much gentler ceiling on top of these:
+  // starvation is a cliff, malnutrition is a slope. See tickMacros.
+  const wbCeil = Math.min(
+    hunger>0 ? capAt(HUNGER_CAP, S.hungerDays) : 100,
+    thirst>0 ? capAt(THIRST_CAP, S.thirstDays) : 100,
+    macCeil
+  );
+  // the Weathered floor (25) still holds even under the ceiling — the trait's
+  // promise is literal, and one person who won't break is worth keeping
+  const capWb = p => { if(wbCeil<100) p.wb = Math.max(wbFloor(p), Math.min(p.wb, wbCeil)); };
   const standstill = !S.people.some(p=>p.status==="ok");
   const spentToday=[], recovered=[];
   for(const p of S.people){
@@ -1055,6 +1243,7 @@ function simulateDay(){
     if(p.status==="down"){
       p.downDays -= standstill?2:1;
       p.wb=clamp(p.wb+2+careBoost+(standstill?6:0),0,100);
+      capWb(p);
       if(careHeal && p.downDays>0 && Math.random()<careHeal){ p.downDays--; }
       if(F.herbalStores && p.downDays>0 && Math.random()<0.3){ p.downDays--; }
       if(p.downDays<=0){ p.status="ok"; recovered.push(p); }
@@ -1076,9 +1265,17 @@ function simulateDay(){
     // hunger AND thirst compound: the first lean day is bearable, the fifth is not
     const hungerBite = hunger>0 ? (3 + 2*Math.min(4,S.hungerDays))*hunger : 0;
     const thirstBite = thirstFelt>0 ? (3 + 2*Math.min(4,S.thirstDays))*thirstFelt : 0;
-    const strain = hungerBite + thirstBite + (commonsLit?0:2);
+    // macDrag is the malnutrition slope — no bite at all for the first ten
+    // deficient days, then a small daily cost that caps low. It sits with
+    // the other strains rather than in its own system.
+    // the malnutrition drag stops pushing once it has pushed someone down to
+    // its floor — it makes people weak and keeps them weak, rather than
+    // driving them to nothing. Starvation is the system that kills.
+    const macBite = p.wb > macFloor ? macDrag : 0;
+    const strain = hungerBite + thirstBite + macBite + (commonsLit?0:2);
     d -= (p.status==="spent"||standstill) ? strain*0.5 : strain;
     p.wb = clamp(p.wb+d, wbFloor(p), 100);
+    capWb(p);
     if(p.status==="spent" && p.wb>=30){ p.status="ok"; recovered.push(p); }
     if(p.status==="ok" && p.wb<=5){ p.status="spent"; spentToday.push(p); }
   }

@@ -1,6 +1,8 @@
 import { $ } from "./dom.js";
 import { TRAITS, addRestore, built, gardenSlots } from "./defs.js";
 import { CROPS, FABS, PRESERVE, RESTORE_IN, SEASONS, SEASON_LEN, SITE_DEF, SYS } from "./data-economy.js";
+import { FOOD_COMP, MAX_COMPANIONS } from "./data-food.js";
+import { SEED_COMPANION, SEED_RIVAL } from "./data-puzzles.js";
 import { S } from "./state.js";
 import { SCALES, canAfford, celebDef, costOf, dayOfYear, holdCelebration, makeTradition } from "./celebrations.js";
 import { TRADITION_NAMES } from "./data-celebrations.js";
@@ -34,7 +36,7 @@ const SHEET_META = {
   project:{name:"", sub:()=>"Choose who works on it. Uses hands.", multi:false},
   preserve:{name:"Putting food by", sub:()=>"Drying, fermenting, canning. Turns fresh food into stored food. Two can work at it. Uses care.", multi:true, cap:2},
   press:{name:"Pressing oil", sub:()=>"Standing at the crank, turning set-aside sunflower seed into oil. Uses hands.", multi:false},
-  fab:{name:"Fabrication", sub:()=>"Building something to make us more self-sustaining. Uses hands.", multi:false},
+  fab:{name:"Fabrication", sub:()=>"Building a new shop, or running the finished ones — the forge, the machine shop, the apothecary all need hands to produce.", multi:false},
   woodcut:{name:"Chopping wood", sub:()=>"Gathering deadwood for the winter fires. Hard work. Uses wild.", multi:true, cap:3}
 };
 
@@ -111,6 +113,44 @@ function openSowSheet(i, isForest){
   let h=`<h3>${isForest?"Plant in the food forest":"Sow bed "+(i+1)}</h3><div class="sub">${sn.name}. ${isForest?"Perennials — they don't have to be replanted but take time to reach maturity.":seasonNote(sn)+" Seeds come out of seed storage; food is harvested when the plant is mature as long as someone is tending the garden bed."}</div>
     <div class="sub" style="margin-top:4px">${isForest?'<span style="color:var(--sun)">PERENNIAL</span> plantings take years to bear, but require no regular care.':'<span style="color:var(--water)">HARDY</span> crops survive winter frost without a cold frame or greenhouse. <span style="color:var(--sun)">Legumes</span> increase soil fertility; other crops decrease it.'} This ${place}: <b>${soil}</b> (${(bed.fertility??75).toFixed(0)}).</div>`;
 
+  /* --- interplanting ---
+     A bed already sown with an annual can take up to MAX_COMPANIONS
+     companions alongside its primary. Good and bad pairings come from the
+     SAME grid the seed-frame puzzle teaches, so the puzzle is a tutorial
+     for this screen rather than a separate game. The hints below name the
+     relationship plainly — this is knowledge a gardener would simply have,
+     not a hidden system. */
+  if(curCrop && !curCrop.perennial && !isForest){
+    const mates = bed.companions || [];
+    const catOf = id => FOOD_COMP[id] || null;
+    const pairIn = (list,a,b) => list.some(([x,y]) => (x===a&&y===b)||(x===b&&y===a));
+    const prim = catOf(bed.crop);
+    h += `<div class="sub" style="margin:10px 0 4px">This bed holds <b>${curCrop.name.toLowerCase()}</b>${mates.length?`, interplanted with ${mates.map(c=>CROPS[c].name.toLowerCase()).join(" and ")}`:""}.
+      ${bed.ready?"It's ready to pick — too late to plant anything else in with it.":`Up to ${MAX_COMPANIONS} things can share the ground with it.`}</div>`;
+    if(!bed.ready && mates.length < MAX_COMPANIONS){
+      for(const [id,c] of Object.entries(CROPS)){
+        if(c.perennial || c.locked && !(S.crops&&S.crops[id])) continue;
+        if(id===bed.crop || mates.includes(id)) continue;
+        if(!catOf(id)) continue;
+        const have = (S.seedStock&&S.seedStock[id])||0;
+        const need = Math.max(1, Math.round(c.seed*0.5));
+        const inSeason = c.sow.includes(sn.id) || S.flags.coldFrames;
+        const good = pairIn(SEED_COMPANION, prim, catOf(id)) || mates.some(m=>pairIn(SEED_COMPANION, catOf(m), catOf(id)));
+        const bad  = pairIn(SEED_RIVAL, prim, catOf(id))     || mates.some(m=>pairIn(SEED_RIVAL, catOf(m), catOf(id)));
+        const ok = have>=need && inSeason;
+        const hint = good ? '<span style="color:var(--leaf)">grows well alongside</span>'
+                   : bad  ? '<span style="color:var(--rust)">the two of them fight</span>'
+                   : "no strong feelings either way";
+        h += `<button class="opt ${ok?"":"dim"}" data-mate="${id}" ${ok?"":"disabled"}>
+          <span><span class="l1">${c.name}</span><div class="l2">${hint}${!inSeason?" · not this season":have<need?` · no ${c.name.toLowerCase()} seed`:""}</div></span>
+          <span class="r">${need} seed (have ${have})</span></button>`;
+      }
+    }
+    if(mates.length){
+      h += `<button class="opt" data-mate="__clearmates"><span class="l1">Pull the interplanting</span><span class="r">keeps the ${curCrop.name.toLowerCase()}</span></button>`;
+    }
+  }
+
   // an established planting locks the plot -- no accidental overwrite of years of growth
   if(curCrop && curCrop.perennial){
     const ageYears = (S.day - bed.plantedDay) / (SEASON_LEN*4);
@@ -128,7 +168,7 @@ function openSowSheet(i, isForest){
     return;
   }
 
-  const MEADOW_SEED=4;
+
   for(const [id,c] of Object.entries(CROPS)){
     if(c.locked && !(S.crops && S.crops[id])) continue;
     if(isForest !== !!c.perennial) continue;   // forest shows perennials; beds show annuals
@@ -139,7 +179,8 @@ function openSowSheet(i, isForest){
     if(c.perennial)       inSeason = c.sow.includes(sn.id);
     else if(c.sowWindow)  inSeason = c.sow.includes(sn.id) && inWindow;
     else                  inSeason = c.sow.includes(sn.id) || S.flags.coldFrames;
-    const afford = S.res.seeds >= c.seed;
+    const have = (S.seedStock && S.seedStock[id]) || 0;
+    const afford = have >= c.seed;
     // the floor is a fact; the work estimate is a guess at a decent crew's pace.
     // Take the later of the two: nothing ripens before minDays no matter who tends it.
     const floorDays = c.minDays||0;
@@ -152,34 +193,48 @@ function openSowSheet(i, isForest){
               : c.hardy ? '<span style="font-size:9px;color:var(--water)">HARDY</span>' : "";
     const windowHint = c.sowWindow ? " · early spring or late summer only" : c.perennial ? " · plant in spring" : " · not this season";
     const rightSide = c.perennial
-      ? `${c.seed} seed<br>~${c.matureYears}y to bear`
-      : `${c.seed} seed<br>${floorDays}d+ · ~${c.yield} food`;
+      ? `${c.seed} seed (have ${have})<br>~${c.matureYears}y to bear`
+      : `${c.seed} seed (have ${have})<br>${floorDays}d+ · ~${c.yield} food${c.window>1?` over ${c.window}d`:""}`;
     h+=`<button class="opt ${(!inSeason||!afford)?'dim':''}" data-crop="${id}" ${(!inSeason||!afford)?"disabled":""}>
       <span><span class="l1">${c.name} ${tag}</span>
-        <div class="l2">${c.note}${!inSeason?windowHint:!afford?" · not enough seed":risky?` · <span style="color:var(--rust)">won't finish before frost</span>`:""}</div></span>
+        <div class="l2">${c.note}${!inSeason?windowHint:!afford?` · no ${c.name.toLowerCase()} seed left`:risky?` · <span style="color:var(--rust)">won't finish before frost</span>`:""}</div></span>
       <span class="r">${rightSide}</span></button>`;
   }
   // a forest plot can be given over to wildflower meadow — no food, but it feeds the
   // valley's pollinators (and thence every bed's yield). the pure Terra-Nil choice:
   // retire ground from production and give it back to the wild.
   if(isForest && !bed.crop){
-    // affordability handled exactly like the crop buttons above — without the
-    // dim/disabled pair this rendered as a live button that silently did
-    // nothing when seed was short, which reads as the game being broken.
-    const meadowAfford = S.res.seeds >= MEADOW_SEED;
-    h+=`<button class="opt ${meadowAfford?'':'dim'}" data-crop="__meadow" ${meadowAfford?'':'disabled'}><span><span class="l1">Wildflower meadow <span style="font-size:9px;color:var(--leaf)">POLLINATOR</span></span>
-      <div class="l2">Goldenrod, milkweed, aster, wild bergamot — no food for us to harvest, but the flowers bring pollinators, and our gardens produce more because of it.${meadowAfford?"":" · not enough seed"}</div></span>
-      <span class="r">${MEADOW_SEED} seed<br>gives no food</span></button>`;
+    // wildflower seed isn't bought out of the crop stock — goldenrod and
+    // milkweed line every roadside; you gather it. The cost is the plot.
+    h+=`<button class="opt" data-crop="__meadow"><span><span class="l1">Wildflower meadow <span style="font-size:9px;color:var(--leaf)">POLLINATOR</span></span>
+      <div class="l2">Goldenrod, milkweed, aster, wild bergamot — gathered from the roadsides. No food for us to harvest, but the flowers bring pollinators, and our gardens produce more because of it.</div></span>
+      <span class="r">gathered seed<br>gives no food</span></button>`;
   }
   if(bed.crop) h+=`<button class="opt" data-crop="__clear"><span class="l1">${isForest?"Dig it out":"Turn it under"}</span><span class="r">start again</span></button>`;
   openSheet(h);
+  $("sheet").querySelectorAll("[data-mate]").forEach(b=>{
+    b.onclick=()=>{
+      const id=b.dataset.mate;
+      bed.companions = bed.companions || [];
+      if(id==="__clearmates"){ bed.companions = []; }
+      else{
+        const c=CROPS[id]; if(!c) return;
+        const need=Math.max(1, Math.round(c.seed*0.5));
+        S.seedStock = S.seedStock || {};
+        if(((S.seedStock[id])||0) < need) return;
+        if(bed.companions.length >= MAX_COMPANIONS) return;
+        S.seedStock[id] -= need;
+        bed.companions.push(id);
+        S.pending.push(`Bed ${i+1} was interplanted with ${c.name.toLowerCase()}.`);
+      }
+      store.save(S); closeSheet(); renderAll();
+    };
+  });
   $("sheet").querySelectorAll("[data-crop]").forEach(b=>{
     b.onclick=()=>{
       const id=b.dataset.crop;
-      if(id==="__clear"){ bed.crop=null; bed.growth=0; bed.days=0; bed.ready=false; bed.stored=0; bed.matured=false; bed.lastHarvestYear=undefined; bed.lastPickDay=undefined; }
+      if(id==="__clear"){ bed.crop=null; bed.companions=[]; bed.growth=0; bed.days=0; bed.ready=false; bed.stored=0; bed.matured=false; bed.lastHarvestYear=undefined; bed.lastPickDay=undefined; }
       else if(id==="__meadow"){
-        if(S.res.seeds < MEADOW_SEED) return;
-        S.res.seeds -= MEADOW_SEED;
         // a meadow is a standing plot that yields no food; it's marked so the growth
         // and harvest loops skip it, and it feeds the valley's pollinators.
         bed.crop="__meadow"; bed.meadow=true; bed.growth=0; bed.days=0; bed.ready=false; bed.stored=0; bed.plantedDay=S.day; bed.matured=true;
@@ -188,8 +243,9 @@ function openSowSheet(i, isForest){
       }
       else{
         const c=CROPS[id];
-        if(S.res.seeds < c.seed) return;
-        S.res.seeds -= c.seed;
+        S.seedStock = S.seedStock || {};
+        if(((S.seedStock[id])||0) < c.seed) return;
+        S.seedStock[id] -= c.seed;
         bed.crop=id; bed.growth=0; bed.days=0; bed.ready=false; bed.stored=0; bed.plantedDay=S.day; bed.matured=false; bed.lastHarvestYear=undefined; bed.lastPickDay=undefined;
         // native perennials in the forest feed the soil web
         if(isForest && c.native) addRestore("mycosphere", RESTORE_IN.nativePlant);
@@ -237,10 +293,17 @@ function openPersonSheet(pid){
     const curPr=S.people.find(x=>x.job==="press"&&x.id!==p.id);
     h+=jobRow("press","Pressing oil",`${(S.oil||0).toFixed(1)} oil${curPr?` · now: ${curPr.name}`:""}`,"hands");
   }
-  if(S.fabProject){
-    const fd=FABS.find(x=>x.id===S.fabProject.id);
+  {
+    // fab work exists while something's under construction OR any shop stands.
+    // Construction takes the whole day; otherwise the worker runs the shops.
+    const shopsBuilt = FABS.filter(d=>S.fabs && S.fabs[d.id]);
     const curF=S.people.find(x=>x.job==="fab"&&x.id!==p.id);
-    h+=jobRow("fab",fd.name,`${clamp(S.fabProject.progress/fd.work*100,0,100).toFixed(0)}% done${curF?` · now: ${curF.name}`:""}`,"hands");
+    if(S.fabProject){
+      const fd=FABS.find(x=>x.id===S.fabProject.id);
+      h+=jobRow("fab",fd.name,`${clamp(S.fabProject.progress/fd.work*100,0,100).toFixed(0)}% done${shopsBuilt.length?" · the shops wait":""}${curF?` · now: ${curF.name}`:""}`,"hands");
+    } else if(shopsBuilt.length){
+      h+=jobRow("fab","The workshops",`runs ${shopsBuilt.map(d=>d.name.toLowerCase().replace(/^the /,"")).join(", ")}${curF?` · now: ${curF.name}`:""}`,"hands");
+    }
   }
   if(S.project){
     const proj=workDef();

@@ -17,6 +17,12 @@ import { bondKey, compatibility, isMismatched, termBreakdown } from "./bonds.js"
 import { AXES } from "./ideology.js";
 import { toxLoad } from "./toxins.js";
 
+/* Solo-testing escape hatch: the allowlists below start empty, which is why
+   the Ledger "disappeared" — the gate always returned before injecting the
+   tab. With one tester, hunting uids is ceremony; flip this off (and fill
+   the allowlist) if anyone else ever gets an account. */
+const DEV_FORCE = true;
+
 const DEBUG_UIDS = [
   // "paste-your-supabase-uid-here"
 ];
@@ -120,7 +126,7 @@ async function initDebugTab() {
   let user = null;
   try { user = (await db.auth.getUser()).data.user; } catch (e) { /* not signed in */ }
   if (user) console.info("[ledger] uid:", user.id, "email:", user.email);   // so you can copy it into the allowlist
-  const ok = user && (DEBUG_UIDS.includes(user.id) || DEBUG_EMAILS.includes(user.email));
+  const ok = DEV_FORCE || (user && (DEBUG_UIDS.includes(user.id) || DEBUG_EMAILS.includes(user.email)));
   if (!ok) return;
 
   // inject the nav button and tab section — they exist only for you

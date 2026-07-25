@@ -45,7 +45,33 @@ const seasonIdx = day => Math.floor((day-1)/SEASON_LEN) % 4;
 function lockedCrops(){
   return Object.keys(CROPS).filter(id => CROPS[id].locked && !(S.crops && S.crops[id]));
 }
-// unlock a random still-locked crop (optionally filtered), returning its id or null
+/* ---- typed seed ----
+   Seeds belong to a crop now: S.seedStock = {radish: n, greens: n, ...}.
+   There is no generic seed pool. Planting spends the crop's own seed;
+   harvest returns it (see the picking window in day.js); gifts, trades,
+   and puzzle rewards hand out spreads of what the village already grows. */
+function addSeeds(id, n){
+  if(!id || !n) return;
+  S.seedStock = S.seedStock || {};
+  S.seedStock[id] = (S.seedStock[id]||0) + n;
+}
+const seedCount = id => (S.seedStock && S.seedStock[id]) || 0;
+const totalSeeds = () => Object.values(S.seedStock||{}).reduce((a,b)=>a+b,0);
+/* n seeds spread round-robin across the unlocked ANNUALS — the shape every
+   untyped grant (gift crates, traveler trades, puzzle drawers) takes now. */
+function grantSeedSpread(n){
+  const pool = Object.keys(CROPS).filter(id =>
+    !CROPS[id].perennial && (!CROPS[id].locked || (S.crops && S.crops[id])));
+  if(!pool.length) return;
+  // start from a random offset so the same crop doesn't hoover every gift
+  let i = Math.floor(Math.random()*pool.length);
+  for(let k=0;k<n;k++){ addSeeds(pool[i%pool.length], 1); i++; }
+}
+
+// unlock a random still-locked crop (optionally filtered), returning its id or null.
+// Discovery also grants starter seed — with typed seeds, an unlock you can't
+// plant is a dead gift. Annuals get two plantings' worth; perennials one
+// (cuttings are the harder thing to carry home).
 function discoverRandomCrop(filter){
   let pool = lockedCrops();
   if(filter) pool = pool.filter(filter);
@@ -53,6 +79,8 @@ function discoverRandomCrop(filter){
   const id = pool[Math.floor(Math.random()*pool.length)];
   S.crops = S.crops || {};
   S.crops[id] = true;
+  const c = CROPS[id];
+  addSeeds(id, c.perennial ? (c.seed||1) : (c.seed||1)*2);
   return id;
 }
 function discoveryLine(id, how){
@@ -117,4 +145,4 @@ function forecastUnlocked(){
 
 
 
-export { ADULT, AGES, ELDER, canRoad, canWork, dayOfSeason, discoverRandomCrop, discoveryLine, generateFallbackChildName, lockedCrops, roadReady, rollWeather, scaledWeather, season, seasonIdx, seasonNote, yearOf };
+export { ADULT, AGES, ELDER, addSeeds, canRoad, canWork, dayOfSeason, discoverRandomCrop, discoveryLine, generateFallbackChildName, grantSeedSpread, lockedCrops, roadReady, rollWeather, scaledWeather, season, seasonIdx, seasonNote, seedCount, totalSeeds, yearOf };

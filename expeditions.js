@@ -3,6 +3,7 @@ import { Cap, byId, clamp, effStat, isAre, objp, siteDef, siteName, subj, wbFloo
 import { CROPS, INJURY_PER_DAY, SITE_DEF } from "./data-economy.js";
 import { discoverRandomCrop, discoveryLine, lockedCrops, season } from "./seasons.js";
 import { addRes, foodCap } from "./defs.js";
+import { addForage, addPreserved, foodName, pantryTotal, resync } from "./larder.js";
 
 
 
@@ -52,13 +53,17 @@ function tickExpeditions(lines){
       const sf=season().forage;
       const raw=ex.party.reduce((a,pid)=>a+3+effStat(byId(pid),"wild","forage")*1.4,0)*sf;
       const got=raw*(S.larder??1)*((S.f||{}).forageBonus||1);   // paths worn by feet: the near country is known ground
-      S.res.food=clamp(S.res.food+got,0,foodCap());
+      // typed: what the near country gives depends on the season, and on
+      // whether it has rained lately (mushrooms follow the weather)
+      const kinds = addForage(Math.min(got, Math.max(0, foodCap()-pantryTotal())));
+      resync();
       S.larder=clamp((S.larder??1) - got/95, 0.12, 1);
       const names=ex.party.map(pid=>byId(pid).name).join(", ");
       const thin=(S.larder??1)<0.45;
       if(season().id==="winter") lines.push("Winter foraging. Bark, rosehips, and whatever the squirrels missed.");
       S.lastForageDay = S.day;
-      lines.push(`${names} came back from the near country with ${got.toFixed(0)} food.${thin?" The good patches are thinning. What's left needs a season to come back.":""}`);
+      const what = kinds && kinds.length ? kinds.map(foodName).join(", ") : "what they could find";
+      lines.push(`${names} came back from the near country with ${got.toFixed(0)} food — ${what}.${thin?" The good patches are thinning. What's left needs a season to come back.":""}`);
       if(lockedCrops().length && Math.random()<0.12){
         // discovery lean toward things that grow wild: perennials first if any remain
         const id = discoverRandomCrop(c=>CROPS[c].perennial) || discoverRandomCrop();
@@ -96,7 +101,12 @@ function tickExpeditions(lines){
         if(take>0.05){
           st.stock[k]=Math.max(0,st.stock[k]-take);
           if(k==="cans"){
-            S.preserved = clamp(S.preserved+take, 0, S.flags.rootCellar?300:170);
+            // salvaged tins: real canned goods, and they keep like it
+            addPreserved("beans", take*0.5, "can");
+            addPreserved("squash", take*0.3, "can");
+            addPreserved("apple", take*0.2, "can");
+            resync();
+            S.preserved = clamp(S.preserved, 0, S.flags.rootCellar?300:170);
             gotWords.push(`${take.toFixed(0)} cans of food`);
           } else {
             const actual = addRes(k, take);

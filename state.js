@@ -4,7 +4,7 @@ import { PUZ_META } from "./data-puzzles.js";
 import { AGES } from "./seasons.js";
 import { NEWCOMERS, ROSTER, VISUALS } from "./defs.js";
 import { clamp } from "./helpers.js";
-import { rollMusic, rollPersonality, seedFounderBonds } from "./bonds.js";
+import { PERSONALITIES, rollMusic, rollPersonality, seedFounderBonds } from "./bonds.js";
 import { seedIdeology } from "./ideology.js";
 
 
@@ -52,8 +52,16 @@ function newState(){
   return {
     v:7, day:1, lastTick:Date.now(),
     alloc: defaultAlloc(),
-    res:{food:58, water:50, charge:4, scrap:6, parts:0, seeds:8, meds:0, rawSeed:0, wood:10},
+    res:{food:58, water:50, charge:4, scrap:6, parts:0, meds:0, rawSeed:0, wood:10},
+    // seeds are TYPED now — per-crop stock, no generic pool. The village
+    // starts knowing radish and greens, so that's what it has seed for.
+    seedStock:{radish:6, greens:6},
     larder:1,
+    // typed food. S.res.food / S.preserved are caches of these two, resynced
+    // once a day — composition is authoritative, the totals are derived.
+    pantry:[{k:"greens", n:30, d:1},{k:"turnip", n:18, d:1},{k:"beans", n:10, d:1}],
+    jars:[],
+    macDays:{p:0, f:0}, lastRecipeDay:0, lastRainDay:-99,
     weather:"clear",
     people: ROSTER.map(freshPerson),
     sys: Object.fromEntries(SYS.map(s => [s.id, {cond: s.start ? 70+Math.floor(Math.random()*18) : 100, built: !!s.start}])),
@@ -73,7 +81,7 @@ function newState(){
     batteries: 1,   // stackable: one weak bank at start (it's already built, like turbines)
     forest: [],    // food forest: perennial plots, separate from the annual beds
     discovered: {}, // gated builds/projects found via expedition (parallel to S.crops)
-    beds: [{crop:null,growth:0,days:0,ready:false,stored:0,fertility:75,plantedDay:0},{crop:null,growth:0,days:0,ready:false,stored:0,fertility:75,plantedDay:0}],
+    beds: [{crop:null,companions:[],growth:0,days:0,ready:false,stored:0,fertility:75,plantedDay:0},{crop:null,companions:[],growth:0,days:0,ready:false,stored:0,fertility:75,plantedDay:0}],
     preserved: 0, spoilMemo: 0, winterDays: 0, oil: 0,   // pressed sunflower oil -- a seasoning, not a staple, and it takes real labor to make
     reputation: 0.55,  // HIDDEN. A slow-moving read on whether this is a good place to end up --
                         // spirits, food, and water security, smoothed over time. Nudges how often
@@ -134,7 +142,15 @@ function applyFounding(s, visualIds){
     if(fx.waterStart) s.res.water+=fx.waterStart;
     if(fx.foodStart) s.res.food=clamp(s.res.food+fx.foodStart,0,60);
     if(fx.scrapStart) s.res.scrap+=fx.scrapStart;
-    if(fx.seedsStart) s.res.seeds+=fx.seedsStart;
+    if(fx.seedsStart){
+      // typed now: spread over the annuals this village starts knowing at the
+      // moment this runs. Ordering vs cropUnlock within one visual doesn't
+      // matter anymore — cropUnlock seeds its own crops directly.
+      const known = Object.keys(CROPS).filter(id=>!CROPS[id].perennial && (!CROPS[id].locked || (s.crops&&s.crops[id])));
+      s.seedStock = s.seedStock || {};
+      let i = Math.floor(Math.random()*known.length);
+      for(let k=0;k<fx.seedsStart && known.length;k++){ const id=known[i%known.length]; s.seedStock[id]=(s.seedStock[id]||0)+1; i++; }
+    }
     if(fx.forestStart){
       // an old orchard: start with a small food forest, some of it already
       // grown apple trees from the parking-lot rows (backdated so they bear soon)
@@ -169,6 +185,8 @@ function applyFounding(s, visualIds){
       // one specific perennial known from the start, unlike cropUnlock's
       // random annuals — you know these trees because they're standing here
       s.crops = s.crops || {}; s.crops[fx.cropGrant] = true;
+      s.seedStock = s.seedStock || {};
+      s.seedStock[fx.cropGrant] = (s.seedStock[fx.cropGrant]||0) + (CROPS[fx.cropGrant].seed||1);
     }
     if(fx.flagStart){ s.flags[fx.flagStart] = true; }
     if(fx.woodStart){ s.res.wood = (s.res.wood||0) + fx.woodStart; }
@@ -184,12 +202,18 @@ function applyFounding(s, visualIds){
     }
     if(fx.cropUnlock){
       // a seed store: start already knowing a few more crops (annuals, not the
-      // slow perennials -- those you still have to find or plant into the forest)
+      // slow perennials -- those you still have to find or plant into the forest).
+      // Each unlock brings two plantings' worth of its OWN seed — same rule as
+      // discovery: with typed seed, an unlock you can't plant is a dead gift.
+      // (This also makes the fx application order safe: seedsStart may run
+      // before cropUnlock within one visual, and these crops are still seeded.)
       s.crops = s.crops || {};
+      s.seedStock = s.seedStock || {};
       const annuals = Object.keys(CROPS).filter(id=>CROPS[id].locked && !CROPS[id].perennial);
       for(let i=0;i<fx.cropUnlock && annuals.length;i++){
         const pick = annuals.splice(Math.floor(Math.random()*annuals.length),1)[0];
         s.crops[pick]=true;
+        s.seedStock[pick]=(s.seedStock[pick]||0) + (CROPS[pick].seed||1)*2;
       }
     }
     if(fx.coldStart) s.flags.coldFrames=true;
@@ -294,6 +318,28 @@ function migrate(s){
   });
   if(!s.crops) s.crops={};
   if(s.hungerDays===undefined) s.hungerDays=0;
+  if(!Array.isArray(s.pantry)){
+    // food became typed: seed the pantry from whatever the scalar held, as
+    // the plainest thing a village would actually have on the shelves
+    const n = Math.max(0, (s.res && s.res.food) || 0);
+    s.pantry = n>0 ? [{k:"greens", n:n*0.5, d:s.day||1},{k:"turnip", n:n*0.5, d:s.day||1}] : [];
+  }
+  if(!Array.isArray(s.jars)){
+    const n = Math.max(0, s.preserved || 0);
+    s.jars = n>0 ? [{k:"beans", n, m:"dry", d:s.day||1}] : [];
+  }
+  if(!s.macDays) s.macDays = {p:0, f:0};
+  if(s.lastRainDay===undefined) s.lastRainDay = -99;
+  for(const b of (s.beds||[])) if(!Array.isArray(b.companions)) b.companions = [];
+  if(!s.seedStock){
+    // typed seeds arrived: convert whatever generic pool the save had into a
+    // spread across its unlocked annuals (user is restarting anyway, but a
+    // mid-flight save shouldn't crash the planting sheet)
+    s.seedStock = {};
+    const known = Object.keys(CROPS).filter(id=>!CROPS[id].perennial && (!CROPS[id].locked || (s.crops&&s.crops[id])));
+    let n = Math.max(4, Math.round((s.res&&s.res.seeds)||0));
+    let i=0; while(n-->0 && known.length){ const id=known[i%known.length]; s.seedStock[id]=(s.seedStock[id]||0)+1; i++; }
+  }
   if(s.thirstDays===undefined) s.thirstDays=0;
   if(!s.dietLog) s.dietLog=[];
   for(const b of s.beds||[]){ if(b.fertility===undefined) b.fertility=75; if(b.plantedDay===undefined) b.plantedDay=0; }
@@ -324,13 +370,15 @@ function migrate(s){
     const moved = s.beds.filter(b=>b.crop && CROPS[b.crop] && CROPS[b.crop].perennial);
     for(const b of moved){ s.forest.push({...b}); }
     s.beds = s.beds.filter(b=>!(b.crop && CROPS[b.crop] && CROPS[b.crop].perennial));
-    if(!s.beds.length) s.beds.push({crop:null,growth:0,days:0,ready:false,stored:0,fertility:75,plantedDay:0});
+    if(!s.beds.length) s.beds.push({crop:null,companions:[],growth:0,days:0,ready:false,stored:0,fertility:75,plantedDay:0});
   }
   if(s.larder===undefined) s.larder=1;
   // practice: earned skill added later — anyone from an older save starts with none
   for(const p of s.people) if(!p.practice) p.practice={specific:{}, broad:{hands:0,green:0,care:0,wild:0}};
-  // personality: hidden chemistry added later — anyone without one rolls it now
-  for(const p of s.people) if(!p.personality) p.personality=rollPersonality();
+  // personality: hidden chemistry added later — anyone without one rolls it
+  // now. Also re-rolls anyone carrying a type the current table doesn't know
+  // (the old 3-type cycle had no D): stale chemistry is worse than fresh.
+  for(const p of s.people) if(!p.personality || !PERSONALITIES.includes(p.personality)) p.personality=rollPersonality();
   // ideology: hidden stance vector added later — seeded from stats+trait now
   for(const p of s.people) if(!p.ideology) p.ideology=seedIdeology(p);
   for(const p of s.people) if(p.toxins===undefined) p.toxins=0;
@@ -341,9 +389,10 @@ function migrate(s){
   if(s.v<5){
     // v4 -> v5: seasons, crop beds, preservation, fabrication, generations
     s.beds = Array.from({length: 1 + (s.flags.gardenBeds?1:0) + (s.flags.terraces?1:0)},
-                        ()=>({crop:null,growth:0,days:0,ready:false,stored:0,fertility:75,plantedDay:0}));
+                        ()=>({crop:null,companions:[],growth:0,days:0,ready:false,stored:0,fertility:75,plantedDay:0}));
     s.preserved = 0; s.spoilMemo = 0;
     s.fabs = {}; s.fabProject = null;
+    s.seedStock = s.seedStock || {radish:6, greens:6};
     s.births=0; s.deaths=0; s.departures=0;
     s.dietLog=[];
     for(const p of s.people){
@@ -379,7 +428,7 @@ function migrate(s){
   if(s.res.wood === undefined) s.res.wood = 0;
   // beds track garden slots, however they were gained
   while(s.beds.length < 1 + (s.flags.gardenBeds?1:0) + (s.flags.terraces?1:0))
-    s.beds.push({crop:null,growth:0,days:0,ready:false,stored:0,fertility:75,plantedDay:0});
+    s.beds.push({crop:null,companions:[],growth:0,days:0,ready:false,stored:0,fertility:75,plantedDay:0});
   // restoration metrics — absent from any pre-restoration save
   if(!s.restore) s.restore = {mycosphere:0, aquifer:0, pollinator:0, seen:false, restored:false};
   // repair: bring home anyone stranded "away" with no expedition backing them.
