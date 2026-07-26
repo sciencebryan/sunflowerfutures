@@ -2,6 +2,7 @@ import { S, freshPerson } from "./state.js";
 import { Cap, aliveName, byId, clamp, objp, pick, poss, siteDef, siteName, subj, wbFloor } from "./helpers.js";
 import { bondKey, bondOf, isMismatched, moreBothered, termBreakdown, tickBondPair } from "./bonds.js";
 import { nudgeIdeology } from "./ideology.js";
+import { addFoodFound, resync } from "./larder.js";
 import { promoteConflict } from "./mediation.js";
 import { rollStranger } from "./defs.js";
 import { canWork, grantSeedSpread } from "./seasons.js";
@@ -115,6 +116,7 @@ const EVENTS = [
         // seeds are typed now: their cart carries a spread of what grows in
         // these valleys, not a generic sack
         if(ctx.giveKind==="seeds") grantSeedSpread(ctx.giveAmt);
+        else if(ctx.giveKind==="food"){ addFoodFound("beans", ctx.giveAmt); resync(); }
         else S.res[ctx.giveKind] = (S.res[ctx.giveKind]||0) + ctx.giveAmt;
         S.neighborStanding = Math.min(5, (S.neighborStanding||0)+0.5);
         S.pending.push(`The ${ctx.wantKind} changed hands for ${ctx.giveKind}. They told some stories of their travels, and promised to come back someday.`);

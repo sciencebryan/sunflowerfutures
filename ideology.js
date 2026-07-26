@@ -9,6 +9,16 @@
      openness      +1 porous village               -1 boundedness
      temporality   +1 the long harvest (Later)     -1 this year's (Now)
      obligation    +1 duty, assignment, structure  -1 autonomy
+     wholeness     +1 the given form is off-limits  -1 the self can be remade
+
+   On the sixth axis, since it is the one that isn't obvious: it is NOT
+   "are you for or against biotech" — that would just be complexity or
+   intervention again. It asks whether the HUMAN FORM is exempt from the
+   engineering you'd apply to anything else, and it is genuinely orthogonal
+   to intervention. The revealing quadrant is restraint + adaptation: the
+   person who would leave the valley entirely alone and change THEMSELVES
+   instead, because the self isn't privileged — if something has to give,
+   it should be you and not the ecosystem. No other axis can hold that.
 
    Drift is deliberately slow: a stance should take seasons to move and
    years to cross a band. Three years in the food forest is an argument;
@@ -19,27 +29,32 @@ import { clamp, pick } from "./helpers.js";
 import { JOB_PRACTICE } from "./data-economy.js";
 import { setIdeologyTermFn } from "./bonds.js";
 
-const AXES = ["intervention", "complexity", "openness", "temporality", "obligation"];
+const AXES = ["intervention", "complexity", "openness", "temporality", "obligation", "wholeness"];
 
 /* --- seeding ---
    Initial vector from base stats and trait, so ideology feels continuous
    with who they already were, plus per-person jitter so two Cautious
    tinkerers aren't clones. All amounts are tuning knobs. */
 const TRAIT_SEED = {
-  Tinkerer:      { intervention: +0.20, complexity: +0.25 },
+  // a tinkerer sees a body the way they see an engine — something with a
+  // cover you can take off
+  Tinkerer:      { intervention: +0.20, complexity: +0.25, wholeness: -0.20 },
   "Green-thumb": { intervention: +0.10, temporality: +0.15 },
-  Restless:      { temporality: -0.25, obligation: -0.25, openness: +0.10 },
-  Steady:        { temporality: +0.20, obligation: +0.15 },
-  Cautious:      { intervention: -0.25, openness: -0.15 },
-  Mender:        { openness: +0.15, obligation: +0.10 },
-  Weathered:     { complexity: -0.15, temporality: +0.10 }
+  Restless:      { temporality: -0.25, obligation: -0.25, openness: +0.10, wholeness: -0.10 },
+  Steady:        { temporality: +0.20, obligation: +0.15, wholeness: +0.10 },
+  Cautious:      { intervention: -0.25, openness: -0.15, wholeness: +0.20 },
+  // a mender's whole practice is returning a body to the shape it should
+  // have been in, which is an argument that there IS such a shape
+  Mender:        { openness: +0.15, obligation: +0.10, wholeness: +0.25 },
+  Weathered:     { complexity: -0.15, temporality: +0.10, wholeness: +0.15 }
 };
 const STAT_SEED = p => ({
   intervention: (p.hands - 2) * 0.10,
   complexity:   (p.hands - 2) * 0.12 - (p.wild - 2) * 0.06,
   openness:     (p.wild - 2) * 0.08 + (p.care - 2) * 0.08,
   temporality:  (p.green - 2) * 0.10,
-  obligation:   (p.care - 2) * 0.06
+  obligation:   (p.care - 2) * 0.06,
+  wholeness:    (p.care - 2) * 0.07 - (p.hands - 2) * 0.06
 });
 
 /* --- authored overrides ---
@@ -57,7 +72,13 @@ const IDEO_OVERRIDES = {
   din: { openness: +0.45 },
   // june "likes the people here almost as much as she likes the garden" —
   // a garden lifer plants for decades she won't see.
-  june: { temporality: +0.50 }
+  june: { temporality: +0.50 },
+  // yusuf checks ladders twice. A body is the one thing he will not
+  // improvise with.
+  yusuf: { wholeness: +0.55 },
+  // bec sleeps outside by choice — the argument that a person is something
+  // you fit to the world, not the other way round.
+  bec: { wholeness: -0.45 }
 };
 
 function seedIdeology(p) {
@@ -106,9 +127,10 @@ setIdeologyTermFn(ideologyTerm);
 // job → axis nudges, keyed off the broad category JOB_PRACTICE already
 // assigns every job. Two derived effects off one input.
 const AXIS_BY_BROAD = {
-  hands: { complexity: +0.0005, intervention: +0.0003 },
+  hands: { complexity: +0.0005, intervention: +0.0003, wholeness: -0.0003 },
   green: { temporality: +0.0005, intervention: +0.0003 },
-  care:  { obligation: +0.0005, openness: +0.0003 },
+  // tending bodies daily is a slow argument that bodies have a proper shape
+  care:  { obligation: +0.0005, openness: +0.0003, wholeness: +0.0004 },
   wild:  { openness: +0.0005, complexity: -0.0003 }
 };
 
@@ -158,6 +180,12 @@ const AXIS_LINES = {
          n => `${n} said freedom to drift is how the water tank goes unminded.`],
     down: [n => `${n} said nobody here should be told where to stand. People find their work, or it finds them.`,
            n => `${n} has been quietly ignoring the duty list, and doing good work anyway, which is the argument.`]
+  },
+  wholeness: {
+    up: [n => `${n} said there's a shape a person is meant to be, and that we've already lost enough without going after that too.`,
+         n => `${n} argued that the body is the one thing left that nobody engineered, and it should stay that way.`],
+    down: [n => `${n} said if the valley has to bend or we do, it should be us. "We're the ones who can choose."`,
+           n => `${n} doesn't see why a person should be the one thing we're forbidden to improve.`]
   }
 };
 

@@ -52,15 +52,18 @@ function newState(){
   return {
     v:7, day:1, lastTick:Date.now(),
     alloc: defaultAlloc(),
-    res:{food:58, water:50, charge:4, scrap:6, parts:0, meds:0, rawSeed:0, wood:10},
+    res:{food:0, water:50, charge:4, scrap:6, parts:0, meds:0, rawSeed:0, wood:10},
     // seeds are TYPED now — per-crop stock, no generic pool. The village
     // starts knowing radish and greens, so that's what it has seed for.
     seedStock:{radish:6, greens:6},
     larder:1,
     // typed food. S.res.food / S.preserved are caches of these two, resynced
     // once a day — composition is authoritative, the totals are derived.
-    pantry:[{k:"greens", n:30, d:1},{k:"turnip", n:18, d:1},{k:"beans", n:10, d:1}],
-    jars:[],
+    // What a village actually starts with: tins found in the ruins. Nothing
+    // fresh, because nothing has been grown yet — and nothing home-preserved,
+    // because none of the racks, crocks or jars exist on day one.
+    pantry:[],
+    jars:[{k:"potatoes", n:22, m:"can", d:1},{k:"beans", n:20, m:"can", d:1},{k:"peas", n:16, m:"can", d:1}],
     macDays:{p:0, f:0}, lastRecipeDay:0, lastRainDay:-99,
     weather:"clear",
     people: ROSTER.map(freshPerson),
@@ -78,11 +81,14 @@ function newState(){
     founding: {visuals:[]}, f:{}, waterCap:80, hungerDays:0, thirstDays:0,
     turbines: 1,   // stackable: one weak turbine at start, raise more over time
     solarPanels: 0, // solar isn't built at start -- set to 1 the moment it's first raised
-    batteries: 1,   // stackable: one weak bank at start (it's already built, like turbines)
+    batteries: 1,   // stackable: one bank at start (already built, like turbines)
+    // per-pack capacity — the bank's real state. One pack, in good shape but
+    // not new; it fades from here and nobody can repair it. See tickCells().
+    cells: [{cap:0.90, since:1}],
     forest: [],    // food forest: perennial plots, separate from the annual beds
     discovered: {}, // gated builds/projects found via expedition (parallel to S.crops)
     beds: [{crop:null,companions:[],growth:0,days:0,ready:false,stored:0,fertility:75,plantedDay:0},{crop:null,companions:[],growth:0,days:0,ready:false,stored:0,fertility:75,plantedDay:0}],
-    preserved: 0, spoilMemo: 0, winterDays: 0, oil: 0,   // pressed sunflower oil -- a seasoning, not a staple, and it takes real labor to make
+    preserved: 58, spoilMemo: 0, winterDays: 0, oil: 0,   // pressed sunflower oil -- a seasoning, not a staple, and it takes real labor to make
     reputation: 0.55,  // HIDDEN. A slow-moving read on whether this is a good place to end up --
                         // spirits, food, and water security, smoothed over time. Nudges how often
                         // strangers find the road here. Never shown to the player.
@@ -216,6 +222,13 @@ function applyFounding(s, visualIds){
         s.seedStock[pick]=(s.seedStock[pick]||0) + (CROPS[pick].seed||1)*2;
       }
     }
+    if(fx.cellStart){
+      // somebody's garage bank: packs in genuinely good order, because whoever
+      // wired them knew to keep them out of the heat and off the floor
+      s.cells = s.cells || [];
+      for(let i=0;i<fx.cellStart;i++) s.cells.push({cap:0.78+Math.random()*0.14, since:1});
+      s.batteries = s.cells.length;
+    }
     if(fx.coldStart) s.flags.coldFrames=true;
     // accumulating sim modifiers
     if(fx.drawReduce)   f.drawReduce=(f.drawReduce||0)+fx.drawReduce;
@@ -328,7 +341,27 @@ function migrate(s){
     const n = Math.max(0, s.preserved || 0);
     s.jars = n>0 ? [{k:"beans", n, m:"dry", d:s.day||1}] : [];
   }
+  if(!Array.isArray(s.cells)){
+    // batteries stopped being a maintained system: give existing saves packs
+    // matching however many banks they'd wired in, aged by their condition
+    const n = Math.max(1, s.batteries||1);
+    const from = s.sys && s.sys.battery ? clamp(s.sys.battery.cond/100, 0.2, 1) : 0.9;
+    s.cells = Array.from({length:n}, ()=>({cap:from, since:s.day||1}));
+    if(s.sys && s.sys.battery) s.sys.battery.cond = 100;   // cond is inert for the bank now
+  }
   if(!s.macDays) s.macDays = {p:0, f:0};
+  // the sixth axis arrived after these people did — seed it from who they
+  // already are rather than leaving it undefined and poisoning the dot product
+  for(const p of (s.people||[])){
+    if(p.ideology && p.ideology.wholeness === undefined){
+      p.ideology.wholeness = clamp((p.care-2)*0.07 - (p.hands-2)*0.06 + (Math.random()*0.3-0.15), -1, 1);
+      if(p._ideoBand) p._ideoBand.wholeness = 0;
+    }
+  }
+  // sub-unit entries left by the old fractional salvage split showed up as
+  // "0 apples" and, being canned, would have sat there for years
+  for(const key of ["pantry","jars"])
+    if(Array.isArray(s[key])) s[key] = s[key].filter(e=>e && e.n >= 0.5);
   if(s.lastRainDay===undefined) s.lastRainDay = -99;
   for(const b of (s.beds||[])) if(!Array.isArray(b.companions)) b.companions = [];
   if(!s.seedStock){

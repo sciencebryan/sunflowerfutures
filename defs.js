@@ -249,6 +249,8 @@ const VISUALS = [
    fx:{scrapTrickle:0.55, contamStart:30, journal:"landfill", ideology:{intervention:+0.15}}},
   {id:"chestnuts", label:"chestnuts that somehow escaped the blight",
    fx:{cropGrant:"chestnut", forestStart:2, journal:"chestnuts", ideology:{temporality:+0.30}}},
+  {id:"powerwall", label:"a garage wall of mismatched battery packs, wired together by someone who knew what they were doing",
+   fx:{cellStart:3, scrapStart:4, journal:"powerwall", ideology:{complexity:+0.15}}},
   {id:"cellardoor",label:"a cellar door in the hillside, breathing cold air",
    fx:{flagStart:"rootCellar", journal:"cellar", ideology:{temporality:+0.15}}}
 ];

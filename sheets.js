@@ -1,8 +1,7 @@
 import { $ } from "./dom.js";
 import { TRAITS, addRestore, built, gardenSlots } from "./defs.js";
 import { CROPS, FABS, PRESERVE, RESTORE_IN, SEASONS, SEASON_LEN, SITE_DEF, SYS } from "./data-economy.js";
-import { FOOD_COMP, MAX_COMPANIONS } from "./data-food.js";
-import { SEED_COMPANION, SEED_RIVAL } from "./data-puzzles.js";
+import { MAX_COMPANIONS, famOf, famPair, pairingNote } from "./data-food.js";
 import { S } from "./state.js";
 import { SCALES, canAfford, celebDef, costOf, dayOfYear, holdCelebration, makeTradition } from "./celebrations.js";
 import { TRADITION_NAMES } from "./data-celebrations.js";
@@ -122,25 +121,26 @@ function openSowSheet(i, isForest){
      not a hidden system. */
   if(curCrop && !curCrop.perennial && !isForest){
     const mates = bed.companions || [];
-    const catOf = id => FOOD_COMP[id] || null;
-    const pairIn = (list,a,b) => list.some(([x,y]) => (x===a&&y===b)||(x===b&&y===a));
-    const prim = catOf(bed.crop);
     h += `<div class="sub" style="margin:10px 0 4px">This bed holds <b>${curCrop.name.toLowerCase()}</b>${mates.length?`, interplanted with ${mates.map(c=>CROPS[c].name.toLowerCase()).join(" and ")}`:""}.
       ${bed.ready?"It's ready to pick — too late to plant anything else in with it.":`Up to ${MAX_COMPANIONS} things can share the ground with it.`}</div>`;
     if(!bed.ready && mates.length < MAX_COMPANIONS){
       for(const [id,c] of Object.entries(CROPS)){
         if(c.perennial || c.locked && !(S.crops&&S.crops[id])) continue;
         if(id===bed.crop || mates.includes(id)) continue;
-        if(!catOf(id)) continue;
+        if(!famOf(id)) continue;
         const have = (S.seedStock&&S.seedStock[id])||0;
         const need = Math.max(1, Math.round(c.seed*0.5));
         const inSeason = c.sow.includes(sn.id) || S.flags.coldFrames;
-        const good = pairIn(SEED_COMPANION, prim, catOf(id)) || mates.some(m=>pairIn(SEED_COMPANION, catOf(m), catOf(id)));
-        const bad  = pairIn(SEED_RIVAL, prim, catOf(id))     || mates.some(m=>pairIn(SEED_RIVAL, catOf(m), catOf(id)));
+        // real plant-family interaction, with the reason said plainly — this is
+        // knowledge a gardener would simply have, so it isn't hidden
+        const vs = [bed.crop, ...mates].map(o => famPair(famOf(o), famOf(id)));
+        const worst = Math.min(...vs), best = Math.max(...vs);
         const ok = have>=need && inSeason;
-        const hint = good ? '<span style="color:var(--leaf)">grows well alongside</span>'
-                   : bad  ? '<span style="color:var(--rust)">the two of them fight</span>'
-                   : "no strong feelings either way";
+        const against = worst<0 ? [bed.crop,...mates][vs.indexOf(worst)] : [bed.crop,...mates][vs.indexOf(best)];
+        const note = pairingNote(against, id);
+        const hint = worst<0 ? `<span style="color:var(--rust)">${note}</span>`
+                   : best>0  ? `<span style="color:var(--leaf)">${note}</span>`
+                   : note;
         h += `<button class="opt ${ok?"":"dim"}" data-mate="${id}" ${ok?"":"disabled"}>
           <span><span class="l1">${c.name}</span><div class="l2">${hint}${!inSeason?" · not this season":have<need?` · no ${c.name.toLowerCase()} seed`:""}</div></span>
           <span class="r">${need} seed (have ${have})</span></button>`;
@@ -150,6 +150,13 @@ function openSowSheet(i, isForest){
       h += `<button class="opt" data-mate="__clearmates"><span class="l1">Pull the interplanting</span><span class="r">keeps the ${curCrop.name.toLowerCase()}</span></button>`;
     }
   }
+
+  // ---- 7 ----
+  // An occupied bed does NOT show the plant-from-scratch list. That list's
+  // handler just sets bed.crop, so with a crop already growing it silently
+  // replaced it — indistinguishable, on screen, from choosing an interplant.
+  // Clearing is now an explicit, separate, confirmed step.
+  const occupied = !!(curCrop && !curCrop.perennial && !isForest);
 
   // an established planting locks the plot -- no accidental overwrite of years of growth
   if(curCrop && curCrop.perennial){
@@ -170,6 +177,7 @@ function openSowSheet(i, isForest){
 
 
   for(const [id,c] of Object.entries(CROPS)){
+    if(occupied) break;              // see (7): occupied beds offer interplanting, not replacement
     if(c.locked && !(S.crops && S.crops[id])) continue;
     if(isForest !== !!c.perennial) continue;   // forest shows perennials; beds show annuals
     const inWindow = c.sowWindow && c.sowWindow[sn.id]
@@ -210,7 +218,8 @@ function openSowSheet(i, isForest){
       <div class="l2">Goldenrod, milkweed, aster, wild bergamot — gathered from the roadsides. No food for us to harvest, but the flowers bring pollinators, and our gardens produce more because of it.</div></span>
       <span class="r">gathered seed<br>gives no food</span></button>`;
   }
-  if(bed.crop) h+=`<button class="opt" data-crop="__clear"><span class="l1">${isForest?"Dig it out":"Turn it under"}</span><span class="r">start again</span></button>`;
+  if(bed.crop) h+=`<button class="opt" data-crop="__clear"><span class="l1">${isForest?"Dig it out":"Turn it under"}</span>
+    <span class="r">${occupied?"clears the bed to plant<br>something else":"start again"}</span></button>`;
   openSheet(h);
   $("sheet").querySelectorAll("[data-mate]").forEach(b=>{
     b.onclick=()=>{
@@ -233,6 +242,11 @@ function openSowSheet(i, isForest){
   $("sheet").querySelectorAll("[data-crop]").forEach(b=>{
     b.onclick=()=>{
       const id=b.dataset.crop;
+      if(id==="__clear" && bed.crop && !bed.ready){
+        const nm = (CROPS[bed.crop]||{name:"it"}).name.toLowerCase();
+        const held = (S.seedStock&&S.seedStock[bed.crop])||0;
+        if(!confirm(`Turn under the ${nm}? Everything grown here so far is lost, and the seed does not come back.${held?"":`\n\nThere is no ${nm} seed left in store — a ranging or salvage party may turn some up, but nothing else will.`}`)) return;
+      }
       if(id==="__clear"){ bed.crop=null; bed.companions=[]; bed.growth=0; bed.days=0; bed.ready=false; bed.stored=0; bed.matured=false; bed.lastHarvestYear=undefined; bed.lastPickDay=undefined; }
       else if(id==="__meadow"){
         // a meadow is a standing plot that yields no food; it's marked so the growth
@@ -286,8 +300,12 @@ function openPersonSheet(pid){
   const curCare=S.people.find(x=>x.job==="care"&&x.id!==p.id);
   h+=jobRow("care","The sickbed",`${laidup} laid up${curCare?` · now: ${curCare.name}`:""}`,"care");
   if(Object.values(PRESERVE).some(m=>S.flags[m.flag])){
-    const curP=S.people.find(x=>x.job==="preserve"&&x.id!==p.id);
-    h+=jobRow("preserve","Preserving food",`${S.preserved.toFixed(0)} kept${curP?` · now: ${curP.name}`:""}`,"care");
+    // nothing to preserve WITH until at least one method is built — the job
+    // used to be offerable with no racks, crocks or jars in existence
+    if(S.flags.dryRacks || S.flags.crocks || S.flags.canning){
+      const curP=S.people.find(x=>x.job==="preserve"&&x.id!==p.id);
+      h+=jobRow("preserve","Preserving food",`${S.preserved.toFixed(0)} kept${curP?` · now: ${curP.name}`:""}`,"care");
+    }
   }
   if(S.flags.oilPress){
     const curPr=S.people.find(x=>x.job==="press"&&x.id!==p.id);
@@ -311,6 +329,7 @@ function openPersonSheet(pid){
     h+=jobRow("project",workName(),`${clamp(S.project.progress/proj.work*100,0,100).toFixed(0)}% done${curW?` · now: ${curW.name}`:""}`,"hands");
   }
   for(const def of SYS){
+    if(def.noRepair) continue;   // a bank can't be maintained; see tickCells()
     if(!built(def.id)) continue;
     const cur=S.people.find(x=>x.job===def.id && x.id!==p.id);
     h+=jobRow(def.id,def.name,`${S.sys[def.id].cond.toFixed(0)}%${cur?` · now: ${cur.name}`:""}`,"hands");

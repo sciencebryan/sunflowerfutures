@@ -7,9 +7,10 @@
                methods actually work on it.
    RECIPES     real dishes, fired at the hearth when the larder happens to
                hold the ingredients. Flavor with a small mechanical kick.
-   FOOD_COMP   which puzzle-frame companion category each crop belongs to,
-               so the seed-frame minigame and the garden beds teach the same
-               thing (see SEED_COMPANION / SEED_RIVAL in data-puzzles.js).
+   CROP_FAM    which real plant family each crop belongs to, and FAM_PAIR,
+               what happens when two families share a bed. Deliberately NOT
+               shared with the seed puzzle any more — that puzzle is free to
+               be an unrealistic logic puzzle; a bed should behave like a bed.
 
    ---- on macros ----
    `mac` is {c, f, p} — the share of this food's FOOD VALUE coming from
@@ -46,11 +47,23 @@
 
 const FOOD_DATA = {
   // ---- garden annuals ----
-  radish:    {name:"radishes",      dk:0.055, mac:{c:0.86,f:0.03,p:0.11}, pres:["ferment"],                  tags:["veg","root"]},
+  radish:    {name:"radishes",      dk:0.055, mac:{c:0.86,f:0.03,p:0.11}, pres:["ferment","dry"],            tags:["veg","root","brassica"]},
   greens:    {name:"greens",        dk:0.130, mac:{c:0.62,f:0.10,p:0.28}, pres:["ferment","dry"],            tags:["veg","leaf"]},
-  turnip:    {name:"turnips",       dk:0.022, mac:{c:0.84,f:0.03,p:0.13}, pres:["ferment","dry","can"],      tags:["veg","root"]},
+  turnip:    {name:"turnips",       dk:0.022, mac:{c:0.84,f:0.03,p:0.13}, pres:["ferment","dry","can"],      tags:["veg","root","brassica"]},
   potatoes:  {name:"potatoes",      dk:0.014, mac:{c:0.89,f:0.01,p:0.10}, pres:["dry","can"],                tags:["veg","root","staple"]},
-  squash:    {name:"squash",        dk:0.008, mac:{c:0.89,f:0.03,p:0.08}, pres:["dry","can","ferment"],      tags:["veg","staple"]},
+  // summer squash keeps about a week; winter squash keeps until spring. That
+  // difference is the entire reason they're two crops now.
+  summersquash:{name:"summer squash", dk:0.090, mac:{c:0.62,f:0.14,p:0.24}, pres:["ferment","can","dry"],    tags:["veg"]},
+  wintersquash:{name:"winter squash", dk:0.008, mac:{c:0.89,f:0.02,p:0.09}, pres:["dry","can"],              tags:["veg","staple"]},
+  // cucumbers into the crocks is what "pickles" actually means
+  cucumber:  {name:"cucumbers",     dk:0.100, mac:{c:0.80,f:0.06,p:0.14}, pres:["ferment","can"],            tags:["veg"]},
+  tomato:    {name:"tomatoes",      dk:0.110, mac:{c:0.74,f:0.09,p:0.17}, pres:["can","dry"],                tags:["veg","nightshade"]},
+  // the cultivated leaves. Spinach and tatsoi carry a genuinely high protein
+  // SHARE — they're thin food, but what's in them is unusually good.
+  spinach:   {name:"spinach",       dk:0.150, mac:{c:0.49,f:0.12,p:0.39}, pres:["dry","can","ferment"],      tags:["veg","leaf"]},
+  tatsoi:    {name:"tatsoi",        dk:0.150, mac:{c:0.50,f:0.12,p:0.38}, pres:["ferment","dry"],            tags:["veg","leaf","brassica"]},
+  kale:      {name:"kale",          dk:0.080, mac:{c:0.58,f:0.13,p:0.29}, pres:["dry","ferment","can"],      tags:["veg","leaf","brassica"]},
+  cabbage:   {name:"cabbage",       dk:0.020, mac:{c:0.79,f:0.03,p:0.18}, pres:["ferment","dry","can"],      tags:["veg","leaf","brassica"]},
   beans:     {name:"beans",         dk:0.006, mac:{c:0.68,f:0.04,p:0.28}, pres:["dry","can","ferment"],      tags:["legume","protein","staple"]},
   peas:      {name:"peas",          dk:0.030, mac:{c:0.70,f:0.04,p:0.26}, pres:["dry","can","ferment"],      tags:["legume","protein"]},
   grain:     {name:"grain",         dk:0.004, mac:{c:0.83,f:0.04,p:0.13}, pres:["dry"],                      tags:["grain","staple"]},
@@ -71,7 +84,7 @@ const FOOD_DATA = {
   oakhickory:{name:"nuts",          dk:0.010, mac:{c:0.30,f:0.60,p:0.10}, pres:["dry"],                      tags:["nut","fat"]},
 
   // ---- the tanks ----
-  fish:      {name:"fish",          dk:0.300, mac:{c:0.00,f:0.35,p:0.65}, pres:["dry","ferment"],            tags:["fish","protein"]},
+  fish:      {name:"fish",          dk:0.300, mac:{c:0.00,f:0.35,p:0.65}, pres:["dry","ferment","can"],      tags:["fish","protein"]},
 
   // ---- what the near country gives (typed foraging) ----
   // season-gated below in FORAGE_TABLE; these are the goods themselves
@@ -130,7 +143,7 @@ const PRES_METHOD_OF = {drying:"dry", fermenting:"ferment", canning:"can"};
    macro, which is how a deficiency actually gets solved on purpose rather
    than by luck. */
 const RECIPES = [
-  {id:"succotash", name:"Succotash", needs:["beans","squash",{tag:"grain"}], takes:2.5, wb:3.5, macFix:"p",
+  {id:"succotash", name:"Succotash", needs:["beans","wintersquash",{tag:"grain"}], takes:2.5, wb:3.5, macFix:"p",
    line:"Beans, squash, and grain in one pot — the three of them grow together and it turns out they cook together too."},
   {id:"chowder", name:"Fish chowder", needs:["fish","turnip",{tag:"leaf"}], takes:2.5, wb:3.5, macFix:"p",
    line:"Fish chowder, thick with turnip, and everyone went back for more than they admitted to."},
@@ -154,12 +167,21 @@ const RECIPES = [
    line:"Persimmon pudding, dark and dense, made from the ones the frost had got to first."},
   {id:"mushroomsupper", name:"Mushrooms and greens", needs:[{tag:"mushroom"},{tag:"leaf"}], takes:1.5, wb:3, macFix:"p",
    line:"The mushrooms went in with the greens and the whole commons smelled like the forest floor."},
-  {id:"fruitleather", name:"Fruit leather", needs:[{tag:"fruit"}], takes:1.5, wb:1.5,
+  // needsFlag: the dish names equipment, so the equipment has to exist. Both
+  // of these used to fire in villages with no racks and no crocks.
+  {id:"fruitleather", name:"Fruit leather", needs:[{tag:"fruit"}], takes:1.5, wb:1.5, needsFlag:"dryRacks",
    line:"Fruit boiled down and spread thin on the racks to dry. Something sweet to find in a pocket in February."},
   {id:"nutbutter", name:"Pounded nuts", needs:[{tag:"nut"}], takes:1.5, wb:2, macFix:"f",
    line:"Nuts pounded to a paste and spread on whatever there was. Half the village has an opinion on how fine to pound them."},
-  {id:"kraut", name:"Turnip kraut", needs:["turnip"], takes:1.5, wb:1.5,
-   line:"Turnip salted into the crocks. It'll be sour in a month and welcome in four."}
+  {id:"kraut", name:"Kraut", needs:[{tag:"brassica"}], takes:1.5, wb:1.5, needsFlag:"crocks",
+   line:"Salted down into the crocks by the handful. It'll be sour in a month and welcome in four."},
+  // cucumbers in the crocks — the thing the dinner line kept claiming existed
+  {id:"pickles", name:"Pickles", needs:["cucumber"], takes:1.5, wb:2, needsFlag:"crocks",
+   line:"Cucumbers into the crocks with salt and whatever was growing near the door. Pickles by midwinter."},
+  {id:"sundried", name:"Dried tomatoes", needs:["tomato"], takes:1.5, wb:2, needsFlag:"dryRacks",
+   line:"Tomatoes halved and laid out on the racks until they went dark and sweet and kept forever."},
+  {id:"squashsoup", name:"Squash soup", needs:["wintersquash",{tag:"leaf"}], takes:2, wb:3,
+   line:"Winter squash cooked down to a thick soup, with greens torn in at the end. It filled the room with steam."}
 ];
 
 /* ---- macro thresholds ----
@@ -213,43 +235,93 @@ const MAC_FLOOR_MIN = 46;     // and how low it ever goes
    ideology band-crossing lines. Never a number, never a warning box. */
 const MAC_LINES = {
   p: {
-    onset:["Everyone is eating, and everyone is tired. It's been a long stretch of the same thin meals.",
-           "Somebody said out loud what everyone had noticed: nobody's got any strength in them lately."],
-    relief:["There was meat of some kind on the table, and you could see it in people an hour later.",
-            "A proper meal with something solid in it, and the whole room felt different for it."]
+    onset:["It's been weeks of nothing but bulk — roots and grain and not one thing with any substance in it. People are getting through the days and no further.",
+           "Somebody said it plainly at supper: we are eating plenty and we are not eating well. Nothing lately has had anything in it to build on."],
+    relief:["There was something solid on the table — proper food, not just filling. You could see it in people by evening.",
+            "A meal with real substance in it for once, and the difference showed within the hour."]
   },
   f: {
-    onset:["The food goes down and doesn't stay with anyone. Everything lately has been lean.",
-           "People are eating their fill and getting up hungry, which is its own kind of tiring."],
-    relief:["Something rich, finally. People ate less of it and felt fuller than they had in weeks.",
-            "There was fat in the pan tonight, and it made everything else taste like a meal."]
+    onset:["Everything lately has been lean. People finish a full plate and are hungry again an hour later, which wears on a person worse than going short.",
+           "Nothing on the table has had any richness to it in weeks. You can eat your fill of it and still feel like you've missed a meal."],
+    relief:["Something rich, at last. People ate less of it than usual and were satisfied for the first time in weeks.",
+            "There was fat in the pan tonight. It carried everyone through to morning in a way the last month hasn't."]
   }
 };
 
-/* ---- companion categories ----
-   The seed-frame puzzle already teaches a companion/rival grid over five
-   abstract seed types. Real crops map onto those same types, so solving
-   the frame and planting a bed are the same knowledge — which was the
-   whole point of building the puzzle's companion data in the first place.
-   Anything unlisted has no companion behavior (perennials, mostly:
-   a tree is not an intercrop). */
-const FOOD_COMP = {
-  beans:"bean", peas:"bean",
-  grain:"corn", amaranth:"corn", sunflower:"corn",
-  squash:"squash",
-  radish:"root", turnip:"root", potatoes:"root",
-  greens:"herb",
-  strawberry:"bramble", raspberry:"bramble", blueberry:"bramble"
+/* ---- companion planting ----
+   REBUILT on real plant families. This deliberately no longer shares data
+   with the seed-frame puzzle: that puzzle's five abstract seed types are a
+   logic puzzle and are free to stay unrealistic, while a garden bed should
+   behave the way a garden actually does. Forcing real crops into the
+   puzzle's categories is what produced the wrong answers — greens reading
+   as a rival to beans, sunflowers reading as a good neighbour.
+
+   What's encoded, all of it documented practice:
+     · legumes fix nitrogen, so they help almost every heavy feeder — this
+       is the one companion effect big enough to really feel, and it shows
+       up as FERTILITY at harvest rather than as yield, because that's the
+       actual mechanism.
+     · Three Sisters falls out of the above for free: beans + grain +
+       squash all read as mutual companions without a special case.
+     · same family next to itself concentrates its own pests and draws the
+       same nutrients — brassica beside brassica, nightshade beside
+       nightshade. Potato and tomato share blight, which is the classic one.
+     · brassicas (radish especially) beside cucurbits is a real, commonly
+       used pairing — radish is planted to draw cucumber beetles off.
+     · sunflowers are allelopathic: they release compounds that suppress
+       their neighbours. They are a bad companion to essentially everything,
+       which is the opposite of what the old puzzle-derived table said. */
+const CROP_FAM = {
+  radish:"brassica", turnip:"brassica", tatsoi:"brassica", kale:"brassica", cabbage:"brassica",
+  beans:"legume", peas:"legume",
+  summersquash:"cucurbit", wintersquash:"cucurbit", cucumber:"cucurbit",
+  tomato:"nightshade", potatoes:"nightshade",
+  grain:"grass",
+  amaranth:"amaranth", spinach:"amaranth",
+  sunflower:"aster",
+  greens:"leafy"
 };
-/* What a companion or a rival is actually worth in a bed. Companion
-   planting is real and really modest — it is not a doubling, and anyone
-   who tells you otherwise is selling seed. Nitrogen from a legume is the
-   one effect big enough to feel, and it shows up as fertility, not yield. */
+/* +1 companion, -1 rival, absent = no strong interaction. Keys are the two
+   family names sorted and joined, so lookup is order-free. */
+const FAM_PAIR = {
+  "brassica|legume": +1, "grass|legume": +1, "cucurbit|legume": +1,
+  "legume|nightshade": +1, "amaranth|legume": +1, "leafy|legume": +1,
+  "brassica|cucurbit": +1,
+  "amaranth|brassica": +1, "cucurbit|leafy": +1,
+  "brassica|brassica": -1, "nightshade|nightshade": -1,
+  "brassica|nightshade": -1, "cucurbit|nightshade": -1, "grass|grass": -1,
+  "aster|brassica": -1, "aster|legume": -1, "aster|cucurbit": -1,
+  "aster|nightshade": -1, "aster|grass": -1, "aster|amaranth": -1,
+  "aster|leafy": -1, "aster|aster": -1
+};
+const famOf = id => CROP_FAM[id] || null;
+function famPair(a, b){
+  if(!a || !b) return 0;
+  return FAM_PAIR[[a,b].sort().join("|")] || 0;
+}
+/* Plain-language reason, for the planting screen — this is knowledge a
+   gardener would simply have, so it's shown, not hidden. */
+function pairingNote(primaryId, mateId){
+  const a = famOf(primaryId), b = famOf(mateId), v = famPair(a,b);
+  if(v > 0){
+    if(a==="legume" || b==="legume") return "feeds the soil for it";
+    if((a==="brassica"&&b==="cucurbit")||(a==="cucurbit"&&b==="brassica")) return "draws the beetles off";
+    return "grows well alongside";
+  }
+  if(v < 0){
+    if(a===b && a==="nightshade") return "shares the same blight";
+    if(a===b) return "same family — pests and hunger double up";
+    if(a==="aster"||b==="aster") return "sunflowers poison the ground around them";
+    return "the two of them fight";
+  }
+  return "no strong feelings either way";
+}
+
 const COMP_YIELD = 0.12;    // per satisfied companion, on the bed's yield
 const RIVAL_YIELD = -0.15;  // per rival pairing
 const COMP_FERT = 6;        // extra fertility at harvest per legume companion
 const MAX_COMPANIONS = 2;   // a bed holds a primary plus this many
 
-export { COMP_FERT, COMP_YIELD, FOOD_COMP, FOOD_DATA, FORAGE_RAIN_DAYS, FORAGE_TABLE,
+export { COMP_FERT, COMP_YIELD, CROP_FAM, FAM_PAIR, famOf, famPair, pairingNote, FOOD_DATA, FORAGE_RAIN_DAYS, FORAGE_TABLE,
          MAC_FLOOR_MIN, MAC_FLOOR_RATE, MAC_FLOOR_START, MAC_CEIL, MAC_CEIL_AT, MAC_DRAG, MAC_DRAG_CAP, MAC_GRACE, MAC_LINES, MAC_MIN, MAC_RECOVER,
          MAX_COMPANIONS, PRES_KEEP, PRES_METHOD_OF, RECIPES, RIVAL_YIELD };

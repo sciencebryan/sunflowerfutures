@@ -114,6 +114,8 @@ const FV={
              "Burrs underfoot all through the autumn. Four billion of these trees died and these ones didn't."],
   cellar:["The cellar breathes cold air out of the hillside all summer, the same as it always has.",
           "Went down into the cellar at noon and came back up shivering."],
+  powerwall:["The bank room ticks and hums as the packs balance themselves overnight.",
+             "Whoever wired that wall labelled every pack, in pencil, with the date they pulled it. Somebody was going to come back for these."],
   fireweed:["The burn scar was pink to the horizon with fireweed.",
             "Fireweed all up the burn. It only grows where something went badly first."]
 };

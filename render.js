@@ -4,13 +4,13 @@ import { $ } from "./dom.js";
 import { SKILL_INFO, TRAITS, built, decayOf, isVisible, waterCapEff } from "./defs.js";
 import { eventDef, eventView, exWhere } from "./events.js";
 import { CROPS, FABS, FAB_RATE, FOREST_PLOT_COST, MAX_FOREST_PLOTS, POWER_DEMANDS, PRACTICE_SPECIFIC_CAP, PRESERVE, PROJECTS, RESTORE_GATE, RESTORE_HIGH, RESTORE_LOW, SEASONS, SEASON_LEN, SITE_DEF, STACKABLE, SYS, WATER_DEMANDS } from "./data-economy.js";
-import { Cap, byId, clamp, eff, effStat, isAre, pick, poss, practiceOf, siteName, siteRemainFrac, subj, wbFloor } from "./helpers.js";
+import { Cap, byId, clamp, eff, effStat, isAre, pick, poss, practiceOf, siteName, siteRemainFrac, subj, tripDays, wbFloor } from "./helpers.js";
 import { SOIL_WORD, openCelebrationSheet, openPartySheet, openPersonSheet, openSowSheet, openSystemSheet } from "./sheets.js";
 import { assignPhrase, workDef } from "./day.js";
 import { store } from "./store.js";
 import { FORAGE_FLAVOR } from "./data-events.js";
-import { composition, jarComposition, pantryTotal, jarsTotal, stockMacros } from "./larder.js";
-import { FOOD_COMP, MAC_GRACE, MAX_COMPANIONS, PRES_KEEP } from "./data-food.js";
+import { composition, intakeReadout, jarComposition, pantryTotal, jarsTotal, stockMacros } from "./larder.js";
+import { MAC_GRACE, MAX_COMPANIONS, PRES_KEEP } from "./data-food.js";
 import { bindPuzzleEntries, puzzleEntryCard, renderOpenPuzzle } from "./puzzle-ui.js";
 import { openConflictSheet } from "./mediation.js";
 import { CELEBRATIONS, canAfford, celebDef, costOf, forgetTradition, gatesOk, onCooldown } from "./celebrations.js";
@@ -100,6 +100,33 @@ function renderHeader() {
 }
 
 function condClass(c){return c>=60?"c-good":c>=35?"c-mid":"c-bad";}
+
+/* The listing used to print the flat SITE_DEF distance while the assignment
+   sheet ran the same number through tripDays() — so a card said 2 days and
+   the sheet said 3, both correct, for different questions. Now the card
+   answers both, and says why they differ. */
+/* A ready bed bears over several days now, so its old readout — the full
+   yield, never decremented — sat frozen at "57 waiting" from the first
+   picking day to the last, which read as food going uncollected. This
+   reports what's actually still to come. */
+function pickNote(bed){
+  const c = CROPS[bed.crop]; if(!c) return `${(bed.stored||0).toFixed(0)} waiting`;
+  const win = Math.max(1, c.window||1), done = bed.picked||0;
+  if(win === 1) return `${(bed.stored||0).toFixed(0)} waiting`;
+  const left = Math.max(0, bed.stored*(1 - done/win));
+  return done === 0
+    ? `${bed.stored.toFixed(0)} over ${win} days`
+    : `${left.toFixed(0)} still to come · day ${done+1} of ${win}`;
+}
+
+const ROAD_WHY = {spring:"mud", winter:"snow"};
+function tripNote(days){
+  const real = tripDays(days, false);
+  if(real === days) return `${days}d round trip`;
+  const f = S.f||{};
+  const why = ROAD_WHY[season().id] || (f.tripLong ? "the bridge is out" : "the long way round");
+  return `${real}d now · normally ${days}d, ${why}`;
+}
 function wbColor(w){return w>=60?"#58793F":w>=30?"#C8963B":"#A85B38";}
 
 function salvageChips(){
@@ -167,7 +194,9 @@ function sysSection(ids, builtOnly){
       const afford=Object.entries(def.cost).every(([k,v])=>S.res[k]>=v);
       const canStart = afford && !S.project;
       const costHtml=Object.entries(def.cost).map(([k,v])=>`<span class="cost ${S.res[k]>=v?'':'short'}">${v} ${k}</span>`).join("");
-      const missing=Object.entries(def.cost).filter(([k,v])=>S.res[k]<v).map(([k,v])=>`${(v-S.res[k]).toFixed(0)} more ${k}`);
+      // ceil, not round: a 0.4 shortfall rounded to "0 more scrap" while the
+      // button stayed correctly disabled, so the card contradicted itself.
+      const missing=Object.entries(def.cost).filter(([k,v])=>S.res[k]<v).map(([k,v])=>`${Math.ceil(v-(S.res[k]||0))} more ${k}`);
       h+=`<div class="card ${canStart?'buildable':''}">
         <div class="card-top"><div class="sysname">${def.name}</div>
           <button class="go ${canStart?'ready':''}" data-build="${def.id}" ${canStart?"":"disabled"}>Build it</button></div>
@@ -203,6 +232,29 @@ function sysSection(ids, builtOnly){
     if(def.id==="commons") roles+=roleChip("cook","cook","no one");
     roles+=`</div>`;
     let stackExtra="";
+    if(def.noRepair){
+      // the bank isn't maintained — showing a condition bar and a repair crew
+      // implied someone could fix chemistry. Show the packs instead.
+      const cs = S.cells||[];
+      const avg = cs.length ? cs.reduce((a,c)=>a+c.cap,0)/cs.length : 0;
+      const worst = cs.length ? Math.min(...cs.map(c=>c.cap)) : 0;
+      h+=`<div class="card"><div class="card-top"><div class="sysname">${def.name}${cs.length>1?` ×${cs.length}`:""}</div>
+        <div class="condpct">${(avg*100).toFixed(0)}% of new</div></div>
+        <div class="blurb">${def.blurb}</div>
+        <div class="sysmeta"><span class="outline-note">${cs.length
+          ? `${cs.length} pack${cs.length===1?"":"s"} wired in · fading about 4% a year · nothing repairs this${worst<0.3?" · one is nearly finished":""}`
+          : "nothing wired in — whatever the panels make has to be used the same day"}</span></div>
+        ${STACKABLE[def.id] && cs.length<STACKABLE[def.id].max ? (()=>{
+          const meta=STACKABLE[def.id];
+          const can=Object.entries(meta.cost).every(([k,v])=>(S.res[k]||0)>=v);
+          const miss=Object.entries(meta.cost).filter(([k,v])=>(S.res[k]||0)<v).map(([k,v])=>`${Math.ceil(v-(S.res[k]||0))} more ${k}`);
+          return `<button class="opt ${can?"":"dim"}" data-raise="${def.id}" ${can?"":"disabled"}>
+            <span><span class="l1">Wire in another pack</span><div class="l2">${can?"a salvaged bank, already part-used":`Need ${miss.join(", ")}.`}</div></span>
+            <span class="r">${Object.entries(meta.cost).map(([k,v])=>`${v} ${k}`).join(" · ")}</span></button>`;
+        })() : ""}
+      </div>`;
+      continue;
+    }
     if(STACKABLE[def.id]){
       const meta=STACKABLE[def.id];
       const n=S[meta.stateKey]||1;
@@ -255,7 +307,7 @@ function gardensSection(){
                       : estFrac>=1 ? `established · bears in ${crop.harvestSeason}`
                       : `year ${Math.max(1,Math.ceil(ageYears))}/${crop.matureYears} toward bearing`;
         h+=`<div class="sysmeta" style="margin-top:7px"><span class="outline-note">Bed ${i+1} — ${crop.name.toLowerCase()} · ${status}${soilTag}</span>
-            <span class="outline-note">${bed.ready?`${bed.stored.toFixed(0)} waiting`:`${(estFrac*100).toFixed(0)}%`}</span>
+            <span class="outline-note">${bed.ready?pickNote(bed):`${(estFrac*100).toFixed(0)}%`}</span>
             <button class="go" data-sow="${i}" style="margin-left:6px">Manage</button></div>
           <div class="cbar" style="margin:3px 0 2px"><div class="fill ${bed.ready?'c-good':'c-sun'}" style="width:${(bed.ready?100:estFrac*100)}%"></div></div>`;
       } else {
@@ -270,7 +322,7 @@ function gardensSection(){
                    : workFrac>=1 ? ` · grown out, ripens in ${Math.ceil(crop.minDays-bed.days)}d`
                    : dayFrac>=1  ? " · wants more tending" : "";
         h+=`<div class="sysmeta" style="margin-top:7px"><span class="outline-note">Bed ${i+1} — ${crop.name.toLowerCase()}${gate}${soilTag}</span>
-            <span class="outline-note">${bed.ready?`${bed.stored.toFixed(0)} waiting`:`${pc.toFixed(0)}%`}</span>
+            <span class="outline-note">${bed.ready?pickNote(bed):`${pc.toFixed(0)}%`}</span>
             <button class="go" data-sow="${i}" style="margin-left:6px">Manage</button></div>
           <div class="cbar" style="margin:3px 0 2px"><div class="fill ${bed.ready?'c-good':'c-sun'}" style="width:${pc}%"></div></div>`;
       }
@@ -479,7 +531,7 @@ function worksSection(){
     const afford=Object.entries(proj.cost).every(([k,v])=>S.res[k]>=v);
     const canStart=afford && !S.project;
     const costHtml=Object.entries(proj.cost).map(([k,v])=>`<span class="cost ${S.res[k]>=v?'':'short'}">${v} ${k}</span>`).join("");
-    const missing=Object.entries(proj.cost).filter(([k,v])=>S.res[k]<v).map(([k,v])=>`${(v-S.res[k]).toFixed(0)} more ${k}`);
+    const missing=Object.entries(proj.cost).filter(([k,v])=>S.res[k]<v).map(([k,v])=>`${Math.ceil(v-(S.res[k]||0))} more ${k}`);
     h+=`<div class="card ${canStart?'buildable':''}">
       <div class="card-top"><div class="sysname">${proj.name}</div>
         <button class="go ${canStart?'ready':''}" data-proj="${proj.id}" ${canStart?"":"disabled"}>Begin</button></div>
@@ -503,25 +555,30 @@ function worksSection(){
       <div class="rolerow">${roleChip("fab","hands","no hands on it")}</div>
     </div>`;
   }
-  const anyShopBuilt = FABS.some(d=>S.fabs[d.id]);
+  const anyShopBuilt = FABS.some(d=>S.fabs[d.id] && !d.passive);   // passive shops need no hands
   for(const def of FABS){
     if(S.fabs[def.id]){
-      const feedNote = def.feed ? ` · eats ${def.feed.per} ${def.feed.res}/${def.gives}` : "";
+      // per-UNIT feed ratio, said as such — "eats 2 food/meds" read as a daily
+      // cost when it was really a conversion rate. Passive shops say neither.
+      const rate = FAB_RATE[def.gives].toFixed(2);
+      const head = def.passive
+        ? `+${rate} ${def.gives}/day`
+        : `+${rate} ${def.gives}/day when worked${def.feed?` · ${def.feed.per} ${def.feed.res} per ${def.gives}`:""}`;
       h+=`<div class="card grey"><div class="card-top"><div class="sysname">${def.name}</div>
-        <div class="condpct">+${FAB_RATE[def.gives].toFixed(2)} ${def.gives}/day when worked${feedNote}</div></div>
-        <div class="blurb">${def.blurb}</div></div>`;
+        <div class="condpct">${head}</div></div>
+        <div class="blurb">${def.blurb}${def.passive?" Needs nobody, and takes nothing.":""}</div></div>`;
       continue;
     }
     if(S.fabProject && S.fabProject.id===def.id) continue;
     const afford=Object.entries(def.cost).every(([k,v])=>S.res[k]>=v);
     const canStart=afford && !S.fabProject;
     const costHtml=Object.entries(def.cost).map(([k,v])=>`<span class="cost ${S.res[k]>=v?'':'short'}">${v} ${k}</span>`).join("");
-    const missing=Object.entries(def.cost).filter(([k,v])=>S.res[k]<v).map(([k,v])=>`${(v-S.res[k]).toFixed(0)} more ${k}`);
+    const missing=Object.entries(def.cost).filter(([k,v])=>S.res[k]<v).map(([k,v])=>`${Math.ceil(v-(S.res[k]||0))} more ${k}`);
     h+=`<div class="card ${canStart?'buildable':''}">
       <div class="card-top"><div class="sysname">${def.name}</div>
         <button class="go ${canStart?'ready':''}" data-fab="${def.id}" ${canStart?"":"disabled"}>Begin</button></div>
       <div class="blurb">${def.blurb}</div>
-      <div class="costchips">${costHtml}<span class="cost">then +${FAB_RATE[def.gives].toFixed(2)} ${def.gives}/day, forever</span></div>
+      <div class="costchips">${costHtml}<span class="cost">then +${FAB_RATE[def.gives].toFixed(2)} ${def.gives}/day${def.passive?", needing nobody":", when worked"}</span></div>
       ${!afford?`<div class="sysmeta"><span class="outline-note">Need ${missing.join(", ")}.</span></div>`:S.fabProject?`<div class="sysmeta"><span class="outline-note">Finish the current fabrication first.</span></div>`:""}
     </div>`;
   }
@@ -577,7 +634,21 @@ function triageSection(){
   }
   if(worst){
     const where=["turbine","solar","battery"].includes(worst.id)?"Power":["catchment","irrigation"].includes(worst.id)?"Water":"below";
-    bits.push(`most worn: ${worst.name.toLowerCase()} at ${S.sys[worst.id].cond.toFixed(0)} — see ${where}`);
+    // This never was "most worn" — it's an urgency score (how far gone × how
+    // fast it's going), so it could name a system in better condition than
+    // another and print the number that contradicted it. Say what it means,
+    // and show the working: condition, net rate, and when it hits failing.
+    const st = S.sys[worst.id], dec = decayOf(worst);
+    const repair = S.people.filter(p=>p.job===worst.id && p.status==="ok").reduce((a,p)=>{
+      let hd = effStat(p,"hands",worst.id)+(p.trait==="Tinkerer"?1.5:0)+(p.trait==="Cautious"?-0.5:0);
+      return a + hd*1.6*eff(p)*(S.flags.toolLibrary?1.2:1)*(st.cond>=85?0.45:1);
+    },0);
+    const net = repair - dec;
+    const CRIT = 35;   // the same line condClass and the "Failing" warning already use
+    const when = net >= 0 ? (st.cond<CRIT ? "climbing back" : "holding")
+               : st.cond<=CRIT ? "already failing"
+               : `failing in ~${Math.max(1,Math.ceil((st.cond-CRIT)/-net))}d`;
+    bits.push(`needs attention soonest: ${worst.name.toLowerCase()} — ${st.cond.toFixed(0)}%, ${net>=0?"+":""}${net.toFixed(1)}/day, ${when} — see ${where}`);
   }
   if(!bits.length){
     h+=`<div class="card grey"><div class="blurb">Nothing needs you right now. The village is running. Come back when it isn't — or don't, and see what the journal says.</div></div>`;
@@ -634,8 +705,16 @@ function bindTabActions(el){
       if(!Object.entries(meta.cost).every(([k,v])=>S.res[k]>=v)) return;
       for(const [k,v] of Object.entries(meta.cost)) S.res[k]-=v;
       S[meta.stateKey] = n+1;
-      // a new unit pulls the array's average condition down a little until it's tuned in
-      S.sys[id].cond = clamp(S.sys[id].cond*0.9, 0, 100);
+      if(id==="battery"){
+        // salvaged packs come in already part-used — a decade in a substation
+        // or a wrecked house. A new bank is never as good as the last one was.
+        S.cells = S.cells || [];
+        S.cells.push({cap:0.55 + Math.random()*0.30, since:S.day});
+        S[meta.stateKey] = S.cells.length;
+      } else {
+        // a new unit pulls the array's average condition down a little until it's tuned in
+        S.sys[id].cond = clamp(S.sys[id].cond*0.9, 0, 100);
+      }
       const msg = id==="turbine" ? `Another turbine went up on the ridge. ${S[meta.stateKey]} of them turning now.`
                 : id==="solar"   ? `Another panel went up on the roof. ${S[meta.stateKey]} of them catching light now.`
                 : `Another bank got wired in. ${S[meta.stateKey]} of them holding charge now.`;
@@ -703,12 +782,15 @@ function larderSection(){
     return `<div class="sectionlbl">The larder</div><div class="card grey"><div class="blurb">Nothing on the shelves.</div></div>`;
   const m = stockMacros();
   const pct = x => Math.round(x*100);
-  const md = S.macDays || {p:0,f:0};
+  const rd = intakeReadout();
   // the words, not the numbers — and only once a shortfall is real
-  const flag = md.p > MAC_GRACE ? "Everything here is bulk and sugar. Nobody's getting much to build on."
-             : md.f > MAC_GRACE ? "It's all lean. People eat their fill and get up hungry."
+  const flag = rd.state.p === "bad" ? "Everything here is bulk and sugar. Nobody's getting much to build on."
+             : rd.state.f === "bad" ? "It's all lean. People eat their fill and get up hungry."
              : "";
-  const chip = (x,label,cls) => `<span class="cost" style="background:${cls}">${label} ${pct(x)}%</span>`;
+  // NB: neutral chips. The status palette (leaf/sun/rust) means good/warn/bad
+  // everywhere else in this UI, so it is NOT used for shelf composition —
+  // a shelf that is 70% starch isn't "bad", it's just what's on the shelf.
+  const chip = (x,label) => `<span class="cost">${label} ${pct(x)}%</span>`;
   const row = e => `<span class="cost${e.fast?" short":""}">${e.n.toFixed(0)} ${e.name}${e.fast?" ·":""}</span>`;
   let h = `<div class="sectionlbl">The larder — ${pantryTotal().toFixed(0)} fresh${kept.length?`, ${jarsTotal().toFixed(0)} put by`:""}</div>
     <div class="card">
@@ -720,11 +802,27 @@ function larderSection(){
     h += `<div class="sysmeta" style="margin-top:6px">${Object.entries(byMethod)
       .map(([meth,list])=>`<span class="outline-note"><b>${meth}</b>: ${list.join(", ")}</span>`).join("<br>")}</div>`;
   }
-  h += `<div class="costchips" style="margin-top:8px">
-      ${chip(m.c,"starch","rgba(200,150,60,.18)")}${chip(m.f,"fat","rgba(90,140,70,.18)")}${chip(m.p,"protein","rgba(170,80,50,.18)")}
-    </div>
-    ${flag?`<div class="sysmeta"><span class="outline-note">${flag}</span></div>`:""}
-  </div>`;
+  h += `<div class="sysmeta" style="margin-top:8px"><span class="outline-note">On the shelves</span></div>
+    <div class="costchips">${chip(m.c,"starch")}${chip(m.f,"fat")}${chip(m.p,"protein")}</div>`;
+
+  /* What they've actually been EATING, which is the thing with consequences —
+     the shelves can be full of beans you're saving while everyone lives on
+     fruit. These two chips are the exact comparison the deficiency counters
+     make each day, so the card can't drift from the mechanic. Here the
+     status colors ARE meaningful, because there is a real threshold. */
+  if(rd.share){
+    const band = st => st==="bad" ? "c-bad" : st==="watch" ? "c-mid" : "c-good";
+    const col  = st => st==="bad" ? "var(--rust)" : st==="watch" ? "var(--sun)" : "var(--leaf)";
+    const mchip = (ax,label) => {
+      const have = pct(rd.share[ax]), need = pct(rd.min[ax]), st = rd.state[ax];
+      return `<span class="cost" style="border-color:${col(st)};color:${col(st)}">${label} ${have}% · needs ${need}%+</span>`;
+    };
+    const daysNote = ["p","f"].filter(ax=>rd.days[ax] > rd.grace)
+      .map(ax=>`${rd.days[ax]} days short on ${ax==="p"?"protein":"fat"}`).join(" · ");
+    h += `<div class="sysmeta"><span class="outline-note">Eating lately${daysNote?` — ${daysNote}`:""}</span></div>
+      <div class="costchips">${chip(rd.share.c,"starch")}${mchip("f","fat")}${mchip("p","protein")}</div>`;
+  }
+  h += `${flag?`<div class="sysmeta"><span class="outline-note">${flag}</span></div>`:""}</div>`;
   return h;
 }
 
@@ -743,8 +841,12 @@ function renderFood(){
 }
 function renderWorks(){
   let h="";
-  h += sysSection(null, false);   // everything not yet raised
+  // projects first. Unbuilt SYS entries used to render above everything with
+  // no header, so in a normal game "Irrigation lines" — usually the only
+  // unbuilt system — floated alone at the top for no visible reason.
   h += worksSection();            // current project, project menu, fabrication
+  const sys = sysSection(null, false);
+  if(sys) h += `<div class="sectionlbl">Systems not yet raised</div>` + sys;
   $("tab-works").innerHTML=h;
   bindTabActions($("tab-works"));
 }
@@ -796,7 +898,7 @@ function renderBeyond(){
     const word=frac>0.8?"untouched":frac>0.5?"picked at":frac>0.2?"picked over":"nearly stripped";
     const kinds=Object.entries(st.stock).filter(([,v])=>v>0.5).map(([k])=>k).join(", ");
     h+=`<div class="card">
-      <div class="card-top"><div class="sysname">${siteName(def.id)}</div><div class="condpct">${def.days}d round trip</div></div>
+      <div class="card-top"><div class="sysname">${siteName(def.id)}</div><div class="condpct">${tripNote(def.days)}</div></div>
       <div class="blurb">${def.blurb}</div>
       <div class="sysmeta" style="margin-top:8px">
         <span class="outline-note">${word} · ${kinds||"scraps"}</span>

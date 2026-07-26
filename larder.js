@@ -58,6 +58,15 @@ function addFood(k, n){
   else p.push({k, n, d:S.day});
   return n;
 }
+/* A one-off FIND — salvage, foraging, a trade, a gift left at the gate —
+   lands as a whole unit or not at all. A party doesn't come home with 0.2
+   of a can; they come home with a can. Daily production (harvest windows,
+   companion side-yield, the tank trickle) deliberately does NOT use this:
+   those are continuous flows whose small fractions are meant to accumulate
+   honestly over many days, and rounding each one up would inflate them. */
+const addFoodFound = (k, n) => n>0 ? addFood(k, Math.ceil(n)) : 0;
+const addPreservedFound = (k, n, m) => n>0 ? addPreserved(k, Math.ceil(n), m) : 0;
+
 /* Straight into the jars — used by the overflow path, where a glut is put
    by without anyone standing at the racks. */
 function addPreserved(k, n, method){
@@ -95,6 +104,47 @@ const oldestFirst     = (a,b) => a.d - b.d;
 
 const eatFresh = want => takeFrom(pantry(), want, perishableFirst);
 const eatJars  = want => takeFrom(jars(),   want, oldestFirst);
+
+/* --- the deficiency override ---
+   Perishable-first is the right default and it stays. But on its own it
+   produced a genuinely absurd outcome: a village with 68 dried beans on the
+   shelf could run a protein deficiency for weeks, because apples decay
+   faster than beans and so got eaten first, every day, until the apples ran
+   out. The rule minimised waste and had no idea it was starving anyone of
+   anything.
+
+   So: if a macro is actually short, a slice of the day's meal is drawn
+   FIRST from whatever best fixes it — fresh or jarred, spoilage order
+   ignored — and only then does the ordinary perishable-first draw take the
+   rest. A household facing this would open the beans on purpose. Now so
+   does the village. */
+const FIX_SHARE = 0.45;    // at most this much of a day's meal is redirected
+function bestFor(ax){
+  const all = [...pantry(), ...jars()].filter(e=>e.n>0.05);
+  if(!all.length) return null;
+  // richest in the missing thing, and meaningfully so
+  return all.sort((a,b)=>((fd(b.k)||{mac:{}}).mac[ax]||0) - ((fd(a.k)||{mac:{}}).mac[ax]||0))[0];
+}
+function eatForDeficiency(want){
+  const md = S.macDays || {p:0,f:0};
+  // worst first: if both are short, protein leads
+  const axes = ["p","f"].filter(ax => (md[ax]||0) > 0).sort((a,b)=>(md[b]||0)-(md[a]||0));
+  const got = {c:0,f:0,p:0}; let taken = 0;
+  for(const ax of axes){
+    if(taken >= want*FIX_SHARE) break;
+    const e = bestFor(ax);
+    if(!e) continue;
+    const m = (fd(e.k)||{mac:{c:1,f:0,p:0}}).mac;
+    if((m[ax]||0) < MAC_MIN[ax]*1.5) continue;   // nothing here actually helps
+    const t = Math.min(e.n, want*FIX_SHARE - taken);
+    if(t <= 0.01) continue;
+    got.c += t*m.c; got.f += t*m.f; got.p += t*m.p;
+    e.n -= t; taken += t;
+  }
+  for(const list of [pantry(), jars()])
+    for(let i=list.length-1;i>=0;i--) if(list[i].n <= 1e-6) list.splice(i,1);
+  return {taken, mac:got};
+}
 
 /* ---- decay ----
    Fractional losses resolve probabilistically: an expected loss of 0.3
@@ -186,13 +236,15 @@ function addForage(total){
   const picks = [...pool].sort(()=>Math.random()-0.5).slice(0,n);
   // uneven split — a day's foraging is rarely balanced
   let left = total;
+  const took = [];
   picks.forEach((k,i)=>{
     const share = i===picks.length-1 ? left : total*(0.3+Math.random()*0.4)/picks.length;
     const amt = Math.min(left, share);
-    addFood(k, amt); left -= amt;
+    if(amt > 0.01){ addFoodFound(k, amt); took.push(k); }
+    left -= amt;
   });
-  if(left>0.01) addFood(picks[0], left);
-  return picks;
+  if(left>0.01){ addFoodFound(picks[0], left); if(!took.includes(picks[0])) took.push(picks[0]); }
+  return took.length ? took : [picks[0]];
 }
 
 /* ---- macros ----
@@ -237,7 +289,9 @@ const matches = (need, e) => typeof need === "string"
   : ((fd(e.k)||{tags:[]}).tags || []).includes(need.tag);
 function findRecipe(){
   const stock = pantry().filter(e=>e.n >= 1);
-  const usable = RECIPES.filter(r => r.needs.every(nd => stock.some(e => matches(nd, e))));
+  const usable = RECIPES.filter(r =>
+    (!r.needsFlag || S.flags[r.needsFlag]) &&           // the racks/crocks a dish names must exist
+    r.needs.every(nd => stock.some(e => matches(nd, e))));
   if(!usable.length) return null;
   // prefer a dish that fixes whatever the village is actually short of
   const short = S.macDays && (S.macDays.p > MAC_GRACE ? "p" : S.macDays.f > MAC_GRACE ? "f" : null);
@@ -273,14 +327,18 @@ function cookRecipe(lines){
 }
 
 /* ---- readouts (render only) ---- */
+/* Below this, an entry rounds to "0 something" on the card, which reads as
+   a phantom. It still exists and still counts toward the total; it just
+   isn't listed until there's a whole one. */
+const SHOW_MIN = 0.5;
 function composition(){
-  return [...pantry()].sort((a,b)=>b.n-a.n).map(e=>({
+  return [...pantry()].filter(e=>e.n>=SHOW_MIN).sort((a,b)=>b.n-a.n).map(e=>({
     k:e.k, name:foodName(e.k), n:e.n,
     fast:(fd(e.k)||{dk:0}).dk >= 0.12
   }));
 }
 function jarComposition(){
-  return [...jars()].sort((a,b)=>b.n-a.n).map(e=>({
+  return [...jars()].filter(e=>e.n>=SHOW_MIN).sort((a,b)=>b.n-a.n).map(e=>({
     k:e.k, name:foodName(e.k), n:e.n, m:e.m,
     method:(PRES_KEEP[e.m]||PRES_KEEP.dry).name
   }));
@@ -298,6 +356,25 @@ function stockMacros(){
   return out;
 }
 
-export { addFood, addForage, addPreserved, bestMethodFor, composition, cookRecipe, decayStock,
+/* What the deficiency system is ACTUALLY judging, handed to the UI so the
+   card can't drift from the mechanic. `share` is the split of the last
+   meal — the exact number compared against MAC_MIN each day — and `days`
+   is the running counter that decides whether it costs anything yet. */
+function intakeReadout(){
+  const ate = (S.report && S.report.ate) || {c:0,f:0,p:0};
+  const tot = ate.c + ate.f + ate.p;
+  const share = tot>0 ? {c:ate.c/tot, f:ate.f/tot, p:ate.p/tot} : null;
+  const md = S.macDays || {p:0,f:0};
+  const state = ax => {
+    const d = md[ax]||0;
+    if(d === 0) return "ok";
+    if(d <= MAC_GRACE) return "watch";     // short, but nothing's come of it yet
+    return "bad";                          // long enough that it's costing them
+  };
+  return {share, min:MAC_MIN, days:md, grace:MAC_GRACE,
+          state:{f:state("f"), p:state("p")}};
+}
+
+export { addFood, addFoodFound, addForage, addPreserved, addPreservedFound, eatForDeficiency, intakeReadout, bestMethodFor, composition, cookRecipe, decayStock,
          eatFresh, eatJars, foodName, forageKinds, jarComposition, jars, jarsTotal, pantry,
          pantryTotal, preserveInto, resync, stockMacros, tickMacros };

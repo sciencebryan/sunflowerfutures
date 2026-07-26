@@ -100,7 +100,10 @@ const BATTERY_UNIT = 2.8;
 
 const MAX_BATTERIES = 5;
 
-const BATTERY_BANK_COST = {scrap:5, parts:5};
+// wiring in another bank needs an actual salvaged pack now — see S.cells and
+// bankCapacity() in day.js. Cells come home from the substation, the hospital
+// backup room, the dry marina and the ridgeline houses.
+const BATTERY_BANK_COST = {scrap:4, parts:3, cells:1};
 
 // shared lookup so the card UI and the raise-another handler work for all three
 // stackable power systems without three copies of the same code
@@ -167,7 +170,11 @@ const SYS = [
   // so a new village's raw repair output is ~30% lower than it was) — see TUNING GUIDE
   {id:"turbine",   name:"Wind turbine",    decay:3.6, draw:0, start:true,  blurb:"The blades were old when it was found, but the turbine still turns."},
   {id:"solar",     name:"Solar array",     decay:2.0, draw:0, start:false, cost:{scrap:5,parts:3},  work:11, blurb:"Panels on the depot roofs. Quiet, and only works in daylight.", gate:{discover:true}},
-  {id:"battery",   name:"Battery bank",    decay:1.6, draw:0, start:true,  blurb:"Salvaged cells that hold barely enough charge to be useful."},
+  // decay 0: a battery bank is NOT maintained. Capacity loss here is chemistry,
+  // not wear, and no amount of hands-on work reverses it — see S.cells and
+  // bankCapacity() in day.js. The `cond` field survives only so the storm and
+  // render code that reads every SYS uniformly keeps working; it stays at 100.
+  {id:"battery",   name:"Battery bank",    decay:0,   draw:0, start:true,  noRepair:true, blurb:"Salvaged cells wired into one bank. They hold what they hold, and a little less each year."},
   {id:"catchment", name:"Water catchment", decay:2.4, draw:2, start:true,  blurb:"Rain gutters, storage tanks, and pumps."},
   {id:"aquaponics",name:"Aquaponics",      decay:2.4, draw:3, start:false, cost:{scrap:12,parts:6}, work:22, blurb:"Fish feed plants feed fish. Wants a machinist and a keeper of living things. Uses power.", gate:{sys:"irrigation"}},
   {id:"irrigation",name:"Irrigation lines",decay:2.4, draw:0, start:false, cost:{scrap:9},          work:14, blurb:"Drip lines that stretch every liter."},
@@ -180,18 +187,23 @@ const SYS = [
 // game doesn't drift into the hundreds with nothing to spend it on. Food,
 // water, and seeds aren't capped here — they're already bounded by spoilage,
 // tank size, and regular sowing respectively.
-const RES_CAP = {scrap:120, parts:60, wood:150};
+const RES_CAP = {scrap:120, parts:60, wood:150, cells: 40};
 
 const SITE_DEF = [
   {id:"oldtown",  name:"Old Town Row",          days:2, known:true,  stock:{scrap:40, parts:8, cans:14},   blurb:"Collapsed storefronts containing a mix of scrap, parts, and some canned food."},
   {id:"kessler",  name:"Kessler Depot",         days:3, known:true,  stock:{parts:30, scrap:10},           blurb:"An electronics depot, already looted before we found it."},
   {id:"pharmacy", name:"Greenbriar Pharmacy",   days:2, known:true,  stock:{meds:20, scrap:6},             blurb:"Shelves behind a grate somebody gave up on."},
   {id:"seedvault",name:"County Seed Vault",     days:4, known:false, stock:{seeds:30, meds:4},             blurb:"A basement archive. Cool and dry."},
-  {id:"substation",name:"Riverside Substation", days:5, known:false, stock:{parts:26, scrap:14},           blurb:"Transformers like sleeping animals."},
+  {id:"substation",name:"Riverside Substation", days:5, known:false, stock:{parts:26, scrap:14, cells:3}, blurb:"Transformers like sleeping animals. The buffer room at the back was never opened."},
   {id:"extension",name:"Agricultural Extension",days:5, known:false, stock:{seeds:22, scrap:12, parts:6},  blurb:"Test plots gone feral. Filing cabinets full of seed varieties."},
-  {id:"hospital", name:"Valley Hospital",       days:6, known:false, stock:{meds:30, parts:8},             blurb:"Long halls and mysterious stains. A little creepy alone."},
+  {id:"hospital", name:"Valley Hospital",       days:6, known:false, stock:{meds:30, parts:8, cells:2},   blurb:"Long halls and mysterious stains. Nobody looting drugs thought to check the backup power room."},
   {id:"solarfarm",name:"Solar Farm Ruins",      days:7, known:false, stock:{parts:34, scrap:20},           blurb:"A field of cracked panels that once moved to track the Sun."},
-  {id:"reservoir",name:"The Reservoir Works",   days:8, known:false, stock:{scrap:30, parts:16, meds:6},   blurb:"The far edge of anyone's map."}
+  {id:"reservoir",name:"The Reservoir Works",   days:8, known:false, stock:{scrap:30, parts:16, meds:6},   blurb:"The far edge of anyone's map."},
+  // Two more places worth the walk, both chosen because they hold the kind of
+  // battery nobody stripped early: bolted in, awkward, and not worth much to
+  // anyone who didn't have a grid of their own to run.
+  {id:"marina",   name:"The Dry Marina",        days:4, known:false, stock:{cells:4, scrap:12, parts:6},   blurb:"Boats up on blocks in a lot gone to birch. Deep-cycle banks in half of them, too heavy to have been worth stealing."},
+  {id:"solarrow", name:"Ridgeline Houses",      days:6, known:false, stock:{cells:5, parts:10, scrap:8},   blurb:"Big houses along the ridge, panels still on the roofs and the wall units still wired to them."}
 ];
 
 const SITE_LOOT_TABLE = {
@@ -199,9 +211,11 @@ const SITE_LOOT_TABLE = {
   "kessler":    { parts: 0.8, scrap: 0.2 },
   "pharmacy":   { meds: 1.0 },
   "seedvault":  { seeds: 0.8, meds: 0.2 },
-  "substation": { parts: 1.0 },
+  "substation": { parts: 0.7, cells: 0.3 },
   "extension":  { seeds: 0.6, parts: 0.4 },
-  "hospital":   { meds: 0.8, parts: 0.2 },
+  "hospital":   { meds: 0.7, parts: 0.15, cells: 0.15 },
+  "marina":     { cells: 0.5, scrap: 0.35, parts: 0.15 },
+  "solarrow":   { cells: 0.55, parts: 0.3, scrap: 0.15 },
   "solarfarm":  { parts: 1.0 },
   "reservoir":  { scrap: 0.5, parts: 0.5 }
 };
@@ -308,9 +322,22 @@ const CROPS = {
   // playtested rate — shorter cycles alone would have re-inflated the food
   // budget the note above cut.
   radish:  {name:"Radishes",  work:11, minDays:9,  window:3,  yield:12, seed:1, seeds:1, sow:["spring","summer","autumn"], feed:"light",  note:"Fast, thin, and better than nothing."},
-  greens:  {name:"Greens",    work:14, minDays:10,  window:10, yield:24, seed:1, seeds:1, sow:["spring","summer","autumn"], feed:"light",  note:"Cut and come again, until it bolts."},
+  // "Greens" stays as the catch-all cut-and-come-again planting — the named
+  // brassicas above are what you grow on purpose once you know them.
+  greens:  {name:"Greens",    work:14, minDays:10,  window:10, yield:24, seed:1, seeds:1, sow:["spring","summer","autumn"], feed:"light",  note:"Whatever leaf comes up fastest. Cut and come again, until it bolts."},
   beans:   {name:"Beans",     work:26, minDays:18,  window:7,  yield:38, seed:2, seeds:3, sow:["spring","summer"],          feed:"legume", locked:true, note:"Feeds you, then feeds the soil, then feeds you again."},
-  squash:  {name:"Squash",    work:40, minDays:32,  window:4,  yield:48, seed:2, seeds:2, sow:["spring","summer"],          feed:"heavy", locked:true, note:"Slow, heavy, and it keeps all winter in a cold room."},
+  // The old single "squash" was internally contradictory — it kept like a
+  // winter squash (barely decays) but matured and picked like a summer one.
+  // Split, they're two genuinely different crops: one you eat all season and
+  // can't store, one you harvest once and live on until spring.
+  summersquash:{name:"Summer squash", work:24, minDays:18, window:12, yield:40, seed:2, seeds:2, sow:["spring","summer"], feed:"heavy", locked:true, note:"Gives and gives until you're sick of it, and keeps about a week."},
+  wintersquash:{name:"Winter squash", work:40, minDays:32, window:3,  yield:48, seed:2, seeds:2, sow:["spring","summer"], feed:"heavy", locked:true, note:"Slow, heavy, and it keeps all winter in a cold room."},
+  cucumber:{name:"Cucumbers", work:22, minDays:17, window:10, yield:34, seed:1, seeds:2, sow:["spring","summer"],        feed:"heavy", locked:true, note:"Half water and no use to anyone in February — unless it went into the crocks first."},
+  tomato:  {name:"Tomatoes",  work:30, minDays:24, window:14, yield:52, seed:1, seeds:2, sow:["spring","summer"],        feed:"heavy", locked:true, note:"Wants heat and hates its own relatives. Keeps not at all, dries beautifully."},
+  spinach: {name:"Spinach",   work:12, minDays:9,  window:6,  yield:20, seed:1, seeds:1, sow:["spring","autumn"],        feed:"light", locked:true, note:"Bolts the moment it feels summer. Grow it at the cold ends of the year."},
+  tatsoi:  {name:"Tatsoi",    work:12, minDays:8,  window:6,  yield:18, seed:1, seeds:1, sow:["spring","autumn"], hardy:true, feed:"light", locked:true, note:"Flat rosettes that shrug off a frost and sweeten after one."},
+  kale:    {name:"Kale",      work:16, minDays:17, window:20, yield:34, seed:1, seeds:1, sow:["spring","summer","autumn"], hardy:true, feed:"light", locked:true, note:"Cut it all season, and it's better after the first hard frost than before."},
+  cabbage: {name:"Cabbage",   work:26, minDays:24, window:2,  yield:36, seed:1, seeds:1, sow:["spring","autumn"],        feed:"heavy", locked:true, note:"One head, all at once, and a cellar or a crock will hold it for months."},
   potatoes:{name:"Potatoes",  work:36, minDays:33,  window:2,  yield:46, seed:3, seeds:3, sow:["spring"],                   feed:"heavy", locked:true, note:"Dull, heavy, and the reason anyone survived anything. Keep back the small ones to plant."},
   grain:   {name:"Grain",     work:48, minDays:40,  window:2,  yield:68, seed:3, seeds:4, sow:["spring","autumn"], hardy:true, feed:"heavy", locked:true, note:"The one crop frost won't kill: plant it in autumn and it sleeps under the snow, ready in spring. Slow, but it feeds a winter."},
   peas:    {name:"Peas",      work:30, minDays:21,  window:5,  yield:48, seed:2, seeds:3, sow:["spring","summer"],
@@ -335,7 +362,7 @@ const CROPS = {
   // loop skips it entirely and only shadeCooling() in day.js reads it —
   // planted for a summer five years from now. See the Now/Later axis.
   catalpa:   {name:"Catalpa trees", perennial:true, shade:true, locked:true, matureYears:5,
-              sow:["spring"], note:"Heart-shaped leaves the size of a hand, and a canopy that turns the south wall cool. Five years of nothing, and then a great deal of shade."},
+              sow:["spring"], note:"Heart-shaped leaves the size of a hand, and a canopy that turns the south wall cool. Every year it gives a little more shade than the last; in five it will be doing real work."},
   strawberry:{name:"Strawberries", perennial:true, bearYears:0.5, matureYears:1, harvestSeason:"summer",
               yield:80, seed:3, seeds:0, sow:["spring"], feed:"light", locked:true,
               note:"Runners fill a plot in a year. After that, pickings all summer for almost no work."},
@@ -404,7 +431,10 @@ const PRESERVE = {
    someone works the fab job and the feedstock holds: `feed` is {res, per},
    the resource consumed per unit of output (see the fab phase in day.js).
    Nothing comes from nothing. Seed saving is no longer a fab — it moved to
-   PROJECTS as a one-time bench that multiplies harvest seed return. */
+   PROJECTS as a one-time bench that multiplies harvest seed return.
+   EXCEPT `passive:true` shops, which need neither: they produce their rate
+   every day from the moment they're built. Use it only where the fiction
+   genuinely carries the work (a herb garden), not to dodge a labor cost. */
 const FABS = [
   {id:"forge",      name:"The forge",     cost:{scrap:16, parts:4}, work:30, gives:"scrap",
    feed:{res:"wood", per:1.2},
@@ -412,9 +442,11 @@ const FABS = [
   {id:"machineShop",name:"Machine shop",  cost:{scrap:20, parts:12},work:40, gives:"parts",
    feed:{res:"scrap", per:2},
    blurb:"Tools and equipment to turn rough scrap into the parts we need to fix things."},
+  // passive: a herb bed tends itself once it's in. No assignment, no feedstock —
+  // the little medicinal garden behind it is assumed, not simulated.
   {id:"apothecary", name:"Apothecary",    cost:{wood:8, meds:4},    work:26, gives:"meds",
-   feed:{res:"food", per:2},
-   blurb:"A medicinal herb garden and a good book. Garden output in, medicine out."}
+   passive:true,
+   blurb:"A medicinal herb garden and a good book. Once it's in, it looks after itself."}
 ];
 
 const FAB_RATE = {scrap:0.9, parts:0.5, meds:0.25};

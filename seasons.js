@@ -72,8 +72,13 @@ function grantSeedSpread(n){
 // Discovery also grants starter seed — with typed seeds, an unlock you can't
 // plant is a dead gift. Annuals get two plantings' worth; perennials one
 // (cuttings are the harder thing to carry home).
+/* Catalpa is the only locked entry with no `yield` — it's a shade tree, not
+   food, and calling it "a crop the village hasn't grown before" was simply
+   false. Filter by yield rather than by name so any future non-food
+   perennial is handled without anyone having to remember an exception. */
+const isFoodCrop = id => CROPS[id] && CROPS[id].yield !== undefined;
 function discoverRandomCrop(filter){
-  let pool = lockedCrops();
+  let pool = lockedCrops().filter(isFoodCrop);
   if(filter) pool = pool.filter(filter);
   if(!pool.length) return null;
   const id = pool[Math.floor(Math.random()*pool.length)];
@@ -83,6 +88,51 @@ function discoverRandomCrop(filter){
   addSeeds(id, c.perennial ? (c.seed||1) : (c.seed||1)*2);
   return id;
 }
+/* You dug up your last radish before it set seed, and now you can't grow
+   radishes. That's a real consequence and it stays — but it shouldn't be a
+   PERMANENT dead end with no way to act on it. A ranging or salvage party
+   can turn up seed of something the village already knows, and going out to
+   look is a thing the player can actually choose to do.
+   Deliberately not foraging: the near country gives wild food, not somebody's
+   garden varieties. Rolls separately from new-crop discovery, so adding this
+   never dilutes the odds of finding something genuinely new. */
+function restockableCrops(){
+  return Object.keys(CROPS).filter(id => {
+    const c = CROPS[id];
+    if(!c.seed) return false;                                  // nothing to restock
+    if(c.locked && !(S.crops && S.crops[id])) return false;    // never known it
+    return ((S.seedStock && S.seedStock[id]) || 0) <= 0;       // known, and out
+  });
+}
+function restockRandomCrop(){
+  const pool = restockableCrops();
+  if(!pool.length) return null;
+  const id = pool[Math.floor(Math.random()*pool.length)];
+  addSeeds(id, (CROPS[id].seed||1)*2);
+  return id;
+}
+// crop names are plural ("Radishes", "Greens"), so phrase around them
+const restockLine = id =>
+  `We found more seed for ${CROPS[id].name.toLowerCase()}. We can grow them again.`;
+
+/* The non-food half of discovery: shade trees and the like. Explore only —
+   you find a living stand of trees out in the country, you don't find one in
+   a stripped building. */
+function lockedUseful(){
+  return lockedCrops().filter(id => !isFoodCrop(id));
+}
+function discoverRandomUseful(){
+  const pool = lockedUseful();
+  if(!pool.length) return null;
+  const id = pool[Math.floor(Math.random()*pool.length)];
+  S.crops = S.crops || {};
+  S.crops[id] = true;
+  addSeeds(id, CROPS[id].seed || 1);
+  return id;
+}
+const usefulLine = id =>
+  `The ranging party came back with cuttings from a stand of ${CROPS[id].name.toLowerCase()}. Nothing to eat off them — but in time, shade, and a windbreak, and something for the generation after this one to sit under.`;
+
 function discoveryLine(id, how){
   const c=CROPS[id]; if(!c) return "";
   const name=c.name.toLowerCase();
@@ -145,4 +195,4 @@ function forecastUnlocked(){
 
 
 
-export { ADULT, AGES, ELDER, addSeeds, canRoad, canWork, dayOfSeason, discoverRandomCrop, discoveryLine, generateFallbackChildName, grantSeedSpread, lockedCrops, roadReady, rollWeather, scaledWeather, season, seasonIdx, seasonNote, seedCount, totalSeeds, yearOf };
+export { ADULT, AGES, ELDER, addSeeds, discoverRandomUseful, isFoodCrop, lockedUseful, usefulLine, restockLine, restockRandomCrop, restockableCrops, canRoad, canWork, dayOfSeason, discoverRandomCrop, discoveryLine, generateFallbackChildName, grantSeedSpread, lockedCrops, roadReady, rollWeather, scaledWeather, season, seasonIdx, seasonNote, seedCount, totalSeeds, yearOf };

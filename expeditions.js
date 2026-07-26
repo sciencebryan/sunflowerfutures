@@ -1,9 +1,9 @@
 import { S } from "./state.js";
 import { Cap, byId, clamp, effStat, isAre, objp, siteDef, siteName, subj, wbFloor } from "./helpers.js";
 import { CROPS, INJURY_PER_DAY, SITE_DEF } from "./data-economy.js";
-import { discoverRandomCrop, discoveryLine, lockedCrops, season } from "./seasons.js";
+import { discoverRandomCrop, discoverRandomUseful, discoveryLine, lockedCrops, lockedUseful, restockRandomCrop, restockLine, usefulLine, season } from "./seasons.js";
 import { addRes, foodCap } from "./defs.js";
-import { addForage, addPreserved, foodName, pantryTotal, resync } from "./larder.js";
+import { addForage, addPreservedFound, foodName, pantryTotal, resync } from "./larder.js";
 
 
 
@@ -86,6 +86,12 @@ function tickExpeditions(lines){
         const id=discoverRandomCrop();
         if(id) lines.push(discoveryLine(id,"explore"));
       }
+      // separate roll: seed of something the village knows and has run out of
+      if(Math.random()<0.35){ const id=restockRandomCrop(); if(id) lines.push(restockLine(id)); }
+      // and the non-food finds — shade trees. Explore only, by design.
+      if(lockedUseful().length && Math.random()<0.2){
+        const id=discoverRandomUseful(); if(id) lines.push(usefulLine(id));
+      }
     } else {
       const st=S.sites[ex.siteId], def=siteDef(ex.siteId);
       st.visited = true;
@@ -102,9 +108,10 @@ function tickExpeditions(lines){
           st.stock[k]=Math.max(0,st.stock[k]-take);
           if(k==="cans"){
             // salvaged tins: real canned goods, and they keep like it
-            addPreserved("beans", take*0.5, "can");
-            addPreserved("squash", take*0.3, "can");
-            addPreserved("apple", take*0.2, "can");
+            // whole tins, not fractions of tins
+            addPreservedFound("beans", take*0.5, "can");
+            addPreservedFound("squash", take*0.3, "can");
+            addPreservedFound("apple", take*0.2, "can");
             resync();
             S.preserved = clamp(S.preserved, 0, S.flags.rootCellar?300:170);
             gotWords.push(`${take.toFixed(0)} cans of food`);
@@ -132,6 +139,8 @@ function tickExpeditions(lines){
         const id=discoverRandomCrop();
         if(id) lines.push(discoveryLine(id,"salvage"));
       }
+      // separate roll: a seed packet in a drawer, of something already grown here
+      if(Math.random()<0.3){ const id=restockRandomCrop(); if(id) lines.push(restockLine(id)); }
     }
     }catch(err){
       console.error("expedition return failed", err);

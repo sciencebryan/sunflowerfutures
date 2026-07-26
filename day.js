@@ -11,9 +11,8 @@ import { store } from "./store.js";
 import { rollMusic, rollPersonality } from "./bonds.js";
 import { driftIdeology, seedIdeology } from "./ideology.js";
 import { addFood, addForage, addPreserved, bestMethodFor, cookRecipe, decayStock, eatFresh, eatJars,
-         pantryTotal, preserveInto, resync, tickMacros } from "./larder.js";
-import { COMP_FERT, COMP_YIELD, FOOD_COMP, FOOD_DATA, MAX_COMPANIONS, PRES_METHOD_OF, RIVAL_YIELD } from "./data-food.js";
-import { SEED_COMPANION, SEED_RIVAL } from "./data-puzzles.js";
+         eatForDeficiency, jarComposition, pantryTotal, preserveInto, resync, tickMacros } from "./larder.js";
+import { COMP_FERT, COMP_YIELD, FOOD_DATA, MAX_COMPANIONS, PRES_METHOD_OF, RIVAL_YIELD, famOf, famPair } from "./data-food.js";
 import { tickConflicts } from "./mediation.js";
 import { tickMoments } from "./moments.js";
 import { tickCelebCooldowns, tickTraditions } from "./celebrations.js";
@@ -127,6 +126,61 @@ function applyPracticeUpdate(snap){
    How well it reads scales with the cook and the kitchen: a skilled cook with
    a canning kitchen and crocks sets a very different table than thin soup over
    a single stove. Returns "" to stay quiet (it doesn't fire every day). */
+/* ================= the battery bank =================
+   Batteries are the one system nobody maintains. Turbine bearings and
+   irrigation joints wear, and a person with the right hands genuinely
+   reverses that — battery capacity loss is chemistry, and no amount of
+   labour reverses it. So the bank has decay:0 and noRepair:true in SYS,
+   and its real state lives here: S.cells, one entry per wired-in pack,
+   each fading on its own clock from the day it went in.
+
+   Salvaged packs come in already part-used (they've been sitting in a
+   substation or a wrecked house for a decade), so a new bank is never as
+   good as the last one was when it was new. The only way back up is going
+   out and finding more. */
+const CELL_FADE = 0.00035;   // ~4.2% of original capacity per game year
+const CELL_DEAD = 0.15;      // below this a pack is scrap, not storage
+function cells(){
+  if(!Array.isArray(S.cells)) S.cells = [{cap:0.9, since:S.day||1}];
+  return S.cells;
+}
+function bankCapacity(){
+  const F = S.f||{};
+  const sum = cells().reduce((a,c)=>a+Math.max(0,c.cap),0);
+  return (F.batteryRecond?1.857:1) * BATTERY_UNIT * sum;
+}
+/* Runs once a day. Fades every pack, retires the ones that are finished. */
+function tickCells(lines){
+  const cs = cells();
+  for(const c of cs) c.cap = Math.max(0, c.cap - CELL_FADE);
+  const dead = cs.filter(c=>c.cap <= CELL_DEAD);
+  if(dead.length){
+    S.cells = cs.filter(c=>c.cap > CELL_DEAD);
+    S.batteries = Math.max(0, S.cells.length);
+    // scrap value: the case and the wiring are still worth something
+    S.res.scrap = (S.res.scrap||0) + dead.length*2;
+    lines.push(dead.length===1
+      ? "One of the packs finally stopped holding anything. It came out of the bank and went into the scrap pile."
+      : `${dead.length} of the packs stopped holding anything, and came out of the bank.`);
+    if(!S.cells.length) lines.push("There is nothing left in the bank room now. Whatever the panels make has to be used the day it's made.");
+  }
+}
+
+/* A noun phrase for whatever is actually on the preserved shelves — the
+   biggest holding, named by its real preservation method. */
+function keptPhrase(){
+  const js = jarComposition();
+  if(!js.length) return "what was put by";
+  const top = js[0];
+  const byMethod = {
+    dry: [`${top.name}, dried and come back to life in the pot`, `dried ${top.name}, soaked since morning`],
+    ferment: [`${top.name} up out of the crocks, sharp and good`, `soured ${top.name} from the crocks`],
+    can: [`${top.name} out of a jar, sealed in a better month`, `jarred ${top.name} from the good weeks`]
+  };
+  const pool = byMethod[top.m] || byMethod.dry;
+  return pool[Math.floor(Math.random()*pool.length)];
+}
+
 function dinnerLine(){
   const cook = working("cook")[0];
   const starving = (S.res.food + S.preserved) < 3 || (S.hungerDays||0) > 0;
@@ -175,7 +229,11 @@ function dinnerLine(){
   const oilBit = hasOil ? pick1([" fried bright in sunflower oil"," glistening with sunflower oil and salt"," crisped in oil"]) : "";
   // keptBit is now a plain noun phrase, not a connector-prefixed fragment -- it
   // flows through list() like everything else instead of bolting on a second "and"
-  const keptBit = hasKept ? pick1(["beans put up last season","pickles up from the crocks","something dried, rehydrated","what was canned in the good months"]) : "";
+  // Reads the actual jars. This used to draw from a fixed flavour pool and
+  // could cheerfully announce pickles from crocks the village hadn't built,
+  // holding food it didn't have — harmless when `preserved` was one number,
+  // plainly wrong now that jars are real and typed.
+  const keptBit = hasKept ? keptPhrase() : "";
   const fishBit = hasFish ? pick1(["the day's fish","trout from the tanks","fish, fresh from the tanks"]) : "";
   const forageBit = hasForaged ? pick1(["mushrooms someone found on the ridge","wild-picked greens","what the foragers gathered"]) : "";
 
@@ -446,8 +504,10 @@ function simulateDay(){
   const canningAl = F.canning           ? alv("canning") : 0;
   // fab draws power when there's fab WORK: a project under construction, or a
   // built shop with someone assigned to run it. Idle shops draw nothing.
+  tickCells(lines);
   if(wx.id==="rain") S.lastRainDay = S.day;   // mushroom flushes follow the weather
-  const fabActive = !!S.fabProject || (S.people.some(p=>p.job==="fab") && Object.values(S.fabs||{}).some(Boolean));
+  const fabActive = !!S.fabProject
+    || (S.people.some(p=>p.job==="fab") && FABS.some(d=>S.fabs&&S.fabs[d.id]&&!d.passive));
   const fabAl     = fabActive           ? alv("fab")     : 0;
   const sysDraw=id=>SYS.find(d=>d.id===id).draw;
   const rawDraw = sysDraw("catchment")*pumpAl + sysDraw("aquaponics")*aquaAl
@@ -459,7 +519,7 @@ function simulateDay(){
   const powerLoss = POWER_LOSS_BASE * Math.pow(LOSS_DECAY, (S.puz&&S.puz.wires)||0);
   if(gen>0 && powerLoss>0){ genWhy.push(`lines lose ${(powerLoss*100).toFixed(0)}%`); }
   gen = gen*(1-powerLoss);
-  const cap = (built("battery") ? (F.batteryRecond?1.857:1)*BATTERY_UNIT*(S.batteries||1)*mult(S.sys.battery.cond) : 0);   // bank surplus to ride out calm/storm days
+  const cap = built("battery") ? bankCapacity() : 0;   // bank surplus to ride out calm/storm days
   let brownout=false;
   const avail = gen + S.res.charge;
   if(avail < draw){ brownout=true; S.res.charge=0; }
@@ -480,7 +540,10 @@ function simulateDay(){
   const pumpEff    = brownout ? 0 : pumpAl;
   const aquaEff    = brownout ? Math.min(aquaAl,0.5) : aquaAl;
   const commonsLit = !brownout && commonsAl>0;
-  const canningOn  = !brownout && canningAl>0;
+  // the shop has to exist, not merely have power pointed at it. Without the
+  // flag check this let a village can food on day one with no canning built —
+  // the overflow path checked the flag and this one didn't, and they disagreed.
+  const canningOn  = !brownout && canningAl>0 && !!S.flags.canning;
   const fabPowered = !brownout && (fabActive ? fabAl>0 : true);
 
   // --- water ---
@@ -577,22 +640,20 @@ function simulateDay(){
      but small effect, and the one genuinely large piece of it (a legume
      feeding its neighbours) shows up as FERTILITY at harvest rather than
      as yield, because that's the mechanism. */
-  const compCat = id => FOOD_COMP[id] || null;
-  const pairIn = (list,a,b) => list.some(([x,y]) => (x===a&&y===b) || (x===b&&y===a));
   function companionScore(bed){
-    const prim = compCat(bed.crop);
-    const mates = (bed.companions||[]).map(compCat).filter(Boolean);
+    const prim = famOf(bed.crop);
+    const mates = (bed.companions||[]).map(famOf).filter(Boolean);
     let good = 0, bad = 0;
     if(prim) for(const m of mates){
-      if(pairIn(SEED_COMPANION, prim, m)) good++;
-      else if(pairIn(SEED_RIVAL, prim, m)) bad++;
+      const v = famPair(prim, m);
+      if(v > 0) good++; else if(v < 0) bad++;
     }
     // the companions also have to live with each other
     for(let i=0;i<mates.length;i++) for(let j=i+1;j<mates.length;j++){
-      if(pairIn(SEED_COMPANION, mates[i], mates[j])) good++;
-      else if(pairIn(SEED_RIVAL, mates[i], mates[j])) bad++;
+      const v = famPair(mates[i], mates[j]);
+      if(v > 0) good++; else if(v < 0) bad++;
     }
-    const legumes = (bed.companions||[]).filter(c=>compCat(c)==="bean").length;
+    const legumes = (bed.companions||[]).filter(c=>famOf(c)==="legume").length;
     return {good, bad, legumes};
   }
   const companionMult = bed => {
@@ -712,6 +773,10 @@ function simulateDay(){
     const label = `Bed ${S.beds.indexOf(bed)+1}`;
     if(bed.picked===1 && win>1){
       lines.push(`${label}: the first ${crop.name.toLowerCase()} came in — ${perDay.toFixed(0)} food today, more ripening behind it.`);
+    } else if(win>2 && bed.picked>1 && bed.picked<win && (bed.picked%2===0 || win<=4)){
+      // the middle of a picking window used to pass in total silence, which
+      // read as the harvest having stopped. It hadn't.
+      lines.push(`${label}: another ${perDay.toFixed(0)} of ${crop.name.toLowerCase()} picked — ${win-bed.picked} more day${win-bed.picked===1?"":"s"} of it to come.`);
     }
     if(bed.picked >= win){
       const seeds = seedReturn(crop);
@@ -823,9 +888,12 @@ function simulateDay(){
   let hunger=0;
   let macDrag=0, macCeil=100, macFloor=0;
   {
-    const meal = eatFresh(foodOut);
-    let eaten = meal.mac;
-    let short = foodOut - meal.taken;
+    // a real shortfall gets first claim on whatever fixes it, fresh or jarred,
+    // before the ordinary spoilage-ordered draw takes the rest
+    const fix = eatForDeficiency(foodOut);
+    const meal = eatFresh(foodOut - fix.taken);
+    let eaten = {c:fix.mac.c+meal.mac.c, f:fix.mac.f+meal.mac.f, p:fix.mac.p+meal.mac.p};
+    let short = foodOut - fix.taken - meal.taken;
     if(short > 1e-6){
       const fromJarsDraw = eatJars(short);
       // NOT narrated here. dinnerLine() is the single owner of meal narration —
@@ -1001,11 +1069,18 @@ function simulateDay(){
     // with the worker's hands, and short feed throttles it instead of a hard
     // stop (you make what the stock allows). NOTE addRes ignores non-positive
     // amounts, so feed is deducted by direct subtraction, never through it.
+    // The apothecary is a herb bed and a good book, not a workshop — once it
+    // exists it simply produces, with no assignment and no feedstock. It is
+    // closer in kind to the mushroom logs than to the forge.
+    for(const def of FABS){
+      if(!S.fabs[def.id] || !def.passive) continue;
+      addRes(def.gives, FAB_RATE[def.gives]);
+    }
     if(!S.fabProject && fabWorkers.length){
       const w = fabWorkers[0];
       const skill = 0.75 + 0.1*effStat(w,"hands","fab");
       for(const def of FABS){
-        if(!S.fabs[def.id]) continue;
+        if(!S.fabs[def.id] || def.passive) continue;   // passive shops run themselves
         let r = FAB_RATE[def.gives] * (fabPowered?1:0.6) * skill;
         if(def.feed){
           const have = S.res[def.feed.res]||0;
@@ -1614,6 +1689,7 @@ function jobName(j){
   if(j==="press") return "Pressing oil";
   if(j==="fab") return S.fabProject ? FABS.find(x=>x.id===S.fabProject.id).name : "Fabrication";
   if(j==="project") return workName();
+  if(j==="woodcut") return "The tree line";
   if(j==="away") return "Away";
   const d=SYS.find(s=>s.id===j); return d?d.name:"—";
 }
