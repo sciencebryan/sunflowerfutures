@@ -356,6 +356,28 @@ const PIPES_LEVELS = [
           1,0,2,3,0,
           0,0,0,0,0,
           0,0,0,0,0],
+   start:[0,0,0,0,0, 0,0,1,0,0, 0,0,1,0,0, 0,1,0,0,0]},
+   {n:7, teach:"The whole quarter at once: a cross at the heart, tees on the arms, four standpipes. The main is only done when nothing anywhere spills.",
+   w:5, h:4,
+   cells:["K","L","K","L","K",
+          "K","I","I","T","L",
+          "T","T","X","T","K",
+          "L","K","S","L","K"],
+   sol:  [0,2,0,2,0,
+          1,0,2,3,0,
+          0,0,0,0,0,
+          0,0,0,0,0],
+   start:[0,0,0,0,0, 0,0,1,0,0, 0,0,1,0,0, 0,1,0,0,0]},
+   {n:7, teach:"The whole quarter at once: a cross at the heart, tees on the arms, four standpipes. The main is only done when nothing anywhere spills.",
+   w:5, h:4,
+   cells:[".","K",".","K",".",
+          "S","T","L","T","K",
+          ".","T","L","T","L",
+          ".","L","K","K","."],
+   sol:  [1,2,2,2,3,
+          2,0,0,3,0,
+          0,0,0,0,0,
+          0,0,0,0,0],
    start:[0,0,0,0,0, 0,0,1,0,0, 0,0,1,0,0, 0,1,0,0,0]}
 ];
 
@@ -365,7 +387,8 @@ const PIPES_REWARD = {
   3:{desc:"water loss drops again — the first junction seals true"},
   4:{desc:"water loss drops again — the square stops going soft after rain"},
   5:{desc:"water loss drops again — the dead stock is cut out of the line"},
-  6:{desc:"the mains run almost tight — only a trace is lost underground now"}
+  6:{desc:"the mains run almost tight — only a trace is lost underground now"},
+   7:{desc:"okay."}
 };
 
 /* ============================================================
@@ -397,7 +420,7 @@ const WIRES_LEVELS = [
    w:3, h:2, blocks:[],
    srcs: [{x:0,y:0,node:2,c:"k"},{x:0,y:1,node:2,c:"k"}],
    sinks:[{x:2,y:0,node:7,c:"k"},{x:2,y:1,node:7,c:"k"}],
-   inv:[{name:"double straight", wires:[{c:"k",a:7,b:2},{c:"k",a:6,b:3}], count:2}],
+   inv:[{name:"crossed", wires:[{c:"k",a:7,b:4},{c:"k",a:5,b:2}], count:1},{name:"corners", wires:[{c:"k",a:7,b:0},{c:"k",a:2,b:1}], count:1}],
    sol:[{x:1,y:0,inv:0,rot:0},{x:1,y:1,inv:0,rot:0}]},
   {n:4, teach:"Red rides with black now, and the runs cross. Colors never mix: red posts to red, black to black, even on a shared board.",
    w:3, h:2, blocks:[],
@@ -413,7 +436,18 @@ const WIRES_LEVELS = [
    inv:[{name:"straight", wires:[{c:"k",a:7,b:2}], count:2},
         {name:"drop",     wires:[{c:"k",a:7,b:4}], count:1},
         {name:"elbow",    wires:[{c:"k",a:1,b:2}], count:1}],
+   sol:[{x:1,y:0,inv:1,rot:0},{x:1,y:1,inv:0,rot:1},{x:1,y:2,inv:2,rot:0},{x:2,y:2,inv:0,rot:0}]},
+   {n:6, teach:"bird is the word",
+   w:3, h:3, blocks:[],
+   srcs: [{x:0,y:0,node:5,c:"k"},{x:0,y:2,node:1,c:"r"],
+   sinks:[{x:2,y:0,node:4,c:"k"},{x:2,y:2,node:0,c:"r"],
+   inv:[{name:"black u", wires:[{c:"k",a:0,b:1}], count:1},
+        {name:"red u",     wires:[{c:"r",a:0,b:1}], count:1},
+        {name:"little crossing", wires:[{c:"k",a:0,b:3},{c:"r",a:2,b:4}], count:1},
+        {name:"big crossing", wires:[{c:"k",a:0,b:2},{c:"k",a:3,b:4},{c:"r",a:1,b:7},{c:"r",a:5,b:6}]},
+        {name:"separate",    wires:[{c:"k",a:1,b:7},{c:"r",a:6,b:5], count:1}],
    sol:[{x:1,y:0,inv:1,rot:0},{x:1,y:1,inv:0,rot:1},{x:1,y:2,inv:2,rot:0},{x:2,y:2,inv:0,rot:0}]}
+   
 ];
 
 const WIRES_REWARD = {
@@ -447,7 +481,9 @@ const FOURIER_LEVELS = [
   {n:3, amps:[1,0,0.5],       signed:false, teach:"Something in the ripple. Count the crossings — not every harmonic is present."},
   {n:4, amps:[0.5,0.75,0,0.25], signed:false, teach:"A voice, almost. Four components, one of them silent."},
   {n:5, amps:[1,-0.5,0.25],   signed:true,  teach:"One of these is upside down. A flipped tone pulls the wave the other way."},
-  {n:6, amps:[0.75,0.5,-0.25,0.25,0], signed:true, teach:"The whole band at once. Somebody is broadcasting, and this is their shape."}
+  {n:6, amps:[0.75,0.5,-0.25,0.25,0], signed:true, teach:"The whole band at once. Somebody is broadcasting, and this is their shape."},
+  {n:7, amps:[0.25,0,1,0,-0.5,0,0,-1],   signed:true,  teach:"??"},
+  {n:8, amps:[0,0,0,0.25,0.5,0.75,1,0.75,0.5,0.25,0],   signed:true,  teach:"packet"}
 ];
 const FOURIER_REWARD = {
   2:{parts:4, desc:"a clean signal, twice: +4 parts off a channel that used to be static"},
