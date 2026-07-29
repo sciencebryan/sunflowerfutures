@@ -48,7 +48,7 @@ function renderHeader() {
     daywxEl.innerHTML = `
        
        
-      <b>${sn.name}, day ${dayOfSeason(S.day)} — ${S.weather} — </b> 
+      <b>${sn.name}, day ${dayOfSeason(S.day)} — ${S.weather}${_p}${_t} — </b> 
        
       <span style="opacity: 0.5;">${tomorrowWx} tomorrow</span>
     `;

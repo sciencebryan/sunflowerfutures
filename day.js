@@ -1,5 +1,5 @@
 import { S } from "./state.js";
-import { baseTarget, comfortBand, commonsTemps, drinkHeatMult, frostKills, gapRate, greenhouseTarget,
+import { baseTarget, comfortBand, commonsTemps, drinkHeatMult, effectiveLow, frostKills, gapRate, greenhouseTarget,
          greenhouseTemps, growthMult, irrigationHeatMult, meltSnow, soilDiscount,
          tickClimate } from "./climate.js";
 import { getState as rngGetState, setSeed as rngSetSeed, setState as rngSetState, rand as crand } from "./rng.js";
@@ -331,9 +331,21 @@ function shadeCooling(){
    downstream that used to read a comfort scalar keeps working, but the
    number now MEANS something — and, critically, a cold Commons is cold
    because of a temperature, not because a season id said so. */
-function applyTemperature(lines, tempEvent, commonsT, band, isSummer, isWinter, yr1){
+/* ONE definition, because there were nearly two. render.js reads
+   S.report.hearth.safety and the assignment below never wrote the field,
+   so `hp.safety.toFixed(2)` threw — but only on the first day of summer,
+   because hearthSection() returns a grey placeholder card through spring
+   and autumn and never reaches the line. renderAll() died there, the whole
+   UI stopped repainting, and the simulation carried on invisibly behind it:
+   garden, expeditions and journal all "stopped" while actually running.
+   Computing the number in two places is how that gap opens, so: one place. */
+function hearthSafety(commonsT, band){
   const miss = Math.max(0, band.lo - commonsT.mean, commonsT.mean - band.hi);
-  const safety = clamp(1 - miss/15, 0, 1);
+  return clamp(1 - miss/15, 0, 1);
+}
+
+function applyTemperature(lines, tempEvent, commonsT, band, isSummer, isWinter, yr1){
+  const safety = hearthSafety(commonsT, band);
   const indoorSafety = safety;
 
   // --- the everyday cost of poor shelter ---
@@ -653,7 +665,8 @@ function simulateDay(){
   const ghTarget = greenhouseTarget(S.greenhouse||[], CROPS);
   const ghHeat = F.greenhouse ? Math.min(heatIn, gapRate(Math.max(0, ghTarget-outLo), HEATER_MAX, HEATER_MAX)) : 0;
   S.climate.greenhouse = greenhouseTemps(outHi, outLo, (wx.solar||1)*sn.solar, massDamping*4, ghHeat);
-  S.report.hearth = {commons: commonsT, out: clim.out, band: comfortBand(sn.id), parts: hearthParts};
+  S.report.hearth = {commons: commonsT, out: clim.out, band: comfortBand(sn.id), parts: hearthParts,
+                     safety: hearthSafety(commonsT, comfortBand(sn.id))};
   applyTemperature(lines, tempEvent, commonsT, comfortBand(sn.id), isSummer, isWinter, yr1);
 
   const pumpEff    = brownout ? 0 : pumpAl;
@@ -873,7 +886,16 @@ function simulateDay(){
        Snow cover insulates; established perennials go dormant rather than
        dying (handled inside frostKills). */
     if(frostKills(crop, S.climate.out.lo, S.climate.snowpack)){
-      if(bed.growth>0.5) lines.push(`The cold took the ${crop.name.toLowerCase()} in bed ${S.beds.indexOf(bed)+1}.`);
+      /* This used to announce itself only when growth was past halfway, so
+         a bed sown in early spring and killed a week later vanished in
+         total silence — the player saw an empty bed and no reason for it.
+         A seedling dying is MORE worth saying than a mature crop dying,
+         because it's the one the player could still have prevented. */
+      const degrees = Math.round(effectiveLow(S.climate.out.lo, S.climate.snowpack));
+      lines.push(bed.growth > 0.5
+        ? `The cold took the ${crop.name.toLowerCase()} in bed ${S.beds.indexOf(bed)+1} — it got down to ${degrees}° overnight.`
+        // crop names are already plural ("Tomatoes"), so no noun after them
+        : `The young ${crop.name.toLowerCase()} in bed ${S.beds.indexOf(bed)+1} didn't survive the night. It got down to ${degrees}°, and they wanted ${Math.round(crop.tMin)}° or better.`);
       bed.fertility=clamp((bed.fertility??75)-2,10,100);
       bed.crop=null; bed.companions=[]; bed.growth=0; bed.days=0;
       bed.ready=false; bed.stored=0; bed.bare=0; bed.mateGot=null; bed.picked=0;
@@ -921,6 +943,29 @@ function simulateDay(){
       bed.stored = bed.bare * slotMult(bed.crop, bed.companions||[]);
       bed.ready = true;
     }
+  }
+  /* --- the warning that makes frost playable ---
+     A deterministic kill with no forecast is just an ambush. The player
+     can't see a temperature and can't see a crop's floor, so a bed emptying
+     overnight reads as a bug rather than as weather. This says the thing
+     they could still act on — pick it early, get cold frames up — on the
+     nights it's actually close. Once a day, consolidated, and only for
+     crops genuinely near the line rather than every hardy green in autumn. */
+  {
+    const lo = effectiveLow(S.climate.out.lo, S.climate.snowpack);
+    const atRisk = [];
+    for(const bed of S.beds){
+      const crop = bed.crop && CROPS[bed.crop];
+      if(!crop || crop.perennial || crop.tMin == null) continue;
+      if(frostKills(crop, S.climate.out.lo, S.climate.snowpack)) continue;   // already gone
+      if(lo - crop.tMin < 6) atRisk.push(crop.name.toLowerCase());
+    }
+    if(atRisk.length && !S._frostWarned){
+      const kinds = [...new Set(atRisk)];
+      lines.push(`It went down to ${Math.round(lo)}° in the night. The ${kinds.join(" and the ")} came through it, but not by much${S.flags.coldFrames ? "" : " — another few degrees and they won't"}.`);
+      S._frostWarned = true;
+    }
+    if(!atRisk.length) S._frostWarned = false;   // re-arm once the danger passes
   }
   // --- the picking window: an annual doesn't come in all at once ---
   // A ready bed bears stored/window food per day, for `window` days, and only
