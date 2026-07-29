@@ -445,7 +445,7 @@ const WIRES_LEVELS = [
         {name:"red u",     wires:[{c:"r",a:0,b:1}], count:1},
         {name:"little crossing", wires:[{c:"k",a:0,b:3},{c:"r",a:2,b:4}], count:1},
         {name:"big crossing", wires:[{c:"k",a:0,b:2},{c:"k",a:3,b:4},{c:"r",a:1,b:7},{c:"r",a:5,b:6}]},
-        {name:"separate",    wires:[{c:"k",a:1,b:7},{c:"r",a:6,b:5], count:1}],
+        {name:"separate",    wires:[{c:"k",a:1,b:7},{c:"r",a:6,b:5}], count:1}],
    sol:[{x:1,y:0,inv:1,rot:0},{x:1,y:1,inv:0,rot:1},{x:1,y:2,inv:2,rot:0},{x:2,y:2,inv:0,rot:0}]}
    
 ];
