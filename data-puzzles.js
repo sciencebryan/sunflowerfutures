@@ -484,7 +484,7 @@ const WIRES_LEVELS = [
         {name:"",wires:[{c:"k",a:0,b:4},{c:"r",a:1,b:5}], count:1},
         {name:"",wires:[{c:"r",a:0,b:1},{c:"r",a:2,b:3}], count:1},
         {name:"",wires:[{c:"r",a:0,b:7},{c:"r",a:1,b:4}], count:1},
-        {name:"",wires:[{c:"k",a:0,b:7},{c:"k",a:5,b:6},{c:"k",a:1,b:4}], count:1},
+        {name:"",wires:[{c:"k",a:0,b:7},{c:"k",a:1,b:6}], count:1},
         {name:"",wires:[{c:"k",a:0,b:3},{c:"r",a:2,b:5},{c:"r",a:4,b:6}], count:1},
         {name:"",wires:[{c:"k",a:0,b:3},{c:"r",a:4,b:7},{c:"r",a:5,b:6}], count:1}]}
    
