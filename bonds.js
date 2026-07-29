@@ -195,4 +195,4 @@ function dumpBonds(S) {
   console.table(S.people.map(p => ({ name: p.name, personality: p.personality })));
 }
 
-export { PERSONALITIES, rollMusic, P_REL, bondKey, bondOf, compatibility, dumpBonds, isMismatched, moreBothered, personalityTerm, rollPersonality, seedFounderBonds, setIdeologyTermFn, termBreakdown, tickBondPair };
+export { MISMATCH_T, PERSONALITIES, rollMusic, P_REL, bondKey, bondOf, compatibility, dumpBonds, isMismatched, moreBothered, personalityTerm, rollPersonality, seedFounderBonds, setIdeologyTermFn, termBreakdown, tickBondPair };

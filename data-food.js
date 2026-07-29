@@ -101,7 +101,13 @@ const FOOD_DATA = {
   bark:      {name:"inner bark",    dk:0.020, mac:{c:0.94,f:0.02,p:0.04}, pres:["dry"],                      tags:["wild","famine"]},
 
   // ---- made things ----
-  oil:       {name:"pressed oil",   dk:0.004, mac:{c:0.00,f:1.00,p:0.00}, pres:[],                           tags:["fat","made"]}
+  // noBulk: this is food and it counts in the stores, but nobody sits down
+  // to a bowl of oil. It leaves the pantry through RECIPES (dressing a
+  // salad, frying potatoes) and through the dinner line's flavor draw --
+  // never through the ordinary perishable-first meal. See takeFrom() in
+  // larder.js, which skips noBulk entries on the first pass and only
+  // reaches for them if the village would otherwise go hungry beside them.
+  oil:       {name:"pressed oil",   dk:0.004, mac:{c:0.00,f:1.00,p:0.00}, pres:[], noBulk:true,             tags:["fat","made"]}
 };
 
 /* What the near country actually gives, by season — the flavor text in
@@ -181,7 +187,20 @@ const RECIPES = [
   {id:"sundried", name:"Dried tomatoes", needs:["tomato"], takes:1.5, wb:2, needsFlag:"dryRacks",
    line:"Tomatoes halved and laid out on the racks until they went dark and sweet and kept forever."},
   {id:"squashsoup", name:"Squash soup", needs:["wintersquash",{tag:"leaf"}], takes:2, wb:3,
-   line:"Winter squash cooked down to a thick soup, with greens torn in at the end. It filled the room with steam."}
+   line:"Winter squash cooked down to a thick soup, with greens torn in at the end. It filled the room with steam."},
+  /* ---- the oil dishes ----
+     Oil is a pantry entry now rather than a scalar off to one side, which
+     means it has to have somewhere to GO. These are the ways a kitchen
+     actually spends oil: dressing something raw, and frying something
+     starchy. All three carry macFix:"f", because that is precisely what
+     they do -- a village running sunflowers and nothing else is short of
+     fat until it presses some and cooks with it. */
+  {id:"dressedgreens", name:"Dressed greens", needs:[{tag:"leaf"},"oil"], takes:1.5, wb:2.5, macFix:"f",
+   line:"Greens torn up raw and turned through oil and salt until every leaf had a shine on it."},
+  {id:"friedpotatoes", name:"Fried potatoes", needs:["potatoes","oil"], takes:2, wb:3.5, macFix:"f",
+   line:"Potatoes sliced thin and fried hard in oil, and the pan was scraped out before it had cooled."},
+  {id:"sauteedsquash", name:"Sauteed squash", needs:["summersquash","oil"], takes:1.5, wb:2.5, macFix:"f",
+   line:"Summer squash cut into coins and taken through hot oil until the edges caught and went sweet."}
 ];
 
 /* ---- macro thresholds ----

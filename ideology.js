@@ -57,29 +57,116 @@ const STAT_SEED = p => ({
   wholeness:    (p.care - 2) * 0.07 - (p.hands - 2) * 0.06
 });
 
-/* --- authored overrides ---
+/* --- authored worldviews ---
    Derived by default, hand-authored where it should hurt. An override SETS
-   the axis, regardless of where stats+trait would put it — and the reason
-   is a journal line somewhere, not a config field. PLACEHOLDERS: these are
-   my sketches against the roster notes; rewrite them in your own voice, or
-   delete. Grep-able per character, per the no-central-dispatcher rule. */
+   the axis, regardless of where stats+trait would put it.
+
+   WHY SET RATHER THAN ADD. STAT_SEED contributes roughly 0.12–0.24 per
+   axis and the jitter is ±0.15, so for anyone unauthored the noise is the
+   same size as the signal — an axis can flip sign between playthroughs.
+   That is the mechanical reason a character didn't feel like the same
+   person twice. Adding onto a hidden baseline can't guarantee the authored
+   position actually lands, because the baseline isn't visible or controlled.
+   So: set.
+
+   DISTRIBUTION IS THE POINT. Extremism only reads as a trait against people
+   who don't have it, so this is deliberately lopsided:
+     · four true believers (moss, din, bec, emrys) — two or more axes past
+       ±0.9, clustering into a coherent position rather than one loud number
+     · twelve moderates — one or two axes at ±0.4–0.6
+     · three deliberately unideological (theo, sam, petra) — nothing past
+       ±0.3. A person whose defining trait is that they don't have a strong
+       worldview is its own kind of interesting and costs nothing to write.
+   Every remaining axis is left to STAT_SEED + jitter, so each person still
+   has game-to-game texture outside their defining convictions.
+
+   DRIFT INTERACTION IS A FEATURE. Someone authored at ±0.95 has real room
+   to erode before crossing back under a band line, so a hardliner mellowing
+   over years is a genuine arc — using the drift mechanism that already
+   exists rather than a new one.
+
+   `worldview` is for narrative use: it lets identity leak without leaking
+   numbers, which nothing else here can do (drift only leaks single-axis
+   band crossings). Each is grounded in the character's `note` in defs.js. */
 const IDEO_OVERRIDES = {
-  // moss is "old enough to remember what life was like before. Doesn't
-  // like to talk about it." — what broke, when it broke, was the complex stuff.
-  moss: { complexity: -0.55 },
-  // din "doesn't say where they walked from." The road brought them here;
-  // they will not be the one who closes it behind them.
-  din: { openness: +0.45 },
-  // june "likes the people here almost as much as she likes the garden" —
-  // a garden lifer plants for decades she won't see.
-  june: { temporality: +0.50 },
-  // yusuf checks ladders twice. A body is the one thing he will not
-  // improvise with.
-  yusuf: { wholeness: +0.55 },
-  // bec sleeps outside by choice — the argument that a person is something
-  // you fit to the world, not the other way round.
-  bec: { wholeness: -0.45 }
+  /* --- true believers --- */
+  // "old enough to remember what life was like before. Doesn't like to talk
+  // about it." What broke, when it broke, was the complicated stuff — and
+  // moss watched every stage of it go.
+  moss: { axes: { complexity: -0.95, intervention: -0.92, openness: -0.45, temporality: +0.55 },
+          worldview: "Every machine we keep is a promise we have to keep making." },
+  // "doesn't say where they walked from." The road brought them here; they
+  // will not be the one who closes it behind anyone else.
+  din: { axes: { openness: +0.95, obligation: -0.92, temporality: -0.50 },
+         worldview: "Nobody gets to shut the road behind them. I'd know." },
+  // "sleeps outside, when the weather allows it." The argument that a person
+  // is something you fit to the world, not the other way round — restraint
+  // and self-adaptation together, which is the one quadrant no other axis holds.
+  bec: { axes: { wholeness: -0.95, intervention: -0.92, obligation: -0.60 },
+         worldview: "If the valley has to bend or I do, it should be me. I'm the one who can choose." },
+  // "carries a multimeter like a holy relic." The other pole of complexity,
+  // so moss has someone real to argue with.
+  emrys: { axes: { complexity: +0.95, intervention: +0.92, wholeness: -0.55 },
+           worldview: "Anything that measures can be understood, and anything understood can be kept running." },
+
+  /* --- moderates --- */
+  // "keeps a tackle box of salvaged screws, meticulously sorted."
+  nadia: { axes: { complexity: +0.55, obligation: +0.45 },
+           worldview: "A thing sorted is a thing you'll find again." },
+  // "talks to the plants. Likes to imagine they answer."
+  ora: { axes: { intervention: -0.50, wholeness: +0.45 },
+         worldview: "They were here first and they'll be here after. Asking costs nothing." },
+  // "checks ladders twice." A body is the one thing he won't improvise with.
+  yusuf: { axes: { wholeness: +0.60, intervention: -0.40 },
+           worldview: "There's no spare of a person. That's the whole argument." },
+  // "can diagnose motor and engine problems by sound."
+  ilya: { axes: { complexity: +0.50, obligation: -0.40 },
+          worldview: "Listen long enough and the machine tells you. Nobody has to be told to listen." },
+  // "likes the people here almost as much as she likes the garden" — a
+  // garden lifer plants for decades she won't see.
+  june: { axes: { temporality: +0.60, openness: +0.45 },
+          worldview: "You plant for the year you won't see. It isn't a sacrifice, it's just the schedule." },
+  // "arms covered in colorful tattoos of native flowers and butterflies."
+  marisol: { axes: { temporality: +0.50, intervention: -0.45 },
+             worldview: "Put back what was here. Everything after that is decoration." },
+  // "speaks rarely; doesn't like to leave jobs half-done."
+  ash: { axes: { obligation: +0.60, temporality: +0.40 },
+         worldview: "Half a job is a lie you tell the next person." },
+  // "keeps a weather log. Likes to sketch the clouds."
+  kav: { axes: { temporality: +0.50, complexity: +0.40, openness: +0.40 },
+         worldview: "Write it down long enough and it stops being weather and starts being a pattern." },
+  // "arrived with a sourdough starter older than she is."
+  rosa: { axes: { temporality: +0.60, wholeness: +0.40 },
+          worldview: "Some things you don't own. You keep them alive and hand them on." },
+  // "knows mushrooms. Most of them, anyway."
+  halla: { axes: { complexity: -0.50, intervention: -0.45 },
+           worldview: "The forest already solved most of it. We only have to learn which ones." },
+  // "measured, deliberate, and always kind."
+  yara: { axes: { obligation: +0.50, openness: -0.40 },
+          worldview: "Say who's doing what, out loud, so nobody has to guess and nobody gets missed." },
+  // "always has a jar of black birch tea steeping somewhere."
+  eli: { axes: { wholeness: +0.50, openness: +0.45 },
+         worldview: "A body knows how to mend. Mostly the work is not getting in its way." },
+
+  /* --- deliberately unideological --- */
+  // sixteen, and "nobody has ever seen him sit still." Hasn't landed
+  // anywhere yet, which is a real thing to be.
+  theo: { axes: { openness: +0.25, obligation: -0.25 },
+          worldview: "Hasn't decided yet, and isn't in a hurry about it." },
+  // "has never once complained about the rain." A man without a program.
+  sam: { axes: { temporality: +0.20, obligation: +0.15 },
+         worldview: "It rains. You work in the rain. There isn't a position to take about it." },
+  // "remembers how everyone takes their tea."
+  petra: { axes: { openness: +0.25, wholeness: +0.20 },
+           worldview: "People aren't arguments. They're people, and they take their tea a particular way." }
 };
+
+/* PLAYER CHOICE WINS. applyFounders() applies the founding visuals'
+   ideoSeed on top of this, additively — so a circled place can still move
+   an authored character, and any future founding-conflict feature that
+   sets an axis outright can simply run after this and overwrite it. The
+   lookup is structured so that's possible without touching this table. */
+const worldviewOf = p => (IDEO_OVERRIDES[p && p.id] || {}).worldview || null;
 
 function seedIdeology(p) {
   const v = {};
@@ -89,7 +176,10 @@ function seedIdeology(p) {
     v[ax] = clamp((s[ax] || 0) + (t[ax] || 0) + (Math.random() * 0.3 - 0.15), -1, 1);
   }
   const over = IDEO_OVERRIDES[p.id];
-  if (over) for (const ax of Object.keys(over)) v[ax] = over[ax];
+  // tolerate the old flat {axis:value} shape as well as {axes:{...}} — a
+  // save written before worldviews existed re-seeds through here on migrate
+  const axes = over && (over.axes || over);
+  if (axes) for (const ax of Object.keys(axes)) if (AXES.includes(ax)) v[ax] = axes[ax];
   return v;
 }
 
@@ -248,4 +338,4 @@ function dumpIdeology() {
   console.table(S.people.map(p => ({ name: p.name, ...(p.ideology || {}) })));
 }
 
-export { AXES, IDEO_OVERRIDES, driftIdeology, dumpIdeology, ideoOf, ideologyTerm, nudgeIdeology, seedIdeology };
+export { AXES, IDEO_OVERRIDES, driftIdeology, dumpIdeology, ideoOf, ideologyTerm, nudgeIdeology, seedIdeology, worldviewOf };

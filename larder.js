@@ -84,10 +84,14 @@ function addPreserved(k, n, method){
    Draws `want` food value, most-perishable-first, and reports the macro
    split of what was actually eaten. Fresh first; jars only once the fresh
    is gone (the caller decides whether to open them). */
-function takeFrom(list, want, order){
+/* `allowNoBulk` is the escape hatch, not the default. Entries flagged
+   noBulk in FOOD_DATA (oil, so far) are food and count in the stores, but
+   they are not a meal on their own -- they leave through recipes. The one
+   exception is hunger: see eatFresh below. */
+function takeFrom(list, want, order, allowNoBulk){
   const got = {c:0, f:0, p:0};
   let taken = 0;
-  const rows = [...list].sort(order);
+  const rows = [...list].sort(order).filter(e => allowNoBulk || !(fd(e.k)||{}).noBulk);
   for(const e of rows){
     if(taken >= want-1e-9) break;
     const t = Math.min(e.n, want - taken);
@@ -102,7 +106,21 @@ function takeFrom(list, want, order){
 const perishableFirst = (a,b) => ((fd(b.k)||{dk:0}).dk) - ((fd(a.k)||{dk:0}).dk);
 const oldestFirst     = (a,b) => a.d - b.d;
 
-const eatFresh = want => takeFrom(pantry(), want, perishableFirst);
+/* Two passes. The first is the ordinary meal and never touches the oil.
+   If it comes up short -- the shelves are genuinely bare -- the second
+   pass reaches for whatever was held back, because a village does not
+   starve standing next to a jar of fat. Only the shortfall is drawn, so
+   in any normal week this second call takes nothing at all. */
+function eatFresh(want){
+  const first = takeFrom(pantry(), want, perishableFirst, false);
+  const short = want - first.taken;
+  if(short <= 1e-6) return first;
+  const second = takeFrom(pantry(), short, perishableFirst, true);
+  return {taken: first.taken + second.taken,
+          mac: {c: first.mac.c + second.mac.c,
+                f: first.mac.f + second.mac.f,
+                p: first.mac.p + second.mac.p}};
+}
 const eatJars  = want => takeFrom(jars(),   want, oldestFirst);
 
 /* --- the deficiency override ---
@@ -120,7 +138,10 @@ const eatJars  = want => takeFrom(jars(),   want, oldestFirst);
    does the village. */
 const FIX_SHARE = 0.45;    // at most this much of a day's meal is redirected
 function bestFor(ax){
-  const all = [...pantry(), ...jars()].filter(e=>e.n>0.05);
+  // noBulk excluded on purpose: oil is pure fat and would win every fat
+  // deficiency draw forever. The fat deficiency is meant to be solved by
+  // COOKING with the oil -- see the macFix:"f" dishes in RECIPES.
+  const all = [...pantry(), ...jars()].filter(e=>e.n>0.05 && !(fd(e.k)||{}).noBulk);
   if(!all.length) return null;
   // richest in the missing thing, and meaningfully so
   return all.sort((a,b)=>((fd(b.k)||{mac:{}}).mac[ax]||0) - ((fd(a.k)||{mac:{}}).mac[ax]||0))[0];
@@ -322,9 +343,34 @@ function cookRecipe(lines){
   if(r.macFix && S.macDays) S.macDays[r.macFix] = Math.max(0, S.macDays[r.macFix] - 3);
   S.lastRecipeDay = S.day;
   S.lastRecipe = r.id;
-  lines.push(r.line);
+  // The journal used to print r.line alone, so "Nuts pounded to a paste and
+  // spread on whatever there was" arrived as an unattributed sentence with
+  // no indication it was a dish at all. Lead with the name -- but only when
+  // the line doesn't already contain it, or half the entries would read
+  // "Persimmon pudding. Persimmon pudding, dark and dense...".
+  const selfNaming = r.line.toLowerCase().includes(r.name.toLowerCase());
+  lines.push(selfNaming ? r.line : `${r.name}. ${r.line}`);
   return r;
 }
+
+/* ---- direct access to one named stock ----
+   The dinner line needs to know whether there's oil to cook with and to
+   spend a little when there is; that used to be S.oil, a scalar living
+   outside the pantry with its own cap and its own rules. */
+const stockOf = k => { const e = pantry().find(x=>x.k===k); return e ? e.n : 0; };
+function takeStock(k, n){
+  const p = pantry(); const e = p.find(x=>x.k===k);
+  if(!e || !(n>0)) return 0;
+  const t = Math.min(e.n, n);
+  e.n -= t;
+  if(e.n <= 1e-6) p.splice(p.indexOf(e), 1);
+  return t;
+}
+/* How much of what's on the shelves could actually go into a jar by this
+   method. The canning kitchen's power gate reads this: boilers that are
+   built but have nothing to boil shouldn't be drawing off the grid. */
+const stockTakingMethod = method =>
+  pantry().filter(e => (fd(e.k)||{pres:[]}).pres.includes(method)).reduce((a,e)=>a+e.n, 0);
 
 /* ---- readouts (render only) ---- */
 /* Below this, an entry rounds to "0 something" on the card, which reads as
@@ -377,4 +423,4 @@ function intakeReadout(){
 
 export { addFood, addFoodFound, addForage, addPreserved, addPreservedFound, eatForDeficiency, intakeReadout, bestMethodFor, composition, cookRecipe, decayStock,
          eatFresh, eatJars, foodName, forageKinds, jarComposition, jars, jarsTotal, pantry,
-         pantryTotal, preserveInto, resync, stockMacros, tickMacros };
+         pantryTotal, preserveInto, resync, stockMacros, tickMacros, stockOf, stockTakingMethod, takeStock };

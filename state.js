@@ -6,6 +6,7 @@ import { NEWCOMERS, ROSTER, VISUALS } from "./defs.js";
 import { clamp } from "./helpers.js";
 import { PERSONALITIES, rollMusic, rollPersonality, seedFounderBonds } from "./bonds.js";
 import { seedIdeology } from "./ideology.js";
+import { seedPregameMemory } from "./memories.js";
 
 
 
@@ -30,10 +31,15 @@ function newSites(){
 function freshPerson(def){
   // personality: hidden chemistry, rolled fresh per person per game — never
   // rendered, never derived from anything visible (see bonds.js)
-  const p = {...def, age: AGES[def.id] ?? 30, years:0, perm:null, wb:78+Math.floor(Math.random()*10), job:null, streak:0, status:"ok", downDays:0, mem:null, toxins:0, personality: rollPersonality(), music: rollMusic(), practice:{specific:{}, broad:{hands:0,green:0,care:0,wild:0}}};
+  const p = {...def, age: AGES[def.id] ?? 30, years:0, perm:null, wb:78+Math.floor(Math.random()*10), job:null, streak:0, status:"ok", downDays:0, toxins:0, personality: rollPersonality(), music: rollMusic(), practice:{specific:{}, broad:{hands:0,green:0,care:0,wild:0}},
+    // memories: the array that replaced the old single `mem` string. Twelve
+    // slots, each with its own salience and warmth — see memories.js.
+    memories: [], frontId: null};
   // ideology: hidden stance vector, seeded from who they already are
   // (stats + trait), so it needs the finished person — hence after the spread
   p.ideology = seedIdeology(p);
+  // and the one authored thing that happened to them before any of this
+  seedPregameMemory(p);
   return p;
 }
 
@@ -88,7 +94,14 @@ function newState(){
     forest: [],    // food forest: perennial plots, separate from the annual beds
     discovered: {}, // gated builds/projects found via expedition (parallel to S.crops)
     beds: [{crop:null,companions:[],growth:0,days:0,ready:false,stored:0,fertility:75,plantedDay:0},{crop:null,companions:[],growth:0,days:0,ready:false,stored:0,fertility:75,plantedDay:0}],
-    preserved: 58, spoilMemo: 0, winterDays: 0, oil: 0,   // pressed sunflower oil -- a seasoning, not a staple, and it takes real labor to make
+    preserved: 58, spoilMemo: 0, winterDays: 0,   // oil is a pantry food now (FOOD_DATA.oil, noBulk), not a scalar
+    fabsOff: {},   // per-shop switches: the forge and the machine shop run independently
+    /* Seeded so a run can be reproduced exactly — same seed, same weather,
+       same year. climate.js draws from it; the rest of the game still uses
+       Math.random for now (see rng.js for why). */
+    seed: (Math.random()*4294967296)>>>0,
+    rngState: 0,
+    climate: null,          // filled by tickClimate on the first day
     reputation: 0.55,  // HIDDEN. A slow-moving read on whether this is a good place to end up --
                         // spirits, food, and water security, smoothed over time. Nudges how often
                         // strangers find the road here. Never shown to the player.
@@ -106,6 +119,16 @@ function newState(){
                            // cost of the reliable supply, and it is never shown to anyone.
     compost: 0,  // built up from spoilage/preserving loss once compost bins exist; spread onto
                  // whichever bed or forest plot needs it most (see the compost phase below)
+
+    // who isn't here any more: {id, name, day, kind}. Death and departure
+    // remove people from S.people entirely, so this is the only thing that
+    // lets a memory of someone ask whether they're still around (see the
+    // ache term in memories.js).
+    gone: [],
+    // the shared "what's the village been chewing on" log — capped, short
+    // memory, the thing conversations draw topics from. See memories.js.
+    recentEvents: [],
+    memSeq: 0,          // unique-id counter for memories
 
     bonds: {},          // Keyed by "char1Id:char2Id", value is {familiarity 0..10, affinity -10..+10}
                         // (+ lazily: flares, log, lastFix — see events.js friction & mediation.js)
@@ -300,7 +323,6 @@ function migrate(s){
     Object.assign(s.res,{scrap:4,parts:0,seeds:0,meds:0});
     s.sites=newSites(); s.expeditions=[]; s.expSeq=1;
     s.project=null; s.flags={}; s.pending=[];
-    s.people.forEach(p=>{ if(p.mem===undefined) p.mem=null; });
   }
   if(s.v<3){
     const all=[...ROSTER,...NEWCOMERS];
@@ -384,7 +406,24 @@ function migrate(s){
   if(!s.forest) s.forest=[];
   if(!s.discovered) s.discovered={};
   if(s.res.rawSeed===undefined) s.res.rawSeed=0;
-  if(s.oil===undefined) s.oil=0;
+  if(!s.fabsOff) s.fabsOff={};              // per-shop on/off switches
+  if(s.seed===undefined) s.seed=(Math.random()*4294967296)>>>0;
+  if(s.rngState===undefined) s.rngState=0;
+  if(s.climate===undefined) s.climate=null;   // tickClimate seeds it mild, not cold
+  /* Oil moved out of its own scalar and into the pantry as a real food.
+     Carry any old save's oil across once, then drop the field so nothing
+     reads it again. */
+  if(s.oil!==undefined){
+    if(s.oil > 0.05){
+      s.pantry = Array.isArray(s.pantry) ? s.pantry : [];
+      const e = s.pantry.find(x=>x.k==="oil");
+      if(e) e.n += s.oil; else s.pantry.push({k:"oil", n:s.oil, d:s.day||1});
+    }
+    delete s.oil;
+  }
+  // beds carry a bare (pre-companion) yield now, so each slot can be
+  // scored on its own neighbours — see the aster rule in day.js
+  for(const b of (s.beds||[])) if(b.bare===undefined) b.bare = b.stored||0;
   if(s.reputation===undefined) s.reputation=0.55;
   if(s.neighborStanding===undefined) s.neighborStanding=0;
   if(s.forecast===undefined) s.forecast=null;
@@ -414,6 +453,23 @@ function migrate(s){
   for(const p of s.people) if(!p.personality || !PERSONALITIES.includes(p.personality)) p.personality=rollPersonality();
   // ideology: hidden stance vector added later — seeded from stats+trait now
   for(const p of s.people) if(!p.ideology) p.ideology=seedIdeology(p);
+  /* memories: the array replaced the old single `mem` string, which every
+     new event overwrote. Anyone from an older save gets the empty array and
+     their authored pre-game memory; whatever their `mem` last happened to
+     say is dropped rather than converted — it was the most recent event, not
+     a memory, and forging a fake day/intensity/valence for it would put a
+     lie in the one structure this system needs to be able to trust. */
+  for(const p of s.people){
+    if(!Array.isArray(p.memories)){
+      p.memories = [];
+      seedPregameMemory(p);
+    }
+    if(p.frontId===undefined) p.frontId=null;
+    delete p.mem;
+  }
+  if(!Array.isArray(s.gone)) s.gone=[];
+  if(!Array.isArray(s.recentEvents)) s.recentEvents=[];
+  if(s.memSeq===undefined) s.memSeq=0;
   for(const p of s.people) if(p.toxins===undefined) p.toxins=0;
   for(const p of s.people) if(!p.music) p.music=rollMusic();
   if(s.legitimacy===undefined) s.legitimacy=70;
@@ -475,7 +531,6 @@ function migrate(s){
     for(const p of s.people){
       if(p.status==="away" && !onRoad.has(p.id)){
         p.status="ok"; p.job=null;
-        p.mem=p.mem||`Came home, day ${s.day}.`;
       }
     }
   }

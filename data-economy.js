@@ -58,6 +58,26 @@ const OFFLINE_CAP = 7;
 
 const INJURY_PER_DAY = 0.03;
 
+/* ---- seed-rich salvage sites ----
+   A normal salvage trip gets ONE roll at turning up a crop the village has
+   never grown. These two places are, in the fiction, nothing but seed — a
+   vault of it and a building full of filing cabinets of varieties — and
+   were rolling at exactly the same odds as an electronics depot, which is
+   why a full year could pass with crops still undiscovered.
+
+   The roll COUNT scales with how much is left to find:
+     rolls = clamp(lockedCrops().length, 1, MAX_SEED_ROLLS)
+   Lots undiscovered -> the full five. As the pool drains, so does the
+   count, one for one, down to a single roll for whatever's left. No
+   separate total-crop constant and no tuning curve needed: the pool
+   shrinks inside the loop as each roll lands, so a roll can never be
+   spent on a crop already found.
+   Per-roll odds are unchanged (see DISCOVER_P in expeditions.js) — five
+   rolls at 16% is ~58% of finding something, which is a real difference
+   from 16% without being a guarantee. */
+const SEED_RICH_SITES = ["seedvault", "extension"];
+const MAX_SEED_ROLLS = 5;
+
 /* start:false systems must be built before they do anything.
    draw = power drawn per day once running. */
 /* SYS — the seven built systems (power, water, food-infrastructure, morale hub).
@@ -204,7 +224,16 @@ const SITE_DEF = [
   // anyone who didn't have a grid of their own to run.
   {id:"marina",   name:"The Dry Marina",        days:4, known:false, stock:{cells:4, scrap:12, parts:6},   blurb:"Boats up on blocks in a lot gone to birch. Deep-cycle banks in half of them, too heavy to have been worth stealing."},
   {id:"solarrow", name:"Ridgeline Houses",      days:6, known:false, stock:{cells:5, parts:10, scrap:8},   blurb:"Big houses along the ridge, panels still on the roofs and the wall units still wired to them."}
-];
+]
+/* Sorted by distance at definition, so every consumer agrees on "nearest
+   first" without each one remembering to sort: the Beyond tab's listing,
+   the "Farther out" card, the party sheet, and — importantly — the
+   SITE_DEF.find() in expeditions.js that decides which place a ranging
+   party actually turns up. Authored order used to put the Dry Marina (4d)
+   after the Reservoir Works (8d), so the queue read wrong AND the marina's
+   deep-cycle cells arrived last instead of fourth. Everything else in the
+   codebase keys off site id, never index, so this is safe to reorder. */
+.sort((a,b)=>a.days-b.days);
 
 const SITE_LOOT_TABLE = {
   "oldtown":    { scrap: 0.6, parts: 0.4 },
@@ -321,32 +350,32 @@ const CROPS = {
   // rescaled alongside so food per day-of-bed-occupancy stays near the
   // playtested rate — shorter cycles alone would have re-inflated the food
   // budget the note above cut.
-  radish:  {name:"Radishes",  work:11, minDays:9,  window:3,  yield:12, seed:1, seeds:1, sow:["spring","summer","autumn"], feed:"light",  note:"Fast, thin, and better than nothing."},
+  radish:  {name:"Radishes", tMin:22, tOpt:62, tMax:82,  work:11, minDays:9,  window:3,  yield:12, seed:1, seeds:1, sow:["spring","summer","autumn"], feed:"light",  note:"Fast, thin, and better than nothing."},
   // "Greens" stays as the catch-all cut-and-come-again planting — the named
   // brassicas above are what you grow on purpose once you know them.
-  greens:  {name:"Greens",    work:14, minDays:10,  window:10, yield:24, seed:1, seeds:1, sow:["spring","summer","autumn"], feed:"light",  note:"Whatever leaf comes up fastest. Cut and come again, until it bolts."},
-  beans:   {name:"Beans",     work:26, minDays:18,  window:7,  yield:38, seed:2, seeds:3, sow:["spring","summer"],          feed:"legume", locked:true, note:"Feeds you, then feeds the soil, then feeds you again."},
+  greens:  {name:"Greens", tMin:22, tOpt:62, tMax:82,    work:14, minDays:10,  window:10, yield:24, seed:1, seeds:1, sow:["spring","summer","autumn"], feed:"light",  note:"Whatever leaf comes up fastest. Cut and come again, until it bolts."},
+  beans:   {name:"Beans", tMin:33, tOpt:75, tMax:92,     work:26, minDays:18,  window:7,  yield:38, seed:2, seeds:3, sow:["spring","summer"],          feed:"legume", locked:true, note:"Feeds you, then feeds the soil, then feeds you again."},
   // The old single "squash" was internally contradictory — it kept like a
   // winter squash (barely decays) but matured and picked like a summer one.
   // Split, they're two genuinely different crops: one you eat all season and
   // can't store, one you harvest once and live on until spring.
-  summersquash:{name:"Summer squash", work:24, minDays:18, window:12, yield:40, seed:2, seeds:2, sow:["spring","summer"], feed:"heavy", locked:true, note:"Gives and gives until you're sick of it, and keeps about a week."},
-  wintersquash:{name:"Winter squash", work:40, minDays:32, window:3,  yield:48, seed:2, seeds:2, sow:["spring","summer"], feed:"heavy", locked:true, note:"Slow, heavy, and it keeps all winter in a cold room."},
-  cucumber:{name:"Cucumbers", work:22, minDays:17, window:10, yield:34, seed:1, seeds:2, sow:["spring","summer"],        feed:"heavy", locked:true, note:"Half water and no use to anyone in February — unless it went into the crocks first."},
-  tomato:  {name:"Tomatoes",  work:30, minDays:24, window:14, yield:52, seed:1, seeds:2, sow:["spring","summer"],        feed:"heavy", locked:true, note:"Wants heat and hates its own relatives. Keeps not at all, dries beautifully."},
-  spinach: {name:"Spinach",   work:12, minDays:9,  window:6,  yield:20, seed:1, seeds:1, sow:["spring","autumn"],        feed:"light", locked:true, note:"Bolts the moment it feels summer. Grow it at the cold ends of the year."},
-  tatsoi:  {name:"Tatsoi",    work:12, minDays:8,  window:6,  yield:18, seed:1, seeds:1, sow:["spring","autumn"], hardy:true, feed:"light", locked:true, note:"Flat rosettes that shrug off a frost and sweeten after one."},
-  kale:    {name:"Kale",      work:16, minDays:17, window:20, yield:34, seed:1, seeds:1, sow:["spring","summer","autumn"], hardy:true, feed:"light", locked:true, note:"Cut it all season, and it's better after the first hard frost than before."},
-  cabbage: {name:"Cabbage",   work:26, minDays:24, window:2,  yield:36, seed:1, seeds:1, sow:["spring","autumn"],        feed:"heavy", locked:true, note:"One head, all at once, and a cellar or a crock will hold it for months."},
-  potatoes:{name:"Potatoes",  work:36, minDays:33,  window:2,  yield:46, seed:3, seeds:3, sow:["spring"],                   feed:"heavy", locked:true, note:"Dull, heavy, and the reason anyone survived anything. Keep back the small ones to plant."},
-  grain:   {name:"Grain",     work:48, minDays:40,  window:2,  yield:68, seed:3, seeds:4, sow:["spring","autumn"], hardy:true, feed:"heavy", locked:true, note:"The one crop frost won't kill: plant it in autumn and it sleeps under the snow, ready in spring. Slow, but it feeds a winter."},
-  peas:    {name:"Peas",      work:30, minDays:21,  window:5,  yield:48, seed:2, seeds:3, sow:["spring","summer"],
+  summersquash:{name:"Summer squash", tMin:33, tOpt:78, tMax:95, work:24, minDays:18, window:12, yield:40, seed:2, seeds:2, sow:["spring","summer"], feed:"heavy", locked:true, note:"Gives and gives until you're sick of it, and keeps about a week."},
+  wintersquash:{name:"Winter squash", tMin:33, tOpt:76, tMax:93, work:40, minDays:32, window:3,  yield:48, seed:2, seeds:2, sow:["spring","summer"], feed:"heavy", locked:true, note:"Slow, heavy, and it keeps all winter in a cold room."},
+  cucumber:{name:"Cucumbers", tMin:35, tOpt:78, tMax:92, work:22, minDays:17, window:10, yield:34, seed:1, seeds:2, sow:["spring","summer"],        feed:"heavy", locked:true, note:"Half water and no use to anyone in February — unless it went into the crocks first."},
+  tomato:  {name:"Tomatoes", tMin:34, tOpt:77, tMax:92,  work:30, minDays:24, window:14, yield:52, seed:1, seeds:2, sow:["spring","summer"],        feed:"heavy", locked:true, note:"Wants heat and hates its own relatives. Keeps not at all, dries beautifully."},
+  spinach: {name:"Spinach", tMin:15, tOpt:60, tMax:78,   work:12, minDays:9,  window:6,  yield:20, seed:1, seeds:1, sow:["spring","autumn"],        feed:"light", locked:true, note:"Bolts the moment it feels summer. Grow it at the cold ends of the year."},
+  tatsoi:  {name:"Tatsoi", tMin:14, tOpt:58, tMax:78,    work:12, minDays:8,  window:6,  yield:18, seed:1, seeds:1, sow:["spring","autumn"],  feed:"light", locked:true, note:"Flat rosettes that shrug off a frost and sweeten after one."},
+  kale:    {name:"Kale", tMin:10, tOpt:60, tMax:80,      work:16, minDays:17, window:20, yield:34, seed:1, seeds:1, sow:["spring","summer","autumn"],  feed:"light", locked:true, note:"Cut it all season, and it's better after the first hard frost than before."},
+  cabbage: {name:"Cabbage", tMin:20, tOpt:62, tMax:80,   work:26, minDays:24, window:2,  yield:36, seed:1, seeds:1, sow:["spring","autumn"],        feed:"heavy", locked:true, note:"One head, all at once, and a cellar or a crock will hold it for months."},
+  potatoes:{name:"Potatoes", tMin:30, tOpt:68, tMax:85,  work:36, minDays:33,  window:2,  yield:46, seed:3, seeds:3, sow:["spring"],                   feed:"heavy", locked:true, note:"Dull, heavy, and the reason anyone survived anything. Keep back the small ones to plant."},
+  grain:   {name:"Grain", tMin:5, tOpt:65, tMax:88,     work:48, minDays:40,  window:2,  yield:68, seed:3, seeds:4, sow:["spring","autumn"],  feed:"heavy", locked:true, note:"The one crop frost won't kill: plant it in autumn and it sleeps under the snow, ready in spring. Slow, but it feeds a winter."},
+  peas:    {name:"Peas", tMin:24, tOpt:62, tMax:80,      work:30, minDays:21,  window:5,  yield:48, seed:2, seeds:3, sow:["spring","summer"],
             sowWindow:{spring:[1,12], summer:[22,30]}, feed:"legume", locked:true,
             note:"Wants the cold shoulders of the year, not the middle of it. Early spring, or the very end of summer as it breaks toward autumn — never the heat between."},
   // discovered through the seed-frame puzzles; locked until then
-  turnip:  {name:"Turnips",   work:20, minDays:18,  window:4,  yield:30, seed:1, seeds:1, sow:["spring","summer","autumn"], hardy:true, locked:true, feed:"light", note:"Homely and dependable. Shrugs off an early frost and keeps in the cellar."},
-  sunflower:{name:"Sunflowers",work:34, minDays:28, window:2,  yield:36, seed:2, seeds:4, sow:["spring","summer"],          locked:true, feed:"heavy", note:"Oil for the lamps, seed for the birds, and a wall of gold that lifts the whole village."},
-  amaranth:{name:"Amaranth",  work:32, minDays:30,  window:4,  yield:45, seed:2, seeds:3, sow:["spring","summer","autumn"], locked:true, feed:"light", note:"Grain and greens both, and it grows where little else will. An old, stubborn plant."},
+  turnip:  {name:"Turnips", tMin:18, tOpt:62, tMax:80,   work:20, minDays:18,  window:4,  yield:30, seed:1, seeds:1, sow:["spring","summer","autumn"],  locked:true, feed:"light", note:"Homely and dependable. Shrugs off an early frost and keeps in the cellar."},
+  sunflower:{name:"Sunflowers", tMin:32, tOpt:76, tMax:95,work:34, minDays:33, window:2,  yield:36, seed:2, seeds:4, sow:["spring","summer"],          locked:true, feed:"heavy", note:"Oil for the lamps, seed for the birds, and a wall of gold that lifts the whole village."},
+  amaranth:{name:"Amaranth", tMin:34, tOpt:80, tMax:100,  work:32, minDays:30,  window:4,  yield:45, seed:2, seeds:3, sow:["spring","summer","autumn"], locked:true, feed:"light", note:"Grain and greens both, and it grows where little else will. An old, stubborn plant."},
   // perennials: planted once, never resown. They take years to earn their keep,
   // then keep giving with almost no labor — see the perennial handling in the
   // growth loop. Each bears in exactly one season; the rest of the year they
@@ -361,46 +390,46 @@ const CROPS = {
   // Not food. A perennial with no harvestSeason, so the food-forest bearing
   // loop skips it entirely and only shadeCooling() in day.js reads it —
   // planted for a summer five years from now. See the Now/Later axis.
-  catalpa:   {name:"Catalpa trees", perennial:true, shade:true, locked:true, matureYears:5,
+  catalpa:   {name:"Catalpa trees", tMin:-10, tOpt:72, tMax:98, perennial:true, shade:true, locked:true, matureYears:5,
               sow:["spring"], note:"Heart-shaped leaves the size of a hand, and a canopy that turns the south wall cool. Every year it gives a little more shade than the last; in five it will be doing real work."},
-  strawberry:{name:"Strawberries", perennial:true, bearYears:0.5, matureYears:1, harvestSeason:"summer",
+  strawberry:{name:"Strawberries", tMin:12, tOpt:68, tMax:85, perennial:true, bearYears:0.5, matureYears:1, harvestSeason:"summer",
               yield:80, seed:3, seeds:0, sow:["spring"], feed:"light", locked:true,
               note:"Runners fill a plot in a year. After that, pickings all summer for almost no work."},
-  blueberry: {name:"Blueberries", perennial:true, native:true, bearYears:2, matureYears:3, harvestSeason:"summer",
+  blueberry: {name:"Blueberries", tMin:5, tOpt:70, tMax:88, perennial:true, native:true, bearYears:2, matureYears:3, harvestSeason:"summer",
               yield:150, seed:4, seeds:0, sow:["spring"], feed:"light", locked:true,
               note:"Highbush blueberry, native to these woods. Three slow years, then a whole summer of it, and it feeds the soil it stands in."},
-  raspberry: {name:"Raspberries", perennial:true, bearYears:1, matureYears:2, harvestSeason:"summer",
+  raspberry: {name:"Raspberries", tMin:5, tOpt:70, tMax:88, perennial:true, bearYears:1, matureYears:2, harvestSeason:"summer",
               yield:125, seed:3, seeds:0, sow:["spring"], feed:"light", locked:true,
               note:"Cane fruit — raspberry, or blackberry, whichever cuttings took. Bears for weeks. Spreads if you let it."},
-  apple:     {name:"Apple trees", food:"apples", perennial:true, bearYears:3, matureYears:4, harvestSeason:"autumn",
+  apple:     {name:"Apple trees", tMin:-5, tOpt:68, tMax:90, food:"apples", perennial:true, bearYears:3, matureYears:4, harvestSeason:"autumn",
               yield:170, seed:5, seeds:0, sow:["spring"], feed:"light", locked:true,
               note:"Old grafted stock from the parking-lot rows. Four years to bear, then baskets of them every fall."},
-  hazelnut:  {name:"Hazelnuts", perennial:true, native:true, bearYears:3, matureYears:5, harvestSeason:"autumn",
+  hazelnut:  {name:"Hazelnuts", tMin:-5, tOpt:68, tMax:90, perennial:true, native:true, bearYears:3, matureYears:5, harvestSeason:"autumn",
               yield:200, seed:5, seeds:0, sow:["spring"], feed:"light", locked:true,
               note:"American hazelnut, native stock. Five years to a real harvest, then a wall of nuts every autumn, and roots that hold the hillside."},
   // the rest of the native forest crops, researched rather than guessed —
   // maturity years drawn from real extension/nursery sources, yield tiers
   // reasoned by relative fruit size and prolificacy against what's already here.
-  pawpaw:    {name:"Pawpaw", perennial:true, native:true, bearYears:4, matureYears:6, harvestSeason:"autumn",
+  pawpaw:    {name:"Pawpaw", tMin:0, tOpt:75, tMax:92, perennial:true, native:true, bearYears:4, matureYears:6, harvestSeason:"autumn",
               yield:170, seed:6, seeds:0, sow:["spring"], feed:"light", locked:true,
               note:"Asimina triloba — the largest fruit native to this continent, custard-sweet, and it needs two trees near each other to set anything. Five or six years before the first ones fall."},
-  persimmon: {name:"American persimmon", perennial:true, native:true, bearYears:5, matureYears:8, harvestSeason:"autumn",
+  persimmon: {name:"American persimmon", tMin:-5, tOpt:75, tMax:95, perennial:true, native:true, bearYears:5, matureYears:8, harvestSeason:"autumn",
               yield:160, seed:6, seeds:0, sow:["spring"], feed:"light", locked:true,
               note:"Diospyros virginiana, and usually a male tree and a female tree both, or nothing sets. Bitter unripe, honey-sweet after the first hard frost softens it. A slow tree — plant it for later."},
-  mulberry:  {name:"Red mulberry", perennial:true, native:true, bearYears:3, matureYears:5, harvestSeason:"summer",
+  mulberry:  {name:"Red mulberry", tMin:0, tOpt:75, tMax:95, perennial:true, native:true, bearYears:3, matureYears:5, harvestSeason:"summer",
               yield:130, seed:4, seeds:0, sow:["spring"], feed:"light", locked:true,
               note:"Morus rubra — not the white mulberry that escaped every hedge in the old world, the real native one. Five years, then it drops fruit for weeks like it's trying to give the whole thing away."},
-  cranberrybush:{name:"Cranberrybush viburnum", perennial:true, native:true, bearYears:2, matureYears:4, harvestSeason:"autumn",
+  cranberrybush:{name:"Cranberrybush viburnum", tMin:-10, tOpt:68, tMax:88, perennial:true, native:true, bearYears:2, matureYears:4, harvestSeason:"autumn",
               yield:100, seed:4, seeds:0, sow:["spring"], feed:"light", locked:true,
               note:"Viburnum trilobum — tart, close cousin of the true cranberry only in name. Four years to bear, and it bears heavily; you'll want a lot of them to make the harvest worth the tartness."},
-  chestnut:  {name:"American chestnut", perennial:true, native:true, bearYears:4, matureYears:5, harvestSeason:"autumn",
+  chestnut:  {name:"American chestnut", tMin:-5, tOpt:72, tMax:92, perennial:true, native:true, bearYears:4, matureYears:5, harvestSeason:"autumn",
               yield:190, seed:6, seeds:0, sow:["spring"], feed:"light", locked:true,
               note:"Castanea dentata — sweeter and faster than people expect; it was bearing in five years before the blight took the species down to almost nothing. Plant it anyway. Some things are worth trying to bring back."},
   // a legacy planting: real oak and hickory don't mast until ~20 years old, peak
   // decades after that — genuinely outside any playthrough. It's here so the
   // choice to plant it can be made honestly: not a crop with a payoff, a gift
   // to whoever's still tending this ground when it's grown.
-  oakhickory:{name:"Oak & hickory", perennial:true, native:true, bearYears:12, matureYears:20, harvestSeason:"autumn",
+  oakhickory:{name:"Oak & hickory", tMin:-10, tOpt:72, tMax:95, perennial:true, native:true, bearYears:12, matureYears:20, harvestSeason:"autumn",
               yield:150, seed:8, seeds:0, sow:["spring"], feed:"light", locked:true,
               note:"White oak and shagbark hickory. These take decades to mature."}
 };
@@ -534,6 +563,35 @@ const JOB_PRACTICE = {
        cleaning water is off
    ============================================================ */
 const CANNING_DRAW = 1.0;
+/* The canning kitchen used to draw the moment it was BUILT, forever, in a
+   village that might not be preserving anything at all. It now needs two
+   things: hands on the job, and enough cannable stock on the shelf to be
+   worth firing the boilers for. Two units is roughly a real batch --
+   below that you'd wait until tomorrow and do it in one go. */
+const CANNING_MIN_STOCK = 2;
+
+/* ---- climate ----
+   Temperatures are °F. The `hardy` boolean is gone: a crop is hardy
+   because its tMin is low, not because a second authored fact says so and
+   might disagree with it. HARDY / COLD-HARDY badges derive from tMin
+   (cropHardiness below), so the label can never contradict the model.
+
+   Heating and cooling: the _MAX values are the °F of lift or drop each
+   source can deliver in a day. Actual output scales with the temperature
+   gap (climate.js gapRate), so a mild day genuinely costs less firewood
+   than a cold one -- which the old flat model could not express. */
+const HEATER_DRAW = 2.2;              // electric space heater, at full output
+const HEATER_BREAK_BASE = 0.004;      // per night, unloaded
+const HEATER_BREAK_LOAD = 0.030;      // added, scaled by how hard it ran
+const WOOD_STOVE_MAX = 26;            // °F of lift a well-fed fire can add
+const HEATER_MAX = 14;                // °F of lift from the electric heaters
+const AC_MAX = 12;                    // °F of cooling from the unit
+
+/* Two tiers so the badge can distinguish "shrugs off an ordinary frost"
+   from "sleeps under the snow all winter" -- the old single flag flattened
+   grain and turnip into the same thing. */
+const cropHardiness = c =>
+  (c && c.tMin != null) ? (c.tMin <= 15 ? "COLD-HARDY" : c.tMin <= 28 ? "HARDY" : null) : null;
 const FAB_DRAW = 0.8;
 const WELL_DRAW = 1.1;   // the pump runs whenever the well is drawing
 const AC_DRAW = 1.6;   // heavy on purpose: the cooling unit is the most expensive thing
@@ -577,6 +635,12 @@ const POWER_DEMANDS = [
    blurb:"Jars, lids, and heat — the fastest way to preserve food.",
    fx:{0:"boilers cold — preserving falls back to the fermenting crocks or the drying racks",
        1:"boilers hot"}},
+  {id:"heater",  name:"Electric heaters",  gate:"flag:eHeater", levels:[0,0.5,1],
+   draw: HEATER_DRAW,
+   blurb:"Resistance heaters for the Commons and the greenhouse. They draw hard, and they draw hardest exactly when the panels are giving least.",
+   fx:{0:"off — wood and walls only",
+       0.5:"taking the edge off",
+       1:"running — whatever the fire can't close, this does"}},
   {id:"fab",     name:"Fabrication shops", gate:"fab", levels:[0,1],
    draw: FAB_DRAW,
    blurb:"The lathe and the forge blower.",
@@ -598,6 +662,10 @@ const WATER_DEMANDS = [
    fx:{0:"nothing washed — spirits sag hard, and people get sick easier",
        0.5:"the essentials only — spirits sag a little",
        1:"clean and well-maintained"}},
+  {id:"snowmelt", name:"Melting snow",   levels:[0,1], use:"wood",
+   blurb:"Snow hauled in and melted down on purpose. Costs firewood you might rather burn for warmth.",
+   fx:{0:"left on the ground to melt when it melts",
+       1:"a pot kept going — water out of a frozen week, at a price in wood"}},
   {id:"irrigation",name:"Irrigation",     levels:[0,0.5,1], use:"beds",
    blurb:"What the gardens use. The biggest water draw.",
    fx:{0:"dry beds — growth all but stops, and crops start to die",
@@ -662,4 +730,4 @@ const YIELD_SOIL_FLOOR = 0.65;
 const POLLINATOR_YIELD = 0.20;
 
 
-export { WELL_DRAW, AC_DRAW, AQUA_STAGNANT_WEAR, BATTERY_UNIT, CANNING_DRAW, CROPS, DAY_MS, FABS, FAB_DRAW, FAB_RATE, FOREST_PLOT_COST, INJURY_PER_DAY, JOB_PRACTICE, LOSS_DECAY, MAX_BATTERIES, MAX_FOREST_PLOTS, MAX_SOLAR, NO_CLEANING_SICK, OFFLINE_CAP, POLLINATOR_YIELD, POWER_DEMANDS, POWER_LOSS_BASE, PRACTICE_BROAD_CAP, PRACTICE_BROAD_DECAY, PRACTICE_BROAD_GROWTH, PRACTICE_SPECIFIC_CAP, PRACTICE_SPECIFIC_DECAY, PRACTICE_SPECIFIC_GROWTH, PRESERVE, PROJECTS, RESTORE_GATE, RESTORE_HIGH, RESTORE_IN, RESTORE_LOW, RES_CAP, SEASONS, SEASON_LEN, SITE_DEF, SITE_LOOT_TABLE, SOLAR_UNIT, STACKABLE, SYS, TURBINE_UNIT, WATER_DEMANDS, WATER_LOSS_BASE, WEATHERS, WITHER_CHANCE, YIELD_SOIL_FLOOR, YIELD_TEND_MAX, YIELD_TEND_SCALE };
+export { AC_MAX, HEATER_DRAW, HEATER_MAX, HEATER_BREAK_BASE, HEATER_BREAK_LOAD, WOOD_STOVE_MAX, cropHardiness, SEED_RICH_SITES, MAX_SEED_ROLLS, CANNING_MIN_STOCK, WELL_DRAW, AC_DRAW, AQUA_STAGNANT_WEAR, BATTERY_UNIT, CANNING_DRAW, CROPS, DAY_MS, FABS, FAB_DRAW, FAB_RATE, FOREST_PLOT_COST, INJURY_PER_DAY, JOB_PRACTICE, LOSS_DECAY, MAX_BATTERIES, MAX_FOREST_PLOTS, MAX_SOLAR, NO_CLEANING_SICK, OFFLINE_CAP, POLLINATOR_YIELD, POWER_DEMANDS, POWER_LOSS_BASE, PRACTICE_BROAD_CAP, PRACTICE_BROAD_DECAY, PRACTICE_BROAD_GROWTH, PRACTICE_SPECIFIC_CAP, PRACTICE_SPECIFIC_DECAY, PRACTICE_SPECIFIC_GROWTH, PRESERVE, PROJECTS, RESTORE_GATE, RESTORE_HIGH, RESTORE_IN, RESTORE_LOW, RES_CAP, SEASONS, SEASON_LEN, SITE_DEF, SITE_LOOT_TABLE, SOLAR_UNIT, STACKABLE, SYS, TURBINE_UNIT, WATER_DEMANDS, WATER_LOSS_BASE, WEATHERS, WITHER_CHANCE, YIELD_SOIL_FLOOR, YIELD_TEND_MAX, YIELD_TEND_SCALE };

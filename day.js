@@ -1,6 +1,11 @@
 import { S } from "./state.js";
+import { baseTarget, comfortBand, commonsTemps, drinkHeatMult, frostKills, gapRate, greenhouseTarget,
+         greenhouseTemps, growthMult, irrigationHeatMult, meltSnow, soilDiscount,
+         tickClimate } from "./climate.js";
+import { getState as rngGetState, setSeed as rngSetSeed, setState as rngSetState, rand as crand } from "./rng.js";
 import { ELDER, canRoad, canWork, dayOfSeason, generateFallbackChildName, grantSeedSpread, rollWeather, scaledWeather, season, seasonIdx, seasonNote, yearOf } from "./seasons.js";
-import { AC_DRAW, WELL_DRAW, AQUA_STAGNANT_WEAR, BATTERY_UNIT, CANNING_DRAW, CROPS, DAY_MS, FABS, FAB_DRAW, FAB_RATE, JOB_PRACTICE, LOSS_DECAY, MAX_FOREST_PLOTS, NO_CLEANING_SICK, OFFLINE_CAP, POLLINATOR_YIELD, POWER_LOSS_BASE, PRACTICE_BROAD_CAP, PRACTICE_BROAD_DECAY, PRACTICE_BROAD_GROWTH, PRACTICE_SPECIFIC_CAP, PRACTICE_SPECIFIC_DECAY, PRACTICE_SPECIFIC_GROWTH, PRESERVE, PROJECTS, RESTORE_IN, SEASONS, SEASON_LEN, SOLAR_UNIT, SYS, TURBINE_UNIT, WATER_LOSS_BASE, WITHER_CHANCE, YIELD_SOIL_FLOOR, YIELD_TEND_MAX, YIELD_TEND_SCALE } from "./data-economy.js";
+import { AC_MAX, HEATER_DRAW, HEATER_MAX, HEATER_BREAK_BASE, HEATER_BREAK_LOAD, WOOD_STOVE_MAX,
+         AC_DRAW, WELL_DRAW, AQUA_STAGNANT_WEAR, BATTERY_UNIT, CANNING_DRAW, CANNING_MIN_STOCK, CROPS, DAY_MS, FABS, FAB_DRAW, FAB_RATE, JOB_PRACTICE, LOSS_DECAY, MAX_FOREST_PLOTS, NO_CLEANING_SICK, OFFLINE_CAP, POLLINATOR_YIELD, POWER_LOSS_BASE, PRACTICE_BROAD_CAP, PRACTICE_BROAD_DECAY, PRACTICE_BROAD_GROWTH, PRACTICE_SPECIFIC_CAP, PRACTICE_SPECIFIC_DECAY, PRACTICE_SPECIFIC_GROWTH, PRESERVE, PROJECTS, RESTORE_IN, SEASONS, SEASON_LEN, SOLAR_UNIT, SYS, TURBINE_UNIT, WATER_LOSS_BASE, WITHER_CHANCE, YIELD_SOIL_FLOOR, YIELD_TEND_MAX, YIELD_TEND_SCALE } from "./data-economy.js";
 import { Cap, byId, clamp, decayPractice, eff, effStat, growPractice, hasHave, isAre, mult, objp, pick, poss, practiceOf, subj, wbFloor, working } from "./helpers.js";
 import { TRAITS, VISUALS, addRes, addRestore, built, decayOf, foodCap, stepRestoration, waterCapEff } from "./defs.js";
 import { tickExpeditions } from "./expeditions.js";
@@ -11,12 +16,17 @@ import { store } from "./store.js";
 import { rollMusic, rollPersonality } from "./bonds.js";
 import { driftIdeology, seedIdeology } from "./ideology.js";
 import { addFood, addForage, addPreserved, bestMethodFor, cookRecipe, decayStock, eatFresh, eatJars,
-         eatForDeficiency, jarComposition, pantryTotal, preserveInto, resync, tickMacros } from "./larder.js";
+         eatForDeficiency, jarComposition, pantryTotal, preserveInto, resync, stockOf, stockTakingMethod,
+         takeStock, tickMacros } from "./larder.js";
 import { COMP_FERT, COMP_YIELD, FOOD_DATA, MAX_COMPANIONS, PRES_METHOD_OF, RIVAL_YIELD, famOf, famPair } from "./data-food.js";
 import { tickConflicts } from "./mediation.js";
 import { tickMoments } from "./moments.js";
 import { tickCelebCooldowns, tickTraditions } from "./celebrations.js";
 import { accrueToxins, toxDeathAdd, toxPracticeMult, toxSickMult } from "./toxins.js";
+import { addMemory, addMemoryAll, drawnToCare, pushRecentEvent, recordGone,
+         reluctance, tickMemories, tickRecentEvents } from "./memories.js";
+import { tickConversations } from "./conversations.js";
+import { MEM_TEXT } from "./data-memories.js";
 
 
 
@@ -194,7 +204,7 @@ function dinnerLine(){
   // it shows up as oil instead (see oilBit), so it isn't named twice in one line.
   const freshCrops = [...new Set(S.dietLog.filter(e=>S.day-e.day<=5 && e.crop!=="sunflower").map(e=>e.crop))];
   const freshNames = freshCrops.filter(c=>CROPS[c]).map(c=>CROPS[c].food || CROPS[c].name.toLowerCase());
-  const hasOil   = (S.oil||0) > 0.3;
+  const hasOil   = stockOf("oil") > 0.3;
   const hasFish  = built("aquaponics") && S.sys.aquaponics.cond>25;
   const hasKept  = S.preserved > 5;
   const hasForaged = (S.lastForageDay!==undefined) && (S.day - S.lastForageDay <= 4);
@@ -258,7 +268,7 @@ function dinnerLine(){
   // high quality + real variety -> a proper spread
   if(quality>=3.5 && components>=3){
     const parts=[];
-    if(freshNames.length){ parts.push(`${list(freshNames)}${oilBit}`); if(oilBit) S.oil=Math.max(0,S.oil-0.4); }
+    if(freshNames.length){ parts.push(`${list(freshNames)}${oilBit}`); if(oilBit) takeStock("oil", 0.4); }
     if(fishBit) parts.push(fishBit);
     if(forageBit) parts.push(forageBit);
     if(keptBit) parts.push(keptBit);
@@ -272,7 +282,7 @@ function dinnerLine(){
   // decent meal
   if(quality>=1.8 && components>=1){
     const parts = freshNames.length ? [`${list(freshNames)}${oilBit}`] : (fishBit ? [fishBit] : ["the stores"]);
-    if(freshNames.length && oilBit) S.oil=Math.max(0,S.oil-0.4);
+    if(freshNames.length && oilBit) takeStock("oil", 0.4);
     if(keptBit) parts.push(keptBit);
     const main = list(parts);
     return pick1([
@@ -316,16 +326,23 @@ function shadeCooling(){
    - a continuous daily comfort effect, so shelter matters every day of
      summer and winter rather than only on the 15% that roll an extreme
    - the extreme-event consequences, unchanged in their severity */
-function applyTemperature(lines, tempEvent, indoorSafety, isSummer, isWinter, yr1){
-  const safety = clamp(indoorSafety, 0, 1);
+/* `safety` is derived from real degrees now rather than being the input:
+   1 = inside the comfort band, 0 = 15F or more outside it. Everything
+   downstream that used to read a comfort scalar keeps working, but the
+   number now MEANS something — and, critically, a cold Commons is cold
+   because of a temperature, not because a season id said so. */
+function applyTemperature(lines, tempEvent, commonsT, band, isSummer, isWinter, yr1){
+  const miss = Math.max(0, band.lo - commonsT.mean, commonsT.mean - band.hi);
+  const safety = clamp(1 - miss/15, 0, 1);
+  const indoorSafety = safety;
 
   // --- the everyday cost of poor shelter ---
   // TUNING: these two rates are the first knob to check. At 1.2/0.9 a bare
   // first winter costs about 36 wb across the season — heavy, felt, and
   // survivable. Much above this and poor shelter alone drives departures
   // before the heater's parts cost can realistically be met.
-  if ((isWinter || isSummer) && safety < 0.85) {
-    const bite = (isWinter ? 1.2 : 0.9) * (1 - safety) * (yr1 ? 0.28 : 1);
+  if (safety < 0.85) {
+    const bite = (commonsT.mean < band.lo ? 1.2 : 0.9) * (1 - safety) * (yr1 ? 0.28 : 1);
     for (const p of S.people) {
       if (p.status === "away") continue;
       p.wb = clamp(p.wb - bite, wbFloor(p), 100);
@@ -344,6 +361,13 @@ function applyTemperature(lines, tempEvent, indoorSafety, isSummer, isWinter, yr
   // --- the extremes ---
   if (tempEvent === "heatwave") {
     lines.push("A blistering heatwave today.");
+    // climate.js only flags an extreme on the day the front lands, so this
+    // fires once per event rather than once per day of it
+    addMemoryAll(S.people.filter(q=>q.status!=="away" && canWork(q)), {
+      kind:"heatwave", text:MEM_TEXT.heatwave(), intensity:0.4, valence:-0.4,
+      tags:{subject:"weather"}});
+    pushRecentEvent({kind:"heatwave", text:"the week the heat wouldn't break", weight:1.2,
+                     tags:{subject:"weather"}});
     for (const p of S.people) {
       if (!canWork(p) && indoorSafety < 0.5 && Math.random() < 0.3) {
          p.wb = clamp(p.wb - 10, wbFloor(p), 100);
@@ -357,7 +381,7 @@ function applyTemperature(lines, tempEvent, indoorSafety, isSummer, isWinter, yr
           lines.push(`${p.name} worked too hard outside and came back exhausted.`);
         } else if (p.status === "spent") {
           p.status = "down";
-          p.downDays = 2;
+          p.downDays = 2; p.downSince = S.day;   // see the care block: not also a recovery day
           lines.push(`Heatstroke. ${p.name} collapsed in the sun and had to be carried to the sickbed.`);
         }
       }
@@ -366,6 +390,11 @@ function applyTemperature(lines, tempEvent, indoorSafety, isSummer, isWinter, yr
 
   if (tempEvent === "deepfreeze") {
     lines.push("A deep, killing freeze settled into the valley.");
+    addMemoryAll(S.people.filter(q=>q.status!=="away" && canWork(q)), {
+      kind:"deepfreeze", text:MEM_TEXT.deepfreeze(), intensity:0.4, valence:-0.4,
+      tags:{subject:"weather"}});
+    pushRecentEvent({kind:"deepfreeze", text:"the week the cold wouldn't break", weight:1.2,
+                     tags:{subject:"weather"}});
     for (const p of S.people) {
       // The vulnerable are at extreme risk if indoor safety is low
       if (p.age >= ELDER && indoorSafety < 0.5) {
@@ -373,7 +402,7 @@ function applyTemperature(lines, tempEvent, indoorSafety, isSummer, isWinter, yr
          // Spikes the death roll for elders handled in the aging block
          if (Math.random() < 0.15) {
            p.status = "down";
-           p.downDays = 4;
+           p.downDays = 4; p.downSince = S.day;   // see the care block
            lines.push(`The bitter cold got into ${p.name}'s bones. ${Cap(subj(p))} is in a bad way.`);
          }
       }
@@ -397,24 +426,35 @@ function simulateDay(){
   const lines=[...S.pending]; S.pending=[];
   // if a forecast was made for today (see the end of this function), honor it —
   // the log only means something if it's actually right
+  /* Restore the seeded stream before ANYTHING climatic draws from it —
+     rollWeather() is the first consumer, and it feeds the temperature. */
+  if(!S.rngState) rngSetSeed(S.seed || 1); else rngSetState(S.rngState);
   const wx = S.forecast ? scaledWeather(S.forecast) : rollWeather();
   S.weather=wx.id;
   const F=S.flags;
   const sn=season();
 
 
-  // --- TEMPERATURE EXTREMES ---
+  // --- CLIMATE ---
   const isSummer = sn.id === "summer";
   const isWinter = sn.id === "winter";
-  
-  // The first year is gentler on purpose. Not a tutorial — a mild first
-  // year that the village mistakes for the normal weather, so the second
-  // winter lands as a correction rather than as difficulty ramping.
   const yr1 = yearOf(S.day) === 1;
-  const extremeP = yr1 ? 0.035 : 0.15;
-  let tempEvent = null;
-  if (isSummer && Math.random() < extremeP) tempEvent = "heatwave";
-  if (isWinter && Math.random() < extremeP) tempEvent = "deepfreeze";
+
+  /* Reproducibility: the weather stream is seeded and its position is saved
+     with the game, so the same seed replays the same year exactly — and a
+     reload picks the stream up where it left off rather than restarting
+     the season's weather. Only climate draws from this generator; see
+     rng.js for why the rest of the game still uses Math.random. */
+  const clim = tickClimate(wx);
+  S.rngState = rngGetState();
+
+  /* An extreme is no longer an independent coin-flip laid on top of a
+     season id — it IS a large frontal kick, so "it lasted a few days"
+     falls out of the anomaly it leaves behind instead of needing its own
+     duration rule. Year 1's mildness now lives in the temperature curve
+     itself (climate.js trendOffset), not in a separate probability. */
+  const tempEvent = clim.extreme;
+  const outHi = clim.out.hi, outLo = clim.out.lo;
 
   // indoorSafety: 0 = dangerously exposed, 1 = perfectly comfortable.
   // PASSIVE contributions only are computed here. The one powered option
@@ -422,41 +462,78 @@ function simulateDay(){
   // whether it runs at all depends on the brownout — a machine that fails
   // exactly when everyone is running everything is the whole argument
   // against depending on it. See applyTemperature() below.
-  let indoorSafety = 0;
-
+  /* The old `indoorSafety` 0-1 comfort scalar is gone. Its contributors
+     survive, re-expressed as the three physically different things they
+     actually are:
+       groundCoupling  - berming and earth tubes tie the building to deep
+                         soil (~52F year-round). This is the term that
+                         actually holds the Commons above outdoor-mean
+                         through a cold month with no fire lit.
+       loadReduction   - shade and the windcatcher cut the SUMMER heat
+                         load; they subtract from the target.
+       massDamping     - thermal mass and draught-proofing only slow how
+                         fast the building tracks its target. A lag can
+                         never change where the target sits, which is why
+                         folding all three into one damping number (as an
+                         earlier pass did) quietly meant insulation alone
+                         couldn't keep anyone warm.  */
+  let groundCoupling = 0, loadReduction = 0, massDamping = 0.35, heatIn = 0, coolIn = 0;
   const hearthParts=[];
-  const addWarm=(label,amt)=>{ indoorSafety+=amt; hearthParts.push([label,amt]); };
+  const addWarm=(label,amt)=>{ hearthParts.push([label,amt]); };
   // the patchwork puzzle: each finished draft seals the Commons a little,
   // both seasons — S.puz.patch is read directly, no flags
   const patchSeal = Math.min((S.puz&&S.puz.patch)||0, 6) * 0.03;
-  if (isWinter) {
-    if (F.earthBerming) addWarm("earth-bermed walls", 0.4);   // packed earth cuts both ways
-    if (F.earthTubes)   addWarm("earth tubes (preheating)", 0.25);   // 52° air is not warm, but it is not 20° either
-    if (patchSeal>0)    addWarm("patchwork draught-proofing", patchSeal);
-    // the rocket heater is the same warmth off half the wood — a real
-    // return on scrap and labor rather than a second heat source
-    const burn = F.rocketHeater ? 1.5 : 3;
-    if (F.woodStove && S.res.wood >= burn) {
+  // year-round now, not winter-only: ground coupling cools in summer for
+  // exactly the same reason it warms in winter
+  if (F.earthBerming) { groundCoupling += 0.40; addWarm("earth-bermed walls", 0.40); }
+  if (F.earthTubes)   { groundCoupling += 0.25; addWarm("earth tubes", 0.25); }
+  if (patchSeal>0)    { massDamping += patchSeal; addWarm("patchwork draught-proofing", patchSeal); }
+  if (F.rocketHeater || F.woodStove) massDamping += 0.12;   // stone holds what it's given
+
+  const band = comfortBand(sn.id);
+  if (true) {
+    /* WOOD. The fire used to burn a flat 3 (or 1.5) a day whenever it was
+       winter, and deliver a flat comfort bump. Now the burn scales with the
+       gap it's actually being asked to close: a mild day genuinely costs
+       less firewood than a bitter one, which is the whole point of having a
+       temperature at all. */
+    /* Feed-forward: measure against the UNHEATED building, not against
+       yesterday's heated indoor temp. Aiming a couple of degrees inside
+       the band rather than exactly at its floor, so a normal winter day
+       lands comfortable instead of permanently one degree short. */
+    const unheated = baseTarget(clim.out.mean, groundCoupling, 0);
+    const heatGap = Math.max(0, (band.lo + 2) - unheated);
+    const burnFull = F.rocketHeater ? 1.5 : 3;          // a full day's burn
+    const want = gapRate(heatGap, burnFull, burnFull);   // proportional to need
+    const burn = Math.min(want, S.res.wood);
+    if (F.woodStove && heatGap > 0.5 && burn > 0.05) {
       S.res.wood -= burn;
-      addWarm(F.rocketHeater?"the rocket heater":"the masonry heater", 0.6);
+      heatIn += gapRate(heatGap, WOOD_STOVE_MAX, WOOD_STOVE_MAX) * (burn / Math.max(0.01, want));
+      addWarm(F.rocketHeater?"the rocket heater":"the masonry heater", burn);
       // journal: the first burn of the season, then only when the pile is
       // getting thin. Thirty identical lines a winter is not a journal.
-      const daysLeft = Math.floor(S.res.wood / burn);
-      if (dayOfSeason(S.day) === 1) {
+      const daysLeft = Math.floor(S.res.wood / Math.max(0.3, burn));
+      if (isWinter && dayOfSeason(S.day) === 1) {
         lines.push(F.rocketHeater
           ? "First fire of the winter in the rocket heater. It'll draw down the woodpile slower than the old hearth did."
           : "First fire of the winter in the masonry heater. The stone holds the warmth for hours after it burns down.");
       } else if (daysLeft <= 7 && S.day % 3 === 0) {
         lines.push(`The woodpile is down to about ${daysLeft} more day${daysLeft === 1 ? "" : "s"} of burning. Somebody should be at the tree line.`);
       }
-    } else if (F.woodStove) {
+    } else if (F.woodStove && heatGap > 6 && S.res.wood < 0.3) {
       lines.push("A freezing day, and the woodpile is empty. The hearth sits cold.");
     }
   }
 
-  if (isSummer) {
-    if (F.earthBerming)  addWarm("earth-bermed walls", 0.5);   // earth walls run cool
-    if (F.earthTubes)    addWarm("earth tubes", 0.4);          // air drawn through cool ground
+  if (outHi > band.hi) {
+    // load reduction is a summer-only effect by nature: shade and a
+    // windcatcher cut incoming heat, they don't add warmth in January
+    if (F.catalpaShade)  { loadReduction += 4; addWarm("catalpa shade", 4); }
+    if (F.windcatcher)   { loadReduction += 5; addWarm("the windcatcher", 5); }
+  }
+  if (false) {
+    if (F.earthBerming)  addWarm("earth-bermed walls", 0.5);
+    if (F.earthTubes)    addWarm("earth tubes", 0.4);
     if (F.windcatcher)   addWarm("the windcatcher", 0.35);     // no moving parts, nothing to break
     if (patchSeal>0)     addWarm("patchwork draught-proofing", patchSeal);
     const sh=shadeCooling(); if(sh>0) addWarm("catalpa shade", sh);
@@ -500,19 +577,40 @@ function simulateDay(){
   const aquaAl    = built("aquaponics") ? alv("aqua")    : 0;
   const commonsAl = built("commons")    ? alv("commons") : 0;
   const wellAl    = F.well              ? alv("well")   : 0;
-  const acAl      = (F.acUnit && isSummer) ? alv("ac")   : 0;
-  const canningAl = F.canning           ? alv("canning") : 0;
+  /* Both climate machines now scale with the gap instead of firing flat
+     whenever a season id matched. The cooling unit used to draw AC_DRAW
+     every summer day regardless of whether it was hot, and nothing at all
+     on a 90-degree day in late spring. */
+  const _band = comfortBand(sn.id);
+  const _unheated = baseTarget(clim.out.mean, groundCoupling, loadReduction);
+  const coolGapRaw = Math.max(0, _unheated - _band.hi);
+  // what the fire could NOT close is what the electric heaters are for
+  const _woodLift = (F.woodStove && S.res.wood > 0.3) ? heatIn : 0;
+  const heatGapRaw = Math.max(0, (_band.lo + 2) - (_unheated + _woodLift));
+  const acAl      = (F.acUnit && coolGapRaw > 1) ? alv("ac") * Math.min(1, coolGapRaw/8) : 0;
+  const heaterAl  = (F.eHeater && heatGapRaw > 1 && !S.heaterBroken)
+                    ? alv("heater") * Math.min(1, heatGapRaw/10) : 0;
+  /* Built is not the same as running. The kitchen needs hands on the job
+     AND enough cannable stock on the shelf to be worth heating the boilers
+     -- otherwise a village that built the kitchen in year one paid 1.0
+     power a day forever for a room nobody was standing in. Compare
+     fabActive just below, which has always got this right. */
+  const canningWorked = working("preserve").length > 0;
+  const canningStock  = stockTakingMethod("can");
+  const canningAl = (F.canning && canningWorked && canningStock >= CANNING_MIN_STOCK)
+                    ? alv("canning") : 0;
   // fab draws power when there's fab WORK: a project under construction, or a
   // built shop with someone assigned to run it. Idle shops draw nothing.
   tickCells(lines);
-  if(wx.id==="rain") S.lastRainDay = S.day;   // mushroom flushes follow the weather
+  if(S.climate.precip==="rain") S.lastRainDay = S.day;   // flushes follow RAIN, not a snowy week
   const fabActive = !!S.fabProject
     || (S.people.some(p=>p.job==="fab") && FABS.some(d=>S.fabs&&S.fabs[d.id]&&!d.passive));
   const fabAl     = fabActive           ? alv("fab")     : 0;
   const sysDraw=id=>SYS.find(d=>d.id===id).draw;
   const rawDraw = sysDraw("catchment")*pumpAl + sysDraw("aquaponics")*aquaAl
                 + sysDraw("commons")*commonsAl
-                + CANNING_DRAW*canningAl + FAB_DRAW*fabAl + AC_DRAW*acAl + WELL_DRAW*wellAl;
+                + CANNING_DRAW*canningAl + FAB_DRAW*fabAl + AC_DRAW*acAl + WELL_DRAW*wellAl
+                + HEATER_DRAW*heaterAl;
   const draw = Math.max(1, rawDraw - ((S.f||{}).drawReduce||0) - (F.gridTuned?1:0));
   // transmission loss: the lines bleed a share of everything generated.
   // Solving line-run benches (S.puz.wires) shrinks it toward zero.
@@ -529,13 +627,34 @@ function simulateDay(){
   // canning cold, shops on hand power) — allocation can only cut further.
   // --- temperature, resolved ---
   // the cooling unit only helps if the grid actually carried it today
-  if (isSummer && F.acUnit) {
-    const acOn = !brownout && ((S.alloc && S.alloc.power && S.alloc.power.ac) !== 0);
-    if (acOn) addWarm("the cooling unit", 0.75);
+  if (F.acUnit && coolGapRaw > 1) {
+    const acOn = !brownout && acAl > 0;
+    if (acOn) { coolIn += gapRate(coolGapRaw, AC_MAX, AC_MAX) * acAl; addWarm("the cooling unit", acAl); }
     else if (tempEvent === "heatwave") lines.push("The cooling unit sat dead through the worst of the heat. Nothing to run it on.");
   }
-  S.report.hearth = (isWinter||isSummer) ? {safety: clamp(indoorSafety,0,1), parts: hearthParts} : null;
-  applyTemperature(lines, tempEvent, indoorSafety, isSummer, isWinter, yr1);
+  if (F.eHeater && heaterAl > 0) {
+    if (!brownout) { heatIn += gapRate(heatGapRaw, HEATER_MAX, HEATER_MAX) * heaterAl; addWarm("the electric heaters", heaterAl); }
+    else if (tempEvent === "deepfreeze") lines.push("The heaters were dead all night. Nothing on the bank to run them with.");
+  }
+  /* Breakage is rolled at NIGHT, after the day's load is known, so you find
+     out at breakfast that the greenhouse froze — not in a live warning. */
+  if (F.eHeater && !S.heaterBroken && heaterAl > 0 && !brownout) {
+    if (Math.random() < HEATER_BREAK_BASE + HEATER_BREAK_LOAD * heaterAl) {
+      S.heaterBroken = true;
+      lines.push("The heaters quit sometime in the night. Whatever they were keeping warm spent the small hours at whatever the outside was doing.");
+    }
+  }
+
+  // --- indoor temperatures, resolved ---
+  const commonsT = commonsTemps({outMean:clim.out.mean, outHi, outLo, groundCoupling,
+                                 loadReduction, heatIn, coolIn, massDamping,
+                                 prevMean:(S.climate.commons||{}).mean});
+  S.climate.commons = commonsT;
+  const ghTarget = greenhouseTarget(S.greenhouse||[], CROPS);
+  const ghHeat = F.greenhouse ? Math.min(heatIn, gapRate(Math.max(0, ghTarget-outLo), HEATER_MAX, HEATER_MAX)) : 0;
+  S.climate.greenhouse = greenhouseTemps(outHi, outLo, (wx.solar||1)*sn.solar, massDamping*4, ghHeat);
+  S.report.hearth = {commons: commonsT, out: clim.out, band: comfortBand(sn.id), parts: hearthParts};
+  applyTemperature(lines, tempEvent, commonsT, comfortBand(sn.id), isSummer, isWinter, yr1);
 
   const pumpEff    = brownout ? 0 : pumpAl;
   const aquaEff    = brownout ? Math.min(aquaAl,0.5) : aquaAl;
@@ -553,7 +672,8 @@ function simulateDay(){
   // pipes carry. Rain into the tanks and hand-hauled water skip the pipes.
   // Solving water-main benches (S.puz.pipes) shrinks it toward zero.
   const waterLoss = WATER_LOSS_BASE * Math.pow(LOSS_DECAY, (S.puz&&S.puz.pipes)||0);
-  const rainIn = (built("catchment") ? 14*mult(S.sys.catchment.cond)*pumpFactor*(F.sealedTanks?1.2:1)*(1-waterLoss) : 3) + wx.rain;
+  const wetIn = S.climate.precip==="snow" ? 0 : wx.rain;   // snow banks instead (see below)
+  const rainIn = (built("catchment") ? 14*mult(S.sys.catchment.cond)*pumpFactor*(F.sealedTanks?1.2:1)*(1-waterLoss) : 3) + wetIn;
   // --- the well ---
   // Independent of the weather, which is the whole appeal. Yield rides on
   // the aquifer's health, so the restoration metric stops being a dampener
@@ -561,14 +681,25 @@ function simulateDay(){
   const wellEff = brownout ? 0 : wellAl;
   const aquiferHealth = clamp(((S.restore&&S.restore.aquifer)||0)/100, 0, 1);
   const wellIn = F.well ? 16 * wellEff * (0.45 + 0.55*aquiferHealth) : 0;
-  const wIn = rainIn + wellIn;
+  /* Snow doesn't fill a cistern the day it falls. It banks as snowpack and
+     comes in either free (a thaw, whenever the high clears freezing) or on
+     purpose — a pot kept going, which costs firewood you might rather burn
+     for warmth. That trade is the point. */
+  const meltOn = ((S.alloc&&S.alloc.water&&S.alloc.water.snowmelt)!==0) && (S.alloc&&S.alloc.water&&S.alloc.water.snowmelt)>0;
+  const melt = meltSnow(meltOn, commonsLit || S.res.wood>0.3, S.res.wood);
+  if(melt.wood>0) S.res.wood = Math.max(0, S.res.wood - melt.wood);
+  if(melt.water>0.05 && S.day%4===0) lines.push(`Snow hauled in and melted down — ${melt.water.toFixed(1)} water, and ${melt.wood.toFixed(1)} wood gone into it.`);
+  const wIn = rainIn + wellIn + (S.climate.thaw||0) + melt.water;
   // and what comes up with it. Cumulative, silent, permanent.
   const wellShare = wIn>0 ? wellIn/wIn : 0;
   accrueToxins(S.people, wellShare, S.groundwaterContam||0);
   if(F.well && wellEff>0 && (S.groundwaterContam||0)>=25 && S.day%45===0){
     lines.push("The well water has a taste to it some days — metal, or something like it. It passes. Nobody has ever gotten sick from it that anyone could point to.");
   }
-  let gardenWater = irr>0.75 ? 2.5 : 4;
+  /* Beds drink more when it's hot (evapotranspiration) and less when the
+     soil is still holding rain. Two separate effects, and they stack: a hot
+     day right after a downpour still costs less than a hot dry one. */
+  let gardenWater = (irr>0.75 ? 2.5 : 4) * irrigationHeatMult(outHi) * soilDiscount(S.climate.soilMoisture);
   if(F.dripRetrofit) gardenWater=Math.max(1.5,gardenWater-1);
   if(F.keyline) gardenWater=Math.max(1,gardenWater-0.8);
   if(F.graywater) gardenWater=Math.max(0.6,gardenWater-1.4);
@@ -585,7 +716,9 @@ function simulateDay(){
   const cookAl  = alw("cooking")>0 ? 1 : 0;
   const cleanAl = alw("cleaning");
   const irrAl   = alw("irrigation");
-  const drinkNeed = S.people.reduce((a,p)=>a+(canWork(p)?0.5:0.3),0);
+  // one-sided on purpose: thirst climbs with heat, and doesn't meaningfully
+  // fall away with cold
+  const drinkNeed = S.people.reduce((a,p)=>a+(canWork(p)?0.5:0.3),0) * drinkHeatMult(outHi);
   const drinkUse  = drinkNeed*(drinkAl===1?1:0.7);   // rationing saves 3/10
   const wOut = drinkUse + gardenWater*wateredBeds*irrAl + 1*cookAl + 1*cleanAl;
   let thirst=0;
@@ -640,26 +773,47 @@ function simulateDay(){
      but small effect, and the one genuinely large piece of it (a legume
      feeding its neighbours) shows up as FERTILITY at harvest rather than
      as yield, because that's the mechanism. */
-  function companionScore(bed){
-    const prim = famOf(bed.crop);
-    const mates = (bed.companions||[]).map(famOf).filter(Boolean);
+  /* Scoring is PER SLOT, not per bed. Every plant in the ground is judged
+     against its own neighbours and gets its own multiplier, which is what
+     makes the next paragraph possible.
+
+     Most rivalries are symmetric and stay that way: two brassicas
+     concentrate the same pests, two nightshades share the same blight, and
+     both sides of that bargain suffer for it equally.
+
+     ALLELOPATHY IS NOT SYMMETRIC. A sunflower releases compounds that
+     suppress what grows beside it. It does not suppress itself. So a
+     pairing that is bad ONLY because one side is an aster is charged to
+     the other side alone -- the sunflower takes its full yield and its
+     neighbours pay for standing there. Aster beside aster still hurts
+     both, because that one is ordinary same-family crowding, not poison. */
+  const ALLELOPATH = "aster";
+  function slotScore(selfId, otherIds){
+    const selfFam = famOf(selfId);
     let good = 0, bad = 0;
-    if(prim) for(const m of mates){
-      const v = famPair(prim, m);
-      if(v > 0) good++; else if(v < 0) bad++;
+    if(!selfFam) return {good, bad};
+    for(const o of otherIds){
+      const oFam = famOf(o);
+      if(!oFam) continue;
+      const v = famPair(selfFam, oFam);
+      if(v > 0){ good++; continue; }
+      if(v < 0){
+        // the poisoner doesn't drink it
+        if(selfFam === ALLELOPATH && oFam !== ALLELOPATH) continue;
+        bad++;
+      }
     }
-    // the companions also have to live with each other
-    for(let i=0;i<mates.length;i++) for(let j=i+1;j<mates.length;j++){
-      const v = famPair(mates[i], mates[j]);
-      if(v > 0) good++; else if(v < 0) bad++;
-    }
-    const legumes = (bed.companions||[]).filter(c=>famOf(c)==="legume").length;
-    return {good, bad, legumes};
+    return {good, bad};
   }
-  const companionMult = bed => {
-    const s = companionScore(bed);
-    return clamp(1 + s.good*COMP_YIELD + s.bad*RIVAL_YIELD, 0.5, 1.6);
+  const slotMult = (selfId, otherIds) => {
+    const sc = slotScore(selfId, otherIds);
+    return clamp(1 + sc.good*COMP_YIELD + sc.bad*RIVAL_YIELD, 0.5, 1.6);
   };
+  // legumes still feed the whole bed at harvest -- that one is a soil
+  // effect, not a yield effect, and it was always the right mechanism
+  const legumeMates = bed => (bed.companions||[]).filter(c=>famOf(c)==="legume").length;
+  // "a, b, and c"
+  const listWords = a => a.length<=1 ? (a[0]||"") : a.slice(0,-1).join(", ")+" and "+a[a.length-1];
 
   // What a bed actually sets, decided ONCE on the day it comes ready and never
   // revisited — a stand left waiting on hands doesn't keep fattening. Yield is
@@ -671,7 +825,9 @@ function simulateDay(){
     const tend = 1 + YIELD_TEND_MAX*(1 - Math.exp(-Math.max(0, tendRatio-1)/YIELD_TEND_SCALE));
     const soil = YIELD_SOIL_FLOOR + (1-YIELD_SOIL_FLOOR)*clamp(Number.isFinite(bed.fertility)?bed.fertility:75,0,100)/100;
     const bloom = 1 + POLLINATOR_YIELD*(polR/100);
-    return Math.max(0, crop.yield*tend*soil*bloom*companionMult(bed)*(F.contourBeds?1.15:1) - (fo.nibble||0));
+    // bare: what this stand would set with the bed to itself. Who it's
+    // sharing the ground with is applied per slot at the freeze below.
+    return Math.max(0, crop.yield*tend*soil*bloom*(F.contourBeds?1.15:1) - (fo.nibble||0));
   };
   const PEREN_PICK_DAYS = [6, 12, 18, 24];   // a perennial bears on these days of its harvest season
 
@@ -709,16 +865,30 @@ function simulateDay(){
     // something with no crop def (a meadow, an old save, a future marker crop)
     // must not take the annual path — and must not throw on the way past.
     if(!crop || crop.perennial) continue;
-    if(sn.grow===0){
-      if(crop.hardy){ continue; }
+    /* Frost is a TEMPERATURE now, not a calendar date. The old code wiped
+       every non-hardy bed the instant the season table said grow===0, which
+       meant there was no such thing as an early killing frost in autumn, no
+       such thing as a mild winter, and a "deep, killing freeze" event that
+       couldn't kill anything because winter had already done it on schedule.
+       Snow cover insulates; established perennials go dormant rather than
+       dying (handled inside frostKills). */
+    if(frostKills(crop, S.climate.out.lo, S.climate.snowpack)){
+      if(bed.growth>0.5) lines.push(`The cold took the ${crop.name.toLowerCase()} in bed ${S.beds.indexOf(bed)+1}.`);
+      bed.fertility=clamp((bed.fertility??75)-2,10,100);
+      bed.crop=null; bed.companions=[]; bed.growth=0; bed.days=0;
+      bed.ready=false; bed.stored=0; bed.bare=0; bed.mateGot=null; bed.picked=0;
+      continue;
+    }
+    if(false){
+      if(false){ continue; }
       if(!F.coldFrames){
         if(bed.growth>0.5) lines.push(`The ${crop.name.toLowerCase()} in bed ${S.beds.indexOf(bed)+1} died with the first hard frost.`);
-        bed.crop=null; bed.companions=[]; bed.growth=0; bed.days=0; bed.ready=false; bed.stored=0; bed.picked=0; bed.fertility=clamp((bed.fertility??75)-2,10,100); continue;
+        bed.crop=null; bed.companions=[]; bed.growth=0; bed.days=0; bed.ready=false; bed.stored=0; bed.bare=0; bed.mateGot=null; bed.picked=0; bed.fertility=clamp((bed.fertility??75)-2,10,100); continue;
       }
     }
     if(irrAl===0 && Math.random()<WITHER_CHANCE){
       lines.push(`With the irrigation shut off, the ${crop.name.toLowerCase()} in bed ${S.beds.indexOf(bed)+1} died.`);
-      bed.crop=null; bed.companions=[]; bed.growth=0; bed.days=0; bed.ready=false; bed.stored=0; bed.picked=0;
+      bed.crop=null; bed.companions=[]; bed.growth=0; bed.days=0; bed.ready=false; bed.stored=0; bed.bare=0; bed.mateGot=null; bed.picked=0;
       bed.fertility=clamp((bed.fertility??75)-2,10,100); continue;
     }
     const perBed = tenders.length ? tendPts/Math.max(1,annualPlanted) : 0;
@@ -730,7 +900,14 @@ function simulateDay(){
     const aqR = (S.restore && S.restore.aquifer) || 0;
     const polR = (S.restore && S.restore.pollinator) || 0;
     const drought = 1 - 0.55*thirst*(1 - 0.5*(aqR/100));
-    const seasonRate = sn.grow===0 ? 0.25 : sn.grow;
+    /* Sun and temperature are SEPARATE limiters on purpose: a heated
+       greenhouse doesn't save a sunflower in December, short days do it in,
+       and either one has to be able to be the binding constraint alone. */
+    const inGH = !!bed.greenhouse;
+    const tHi = inGH ? S.climate.greenhouse.hi : S.climate.out.hi;
+    const tLo = inGH ? S.climate.greenhouse.lo : S.climate.out.lo;
+    const tempRate = growthMult(crop, tHi, tLo);
+    const seasonRate = Math.max(0.25, sn.grow) * tempRate;
     // tending, water, season and soil set the PACE toward crop.work; falling
     // behind here means a longer season, not a smaller one (the weeds win time
     // before they win bulk). The pollinator bloom is not a pace effect — it
@@ -740,7 +917,8 @@ function simulateDay(){
     // BOTH gates: the work has to be in, and the days have to have passed.
     // !bed.ready freezes the yield on the first qualifying day.
     if(!bed.ready && bed.growth >= crop.work && bed.days >= (crop.minDays||0)){
-      bed.stored = yieldOf(bed, crop, polR, fo);
+      bed.bare = yieldOf(bed, crop, polR, fo);
+      bed.stored = bed.bare * slotMult(bed.crop, bed.companions||[]);
       bed.ready = true;
     }
   }
@@ -756,27 +934,60 @@ function simulateDay(){
     if(!tenders.length) continue;
     const win = Math.max(1, crop.window||1);
     const perDay = bed.stored/win;
+    // old saves froze a yield before bare existed; fall back to it
+    const barePerDay = (Number.isFinite(bed.bare) ? bed.bare : bed.stored)/win;
     bed.picked = (bed.picked||0) + 1;
     gardenFood += perDay;
     addFood(bed.crop, perDay);                     // into the pantry as itself
+    const mateWords=[];
     for(const c of (bed.companions||[])){          // interplantings bear too, thinly
       const cd = CROPS[c];
       if(!cd) continue;
-      const side = perDay*0.22;
+      // each interplanting scored against ITS OWN neighbours -- the primary
+      // and the other mates -- so the aster rule above actually lands
+      const others = [bed.crop, ...(bed.companions||[]).filter(x=>x!==c)];
+      const side = barePerDay*0.22*slotMult(c, others);
+      if(!(side>0)) continue;
       gardenFood += side; addFood(c, side);
       S.dietLog.push({crop:c, day:S.day, amt:side});
+      // remembered so the last-of-the-stand line can report the whole thing
+      bed.mateGot = bed.mateGot || {};
+      bed.mateGot[c] = (bed.mateGot[c]||0) + side;
+      mateWords.push(cd.name.toLowerCase());
     }
     S.dietLog.push({crop:bed.crop, day:S.day, amt:perDay});
+    /* Only the FIRST picking of a crop the village had to go out and FIND —
+       not ordinary weekly harvest, and not the two it started knowing. A
+       crop the beds give every season is a routine; the first turnip out of
+       ground nobody thought would hold one is a day. */
+    if(CROPS[bed.crop] && CROPS[bed.crop].locked){
+      S.harvested = S.harvested || {};
+      if(!S.harvested[bed.crop]){
+        S.harvested[bed.crop] = true;
+        const text = MEM_TEXT.firstHarvest(CROPS[bed.crop].name.toLowerCase());
+        for(const q of S.people){
+          if(q.status==="away" || !canWork(q)) continue;
+          if(q.job!=="garden" && q.trait!=="Green-thumb") continue;
+          addMemory(q, {kind:"firstHarvest", text, intensity:0.4, valence:0.6,
+                        tags:{action:"garden", place:"beds", subject:"harvest"}});
+        }
+        pushRecentEvent({kind:"firstHarvest", text:`the first ${CROPS[bed.crop].name.toLowerCase()} off this ground`,
+                         weight:1.1, tags:{subject:"harvest"}});
+      }
+    }
+    // the interplanting used to bear in complete silence: it fed the village
+    // and reached the diet log, and no journal line ever mentioned it
+    const alongside = mateWords.length ? `, with ${listWords(mateWords)} alongside` : "";
     // sunflower's byproduct accrues per picking day — seed set aside for the
     // press, not a cut of the food value itself
     if(bed.crop==="sunflower") S.res.rawSeed = (S.res.rawSeed||0) + perDay*0.5;
     const label = `Bed ${S.beds.indexOf(bed)+1}`;
     if(bed.picked===1 && win>1){
-      lines.push(`${label}: the first ${crop.name.toLowerCase()} came in — ${perDay.toFixed(0)} food today, more ripening behind it.`);
+      lines.push(`${label}: the first ${crop.name.toLowerCase()} came in — ${perDay.toFixed(0)} food today${alongside}, more ripening behind it.`);
     } else if(win>2 && bed.picked>1 && bed.picked<win && (bed.picked%2===0 || win<=4)){
       // the middle of a picking window used to pass in total silence, which
       // read as the harvest having stopped. It hadn't.
-      lines.push(`${label}: another ${perDay.toFixed(0)} of ${crop.name.toLowerCase()} picked — ${win-bed.picked} more day${win-bed.picked===1?"":"s"} of it to come.`);
+      lines.push(`${label}: another ${perDay.toFixed(0)} of ${crop.name.toLowerCase()} picked${alongside} — ${win-bed.picked} more day${win-bed.picked===1?"":"s"} of it to come.`);
     }
     if(bed.picked >= win){
       const seeds = seedReturn(crop);
@@ -788,12 +999,15 @@ function simulateDay(){
         S.seedStock = S.seedStock||{};
         S.seedStock[c] = (S.seedStock[c]||0) + Math.max(1, Math.round(cd.seeds*0.5));
       }
-      const cs = companionScore(bed);
-      bed.fertility = clamp((bed.fertility??75) + feedDelta(crop.feed) + cs.legumes*COMP_FERT, 10, 100);
-      lines.push(win>1
+      bed.fertility = clamp((bed.fertility??75) + feedDelta(crop.feed) + legumeMates(bed)*COMP_FERT, 10, 100);
+      const mateSum = Object.entries(bed.mateGot||{})
+        .filter(([,n])=>n>0.5)
+        .map(([c,n])=>`${n.toFixed(0)} of ${CROPS[c]?CROPS[c].name.toLowerCase():c}`);
+      const withMates = mateSum.length ? ` The interplanting gave ${listWords(mateSum)} on top of it.` : "";
+      lines.push((win>1
         ? `${label}: the last of the ${crop.name.toLowerCase()} — ${bed.stored.toFixed(0)} food over ${win} days${seeds?`, and ${seeds} seed saved back`:""}.`
-        : `${label} came in: ${bed.stored.toFixed(0)} of ${crop.name.toLowerCase()}${seeds?`, and ${seeds} seed saved`:""}.`);
-      bed.crop=null; bed.companions=[]; bed.growth=0; bed.days=0; bed.ready=false; bed.stored=0; bed.picked=0;
+        : `${label} came in: ${bed.stored.toFixed(0)} of ${crop.name.toLowerCase()}${seeds?`, and ${seeds} seed saved`:""}.`) + withMates);
+      bed.crop=null; bed.companions=[]; bed.growth=0; bed.days=0; bed.ready=false; bed.stored=0; bed.bare=0; bed.mateGot=null; bed.picked=0;
     }
   }
 
@@ -1002,13 +1216,21 @@ function simulateDay(){
   const pressers = working("press");
   if(pressers.length && S.flags.oilPress){
     const OIL_EFF = 0.35;   // most of the seed is not oil -- pressing loses a lot of volume
+    const OIL_CAP = 20;     // was the clamp on the old S.oil scalar; kept as a shelf limit
     let rate = 0;
     for(const p of pressers) rate += 2.0*0.55 + effStat(p,"hands","press")*0.4*eff(p);
-    const take = Math.min(S.res.rawSeed||0, rate);
+    // Oil goes into the pantry as a food now, not into a scalar off to one
+    // side. It's flagged noBulk in FOOD_DATA, so nobody eats it by the
+    // bowl -- it leaves through the oil dishes and the dinner line.
+    const room = Math.max(0, OIL_CAP - stockOf("oil"));
+    const take = Math.min(S.res.rawSeed||0, rate, room/OIL_EFF);
     if(take>0.2){
       S.res.rawSeed -= take;
-      S.oil = clamp(S.oil + take*OIL_EFF, 0, 20);
+      addFood("oil", take*OIL_EFF);
+      resync();
       S._pressWhy = `${take.toFixed(1)} seed pressed, ${(take*OIL_EFF).toFixed(1)} oil`;
+    } else if(room<=0.01){
+      S._pressWhy = "the oil jars are full";
     }
   }
 
@@ -1081,6 +1303,11 @@ function simulateDay(){
       const skill = 0.75 + 0.1*effStat(w,"hands","fab");
       for(const def of FABS){
         if(!S.fabs[def.id] || def.passive) continue;   // passive shops run themselves
+        // Per-shop switch. Without it the machine shop ran whenever ANY fab
+        // worker was assigned, and since it eats 1.0 scrap to make 0.5 parts
+        // while the forge only makes 0.9, net scrap ran negative whenever
+        // both were on -- with no way to pause one and rebuild the pile.
+        if(S.fabsOff && S.fabsOff[def.id]) continue;
         let r = FAB_RATE[def.gives] * (fabPowered?1:0.6) * skill;
         if(def.feed){
           const have = S.res[def.feed.res]||0;
@@ -1118,6 +1345,17 @@ function simulateDay(){
           named.push(d.name.toLowerCase());
         }
         lines.push(`A hard storm in the night. The ${named.join(" and the ")} took damage.`);
+        /* Only for the people who TEND the thing that broke. A storm is
+           weather for everybody and a loss for whoever keeps it running. */
+        const hitIds = [...chosen].map(d=>d.id);
+        for(const q of S.people){
+          if(q.status==="away" || !hitIds.includes(q.job)) continue;
+          addMemory(q, {kind:"storm", text:MEM_TEXT.storm(jobName(q.job).toLowerCase()),
+                        intensity:0.5, valence:-0.5,
+                        tags:{action:q.job, place:q.job, subject:"storm"}});
+        }
+        pushRecentEvent({kind:"storm", text:`the storm and what it took`, weight:1.4,
+                         tags:{subject:"storm"}});
       }
     }
   }
@@ -1228,8 +1466,15 @@ function simulateDay(){
     const isBuild = S.project.kind==="build";
     const def = workDef();
     let pts=0;
+    /* WHO BUILT IT. S.project.progress was one shared pool and nothing
+       recorded whose hands put it there, so a finished thing couldn't be
+       anyone's in particular. This is the smallest possible fix: a running
+       tally, read once at completion and then thrown away with the project. */
+    S.project.contributors = S.project.contributors || {};
     for(const p of working("project")){
-      pts += (effStat(p,"hands",S.project.kind==="build"?S.project.id:null)+(p.trait==="Tinkerer"?1.5:0))*1.2*eff(p)*((S.f||{}).projectFaster?1.2:1)*(S.flags.fineTools?1.1:1);
+      const own = (effStat(p,"hands",S.project.kind==="build"?S.project.id:null)+(p.trait==="Tinkerer"?1.5:0))*1.2*eff(p)*((S.f||{}).projectFaster?1.2:1)*(S.flags.fineTools?1.1:1);
+      pts += own;
+      S.project.contributors[p.id] = (S.project.contributors[p.id]||0) + own;
     }
     S.project.progress += pts;
     if(S.project.progress >= def.work){
@@ -1242,6 +1487,30 @@ function simulateDay(){
         S.flags[def.id]=true;
         if(def.id==="gardenBeds") S.beds.push({crop:null,companions:[],growth:0,days:0,ready:false,stored:0,fertility:75,plantedDay:0});
         lines.push(`The ${def.name.toLowerCase()} is finished. ${def.blurb}`);
+      }
+      /* Three tiers, on purpose. Someone who spent a season on it, someone
+         whose daily work now runs through it, and someone it simply speaks
+         to are not equally OF this — and a system that gave all three the
+         same memory would be recording an event rather than people. */
+      {
+        const contrib = S.project.contributors || {};
+        const total = Object.values(contrib).reduce((a,b)=>a+b, 0) || 1;
+        const userJob = WORK_USER_JOB[def.id];
+        const broad = JOB_SKILL[userJob] || "hands";
+        const traits = WORK_TRAIT[broad] || [];
+        const text = MEM_TEXT.project(def.name.toLowerCase());
+        for(const q of S.people){
+          if(q.status==="away" || !canWork(q)) continue;
+          let intensity = 0;
+          if(contrib[q.id])            intensity = 0.3 + 0.4*(contrib[q.id]/total);   // built it
+          else if(userJob && q.job===userJob) intensity = 0.4;                        // will use it
+          else if(traits.includes(q.trait))   intensity = 0.3;                        // just cares
+          if(!intensity) continue;
+          addMemory(q, {kind:"project", text, intensity, valence:0.6,
+                        tags:{action:"project", place:def.id, subject:"built"}});
+        }
+        pushRecentEvent({kind:"project", text:`${def.name.toLowerCase()} finally going up`,
+                         weight:1.5, tags:{subject:"built"}});
       }
       S.people.forEach(p=>{if(p.job==="project")p.job=null;});
       S.project=null;
@@ -1316,12 +1585,21 @@ function simulateDay(){
   for(const p of S.people){
     if(p.status==="away") continue;
     if(p.status==="down"){
-      p.downDays -= standstill?2:1;
+      // The day you come home hurt is not also a day of recovery.
+      // tickExpeditions runs at the top of simulateDay and this block runs
+      // near the bottom, so a two-day injury could be decremented here --
+      // and rolled down again by care and by the herbal stores -- before
+      // the same day was out. The journal then reported that someone came
+      // back injured and was back on their feet, in one entry.
+      const hurtToday = p.downSince === S.day;
+      if(!hurtToday){
+        p.downDays -= standstill?2:1;
+        if(careHeal && p.downDays>0 && Math.random()<careHeal){ p.downDays--; }
+        if(F.herbalStores && p.downDays>0 && Math.random()<0.3){ p.downDays--; }
+      }
       p.wb=clamp(p.wb+2+careBoost+(standstill?6:0),0,100);
       capWb(p);
-      if(careHeal && p.downDays>0 && Math.random()<careHeal){ p.downDays--; }
-      if(F.herbalStores && p.downDays>0 && Math.random()<0.3){ p.downDays--; }
-      if(p.downDays<=0){ p.status="ok"; recovered.push(p); }
+      if(p.downDays<=0){ p.status="ok"; p.downSince=null; recovered.push(p); }
       continue;
     }
     let d=0;
@@ -1372,6 +1650,8 @@ function simulateDay(){
     if(sick){ sick.status="down"; sick.downDays=2; const wasJob=sick.job; sick.job=null;
       const stillTended = wasJob && wasJob!=="away" && working(wasJob).length>0;
       lines.push(`${sick.name} woke feverish and was sent to rest${wasJob&&wasJob!=="away"&&!stillTended?`; the ${jobName(wasJob).toLowerCase()} went untended`:""}.`);
+      addMemory(sick, {kind:"illness", text:MEM_TEXT.illness(), intensity:0.35, valence:-0.4,
+                       tags:{subject:"illness", place:"sickbed"}});
     }
   }
   // with cleaning water shut off entirely, sickness finds the village faster —
@@ -1415,7 +1695,9 @@ function simulateDay(){
           id:"child_"+S.day+"_"+name.toLowerCase(), name, pn: pick(["she/her","he/him","they/them"]),
           trait: pick(Object.keys(TRAITS)), hands:inh("hands"), green:inh("green"), care:inh("care"), wild:inh("wild"),
           note: pick(CHILD_NOTES), age:0, years:0, perm:null,
-          wb:80, job:null, streak:0, status:"ok", downDays:0, mem:`Born in the village, winter of year ${yr}.`,
+          wb:80, job:null, streak:0, status:"ok", downDays:0,
+          // born here, so no pre-game memory — nothing happened to them yet
+          memories:[], frontId:null,
           personality: rollPersonality(),   // chemistry, not lineage — deliberately not inherited
           toxins: 0,   // born clean; the well will do its own work over their lifetime
           music: rollMusic(),
@@ -1428,6 +1710,11 @@ function simulateDay(){
           ? `${raisers[0].name} will raise ${name}, and so will everyone else`
           : `${raisers[0].name} and ${raisers[1].name} will raise ${name} between them, and so will everyone else`;
         lines.push(`A child was born in the deep of winter and named ${name}. ${raiserPhrase}.`);
+        addMemoryAll(S.people.filter(q=>q.status!=="away" && q.id!==kid.id), {
+          kind:"birth", text:MEM_TEXT.birth(name), intensity:0.7, valence:0.8,
+          tags:{people:[kid.id], subject:"birth"}});
+        pushRecentEvent({kind:"birth", text:`${name} being born`, weight:2,
+                         tags:{subject:"birth", people:[kid.id]}});
       }
     }
 
@@ -1441,7 +1728,19 @@ function simulateDay(){
       if(Math.random()<risk){
         S.people = S.people.filter(x=>x!==p);
         S.deaths++;
+        /* S.gone is what makes ache possible. Removing someone from S.people
+           erases every fact about them; the fond memories other people hold
+           would otherwise have no way to ask whether they're still here. */
+        recordGone(p, "death");
         S.people.forEach(q=>{ if(q.status!=="away") q.wb=clamp(q.wb-7,wbFloor(q),100); });
+        // for everyone who was there. Unforgettable: this is one of the three
+        // things a person keeps at near-zero salience forever rather than
+        // losing to routine churn.
+        addMemoryAll(S.people.filter(q=>q.status!=="away"), {
+          kind:"death", text:MEM_TEXT.death(p.name), intensity:0.9, valence:-0.9,
+          unforgettable:true, tags:{people:[p.id], subject:"death"}});
+        pushRecentEvent({kind:"death", text:`${p.name}, and the night of it`, weight:2.5,
+                         tags:{subject:"death", people:[p.id]}});
         lines.push(`${p.name} died in the night, ${p.age} years old, in a warm room with people in it. ${Cap(subj(p))} ${hasHave(p)} been here as long as anyone can easily say.`);
         const memLines=[`${p.name} — ${p.note}`];
 
@@ -1482,6 +1781,12 @@ function simulateDay(){
         const p = pick(cands);
         S.people = S.people.filter(x=>x!==p);
         S.departures++;
+        recordGone(p, "departure");
+        addMemoryAll(S.people.filter(q=>q.status!=="away"), {
+          kind:"departure", text:MEM_TEXT.departure(p.name), intensity:0.5, valence:-0.4,
+          tags:{people:[p.id], subject:"departure"}});
+        pushRecentEvent({kind:"departure", text:`${p.name} going`, weight:1.8,
+                         tags:{subject:"departure", people:[p.id]}});
         lines.push(`${p.name} left with a pack and an apology. ${Cap(subj(p))} said there was a place ${subj(p)} needed to see. Nobody stopped ${objp(p)}.`);
       }
     }
@@ -1501,6 +1806,16 @@ function simulateDay(){
     tickConflicts(lines);     // and the conflict lifecycle reads today's flares
     tickMoments(lines);       // and the small tender things, off the same bond graph
   }
+  /* --- what people are carrying ---
+     Runs from day one, unlike the bond systems above: a founder has a
+     pre-game memory before anything here has happened, and it should be
+     decaying and surfacing from the first morning. Order matters — the
+     memory tick sets each person's front-of-mind, and conversations read it
+     to pick a topic, so it has to land first. wbCeil is passed through so a
+     fond memory can't lift anyone above what a hungry village allows. */
+  tickRecentEvents();
+  tickMemories(lines, wbCeil);
+  if (S.day > 5) tickConversations(lines);
   tickCelebCooldowns();
   tickTraditions(lines);      // anything the village keeps yearly comes round on its day
   driftIdeology(lines);       // stances move last, off the day as it actually went
@@ -1512,6 +1827,37 @@ function simulateDay(){
     lines.push("No one has come up the road in a long time. The valley has a reputation now — a place where people go to fade.");
   }
 
+
+  /* --- BEHAVIOURAL TEETH ---
+     A memory system without behavioural consequence is just a nicer `mem`
+     string. What a dwarf who watched someone die in a mineshaft does about
+     mining is what makes that game read as alive.
+
+     Deliberately capped at reluctance and journal texture. No hard refusal:
+     blocking a job assignment fights the player instead of characterising
+     anybody, and the player is the one who can actually see the roster. One
+     line a day, so this stays texture rather than a second journal. */
+  {
+    const sore = [];
+    for(const q of S.people){
+      if(q.status==="away" || !q.job) continue;
+      const m = reluctance(q, {action:q.job});
+      if(m) sore.push({q, m});
+    }
+    if(sore.length && Math.random() < 0.4){
+      const {q} = pick(sore);
+      lines.push(`${q.name} has been slow to ${jobName(q.job).toLowerCase()} lately. ${Cap(subj(q))} ${hasHave(q)} not said why, and nobody has asked.`);
+    } else if(S.people.some(q=>q.status==="down")){
+      // a live grief turns people toward the sickbed. Query only: the player
+      // assigns jobs, and a system that quietly reassigns them behind the
+      // player's back is a bug wearing a feature's coat.
+      const drawn = S.people.filter(q=>q.status!=="away" && q.status!=="down" && canWork(q) && drawnToCare(q));
+      if(drawn.length && Math.random() < 0.3){
+        const q = pick(drawn);
+        lines.push(`${q.name} keeps finding reasons to be near the sickbed. ${Cap(subj(q))} ${isAre(q)} not much use there, and goes anyway.`);
+      }
+    }
+  }
 
   // --- journal ---
   if(dayOfSeason(S.day)===1){
@@ -1547,7 +1893,26 @@ function simulateDay(){
     }
   }
 
+  /* A hunger stretch is one memory, not one a day. It lands on the fourth
+     lean day — the same point the journal stops describing thin meals and
+     starts counting them — and its end lands the day the counter releases,
+     because the first proper meal after is its own distinct thing. */
+  const hungerWas = S.hungerDays || 0;
   if(hunger>0){ S.hungerDays++; } else { S.hungerDays=0; }
+  if(hunger>0 && S.hungerDays === 4){
+    addMemoryAll(S.people.filter(q=>q.status!=="away"), {
+      kind:"hunger", text:MEM_TEXT.hunger(4), intensity:0.6, valence:-0.7,
+      tags:{subject:"hunger", place:"commons"}});
+    pushRecentEvent({kind:"hunger", text:"the hungry stretch", weight:2,
+                     tags:{subject:"hunger"}});
+  }
+  if(hunger<=0 && hungerWas >= 4){
+    addMemoryAll(S.people.filter(q=>q.status!=="away"), {
+      kind:"famineEnd", text:MEM_TEXT.famineEnd(), intensity:0.5, valence:0.7,
+      tags:{subject:"hunger", place:"commons"}});
+    pushRecentEvent({kind:"famineEnd", text:"the first proper meal after", weight:1.5,
+                     tags:{subject:"hunger"}});
+  }
   if(thirstFelt>0){ S.thirstDays++; } else { S.thirstDays=0; }
   if(hunger>0){
     const avgWb = S.people.length ? S.people.reduce((a,p)=>a+p.wb,0)/S.people.length : 100;
@@ -1648,6 +2013,24 @@ function simulateDay(){
 
   S.day++;
 }
+
+/* Who a finished thing is FOR. Used only by the project-completion memories:
+   somebody whose daily work runs through a system remembers it being raised
+   differently from somebody who happened to be in the village that week.
+   Not everyone present is equally OF an event. */
+const WORK_USER_JOB = {
+  aquaponics:"aquatend", irrigation:"garden", catchment:"garden", commons:"cook",
+  solar:"solar", turbine:"turbine", battery:"battery",
+  rootCellar:"preserve", dryRacks:"preserve", crocks:"preserve", canning:"preserve",
+  oilPress:"press", gardenBeds:"garden", coldFrames:"garden", compost:"garden",
+  graywater:"garden", dripRetrofit:"garden", seedSaving:"garden",
+  herbalStores:"care", toolLibrary:"project", well:"catchment",
+  woodStove:"cook", rocketHeater:"cook", earthBerming:"project"
+};
+/* ...and whose temperament it speaks to, for the people who just care. */
+const WORK_TRAIT = {
+  hands:["Tinkerer"], green:["Green-thumb"], care:["Mender"], wild:["Restless"]
+};
 
 const JOB_SKILL = {garden:"green", aquatend:"green", care:"care", cook:"care", project:"hands", preserve:"care", press:"hands", fab:"hands", woodcut:"wild"};
 /* whatever currently occupies the single work slot: a system being raised, or a project */

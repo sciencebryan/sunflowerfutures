@@ -35,6 +35,8 @@ import { PRACTICE_SPECIFIC_CAP, PRACTICE_SPECIFIC_GROWTH } from "./data-economy.
 import { bondKey, bondOf } from "./bonds.js";
 import { openSheet, closeSheet } from "./sheets.js";
 import { renderAll } from "./render.js";
+import { addMemory } from "./memories.js";
+import { MEM_TEXT } from "./data-memories.js";
 
 /* --- tuning --- */
 const SPACE_DAYS = 12;
@@ -145,6 +147,17 @@ function resolve(c, b, { aff, kind, by, quality }) {
   b.affinity = clamp(b.affinity + aff, -10, 10);
   b.flares = 0;
   b.lastFix = { day: S.day, kind, by: by || null, quality: quality || "full" };
+  /* A repair is a bigger memory than the flare that caused it, and a
+     positive one. This is the pair of records that makes a long friendship
+     legible later: the thing that got said, and the working-out after it. */
+  const pA = byId(c.pair[0]), pB = byId(c.pair[1]);
+  if (pA && pB) {
+    const val = quality === "partial" ? 0.35 : 0.6;
+    addMemory(pA, { kind: "repair", text: MEM_TEXT.repair(pB.name), intensity: 0.5, valence: val,
+                    tags: { people: [pB.id], subject: "repair" } });
+    addMemory(pB, { kind: "repair", text: MEM_TEXT.repair(pA.name), intensity: 0.5, valence: val,
+                    tags: { people: [pA.id], subject: "repair" } });
+  }
   removeConflict(c);
 }
 function removeConflict(c) { S.activeConflicts = S.activeConflicts.filter(x => x.id !== c.id); }

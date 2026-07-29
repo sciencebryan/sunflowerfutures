@@ -1,4 +1,5 @@
 import { byId, pick } from "./helpers.js";
+import { rand } from "./rng.js";
 import { CROPS, SEASONS, SEASON_LEN, WEATHERS } from "./data-economy.js";
 import { S } from "./state.js";
 
@@ -133,14 +134,25 @@ function discoverRandomUseful(){
 const usefulLine = id =>
   `The ranging party came back with cuttings from a stand of ${CROPS[id].name.toLowerCase()}. Nothing to eat off them — but in time, shade, and a windbreak, and something for the generation after this one to sit under.`;
 
-function discoveryLine(id, how){
-  const c=CROPS[id]; if(!c) return "";
-  const name=c.name.toLowerCase();
-  const seedWord = c.perennial ? "cuttings" : "seed";
+/* Takes one crop id or a list of them. The seed vault and the agricultural
+   extension can now turn up several varieties in a single visit (see the
+   discovery rolls in expeditions.js), and three near-identical sentences
+   stacked in a row is not a journal -- it's a receipt. */
+const DISC_NUM=["no","one","two","three","four","five","six","seven","eight","nine","ten"];
+function discoveryLine(ids, how){
+  const crops=(Array.isArray(ids)?ids:[ids]).map(id=>CROPS[id]).filter(Boolean);
+  if(!crops.length) return "";
   const where = how==="explore" ? "the far country"
               : how==="forage" ? "the near country"
               : "a stripped building";
-  return `They brought ${seedWord} back from ${where} — ${name}, a crop the village hasn't grown before.`;
+  if(crops.length===1){
+    const c=crops[0];
+    const seedWord = c.perennial ? "cuttings" : "seed";
+    return `They brought ${seedWord} back from ${where} — ${c.name.toLowerCase()}, a crop the village hasn't grown before.`;
+  }
+  const names=crops.map(c=>c.name.toLowerCase());
+  const joined=names.slice(0,-1).join(", ")+", and "+names[names.length-1];
+  return `They came back from ${where} with seed for ${DISC_NUM[crops.length]||crops.length} crops the village has never grown: ${joined}.`;
 }
 
 const season    = () => SEASONS[seasonIdx(S.day)];
@@ -154,6 +166,31 @@ const seasonNote = s => (s.id==="winter" && S.flags && S.flags.coldFrames)
   ? "Frozen outside, but the cold frames keep the garden going all winter, albeit slower."
   : s.note;
 
+/* ---- can this go in the ground right now? ----
+   ONE question, ONE answer. The sow sheet asked it twice with two different
+   sets of rules: the primary-crop list tested a crop's sowWindow, and the
+   interplanting list didn't test it at all, so peas -- early spring or the
+   very end of summer, never the heat between -- could be interplanted into
+   the middle of midsummer.
+
+   Cold frames (and, later, the greenhouse) let you sow out of SEASON. They
+   do not repeal a sowing WINDOW: protected ground is warmer, it is not a
+   different month. Annual beds only for now; the food forest has its own
+   rules and gets its own pass when perennial layering goes in. */
+function canSow(crop, protectedGround){
+  if(!crop) return false;
+  const sn=season();
+  const inList=crop.sow.includes(sn.id);
+  if(crop.perennial) return inList;
+  if(crop.sowWindow){
+    const w=crop.sowWindow[sn.id];
+    if(!inList || !w) return false;
+    const d=dayOfSeason(S.day);
+    return d>=w[0] && d<=w[1];
+  }
+  return inList || !!protectedGround;
+}
+
 function rollWeather(){
   const f=S.f||{};
   const sn=season();
@@ -164,7 +201,11 @@ function rollWeather(){
   const tot=p.reduce((a,b)=>a+b,0);
   let ws=WEATHERS.map((w,i)=>({...w, p:p[i]/tot,
     solar: w.solar*sn.solar}));
-  const r=Math.random(); let acc=0;
+  /* Seeded, like the temperature it feeds: weather shifts the day's high
+     and low (climate.js WX_SHIFT), so a reproducible temperature stream is
+     worthless if the weather driving it isn't reproducible too. Same
+     generator, same stream. */
+  const r=rand(); let acc=0;
   for(const w of ws){ acc+=w.p; if(r<=acc) return w; }
   return ws[0];
 }
@@ -195,4 +236,4 @@ function forecastUnlocked(){
 
 
 
-export { ADULT, AGES, ELDER, addSeeds, discoverRandomUseful, isFoodCrop, lockedUseful, usefulLine, restockLine, restockRandomCrop, restockableCrops, canRoad, canWork, dayOfSeason, discoverRandomCrop, discoveryLine, generateFallbackChildName, grantSeedSpread, lockedCrops, roadReady, rollWeather, scaledWeather, season, seasonIdx, seasonNote, seedCount, totalSeeds, yearOf };
+export { ADULT, AGES, ELDER, addSeeds, canSow, discoverRandomUseful, isFoodCrop, lockedUseful, usefulLine, restockLine, restockRandomCrop, restockableCrops, canRoad, canWork, dayOfSeason, discoverRandomCrop, discoveryLine, generateFallbackChildName, grantSeedSpread, lockedCrops, roadReady, rollWeather, scaledWeather, season, seasonIdx, seasonNote, seedCount, totalSeeds, yearOf };

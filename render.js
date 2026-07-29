@@ -3,18 +3,19 @@ import { S } from "./state.js";
 import { $ } from "./dom.js";
 import { SKILL_INFO, TRAITS, built, decayOf, isVisible, waterCapEff } from "./defs.js";
 import { eventDef, eventView, exWhere } from "./events.js";
-import { CROPS, FABS, FAB_RATE, FOREST_PLOT_COST, MAX_FOREST_PLOTS, POWER_DEMANDS, PRACTICE_SPECIFIC_CAP, PRESERVE, PROJECTS, RESTORE_GATE, RESTORE_HIGH, RESTORE_LOW, SEASONS, SEASON_LEN, SITE_DEF, STACKABLE, SYS, WATER_DEMANDS } from "./data-economy.js";
+import { cropHardiness, CROPS, FABS, FAB_RATE, FOREST_PLOT_COST, MAX_FOREST_PLOTS, POWER_DEMANDS, PRACTICE_SPECIFIC_CAP, PRESERVE, PROJECTS, RESTORE_GATE, RESTORE_HIGH, RESTORE_LOW, SEASONS, SEASON_LEN, SITE_DEF, STACKABLE, SYS, WATER_DEMANDS } from "./data-economy.js";
 import { Cap, byId, clamp, eff, effStat, isAre, pick, poss, practiceOf, siteName, siteRemainFrac, subj, tripDays, wbFloor } from "./helpers.js";
 import { SOIL_WORD, openCelebrationSheet, openPartySheet, openPersonSheet, openSowSheet, openSystemSheet } from "./sheets.js";
 import { assignPhrase, workDef } from "./day.js";
 import { store } from "./store.js";
 import { FORAGE_FLAVOR } from "./data-events.js";
-import { composition, intakeReadout, jarComposition, pantryTotal, jarsTotal, stockMacros } from "./larder.js";
+import { composition, intakeReadout, jarComposition, pantryTotal, jarsTotal, stockMacros, stockOf } from "./larder.js";
 import { MAC_GRACE, MAX_COMPANIONS, PRES_KEEP } from "./data-food.js";
 import { bindPuzzleEntries, puzzleEntryCard, renderOpenPuzzle } from "./puzzle-ui.js";
 import { openConflictSheet } from "./mediation.js";
 import { CELEBRATIONS, canAfford, celebDef, costOf, forgetTradition, gatesOk, onCooldown } from "./celebrations.js";
 import { syncNavTop } from "./main.js";
+import { frontText } from "./memories.js";
 
 
 
@@ -31,7 +32,10 @@ function renderHeader() {
   const r = S.report;
   
   // Weather and Date
-  $("daywx").textContent = `${sn.name}, day ${dayOfSeason(S.day)} — ${S.weather}`;
+  const _c = S.climate && S.climate.out;
+  const _t = _c ? ` · ${Math.round(_c.hi)}°/${Math.round(_c.lo)}°` : "";
+  const _p = S.climate && S.climate.precip==="snow" ? " snow" : "";
+  $("daywx").textContent = `${sn.name}, day ${dayOfSeason(S.day)} — ${S.weather}${_p}${_t}`;
   // Update the sky background based on current weather
   const skyBox = document.getElementById("skyBox");
   if (skyBox) {
@@ -466,7 +470,7 @@ function oilSection(){
   // --- pressing oil, once the press is built ---
   if(S.flags.oilPress){
     h+=`<div class="card">
-      <div class="card-top"><div class="sysname">Pressing oil</div><div class="condpct">${(S.oil||0).toFixed(1)} oil</div></div>
+      <div class="card-top"><div class="sysname">Pressing oil</div><div class="condpct">${stockOf("oil").toFixed(1)} oil</div></div>
       <div class="blurb">Sunflower seed set aside from the harvest, turned by hand into something worth cooking with. Slow, and most of the seed doesn't become oil.</div>
       <div class="rolerow">${roleChip("press","hands","nobody at the press")}</div>
       <div class="sysmeta"><span class="outline-note">${(S.res.rawSeed||0).toFixed(1)} seed waiting · ${S.report.pressWhy||"nothing pressed today"}</span></div>
@@ -561,12 +565,23 @@ function worksSection(){
       // per-UNIT feed ratio, said as such — "eats 2 food/meds" read as a daily
       // cost when it was really a conversion rate. Passive shops say neither.
       const rate = FAB_RATE[def.gives].toFixed(2);
+      const off = !!(S.fabsOff && S.fabsOff[def.id]);
       const head = def.passive
         ? `+${rate} ${def.gives}/day`
+        : off ? "idle — switched off"
         : `+${rate} ${def.gives}/day when worked${def.feed?` · ${def.feed.per} ${def.feed.res} per ${def.gives}`:""}`;
+      /* Each shop gets its own switch. The machine shop eats 1.0 scrap to
+         make 0.5 parts while the forge only makes 0.9, so running both is
+         net scrap-negative — and with no way to pause one, a village that
+         had stripped every salvage site could never rebuild the pile. */
+      const sw = def.passive ? "" :
+        `<div class="sysmeta"><span class="outline-note">${off
+            ? `cold — the ${def.gives} it would make, and the ${def.feed?def.feed.res:"feedstock"} it would eat, both stay put`
+            : "running whenever someone's in the shops"}</span>
+          <button class="go" data-shop="${def.id}">${off?"Fire it up":"Shut it down"}</button></div>`;
       h+=`<div class="card grey"><div class="card-top"><div class="sysname">${def.name}</div>
         <div class="condpct">${head}</div></div>
-        <div class="blurb">${def.blurb}${def.passive?" Needs nobody, and takes nothing.":""}</div></div>`;
+        <div class="blurb">${def.blurb}${def.passive?" Needs nobody, and takes nothing.":""}</div>${sw}</div>`;
       continue;
     }
     if(S.fabProject && S.fabProject.id===def.id) continue;
@@ -633,7 +648,14 @@ function triageSection(){
     if(st.cond<70 && u>worstU){ worstU=u; worst=def; }
   }
   if(worst){
-    const where=["turbine","solar","battery"].includes(worst.id)?"Power":["catchment","irrigation"].includes(worst.id)?"Water":"below";
+    /* Was a ternary that sent everything it didn't recognise to "below" --
+       true for the commons, which renders on this tab, and wrong for the
+       aquaponics, which renders on Food. An explicit map so adding a system
+       can't quietly inherit the fallback again. */
+    const SYS_TAB = {turbine:"Power", solar:"Power", battery:"Power",
+                     catchment:"Water", irrigation:"Water",
+                     aquaponics:"Food", commons:"below"};
+    const where = SYS_TAB[worst.id] || "below";
     // This never was "most worn" — it's an urgency score (how far gone × how
     // fast it's going), so it could name a system in better condition than
     // another and print the number that contradicted it. Say what it means,
@@ -665,6 +687,18 @@ function bindTabActions(el){
   });
   el.querySelectorAll("[data-sow]").forEach(b=>{
     b.onclick=()=>openSowSheet(+b.dataset.sow);
+  });
+  el.querySelectorAll("[data-shop]").forEach(b=>{
+    b.onclick=()=>{
+      const id=b.dataset.shop;
+      S.fabsOff = S.fabsOff || {};
+      S.fabsOff[id] = !S.fabsOff[id];
+      const def=FABS.find(x=>x.id===id);
+      S.pending.push(S.fabsOff[id]
+        ? `${def.name} was banked and left to go cold.`
+        : `${def.name} was lit again.`);
+      store.save(S); renderAll();
+    };
   });
   el.querySelectorAll("[data-fab]").forEach(b=>{
     b.onclick=()=>{
@@ -852,7 +886,10 @@ function renderWorks(){
 }
 function renderBeyond(){
   if(renderOpenPuzzle("beyond")) return;
-  let h=salvageChips();
+  // No salvageChips() here: these are the same five numbers the HUD's
+  // materials line already carries at the top of every screen. Works still
+  // shows them, because that's the tab where you spend them.
+  let h="";
 
   if(S.expeditions.length){
     h+=`<div class="sectionlbl">Out there now</div>`;
@@ -1015,7 +1052,7 @@ function renderPeople(){
       <div class="wbwrap"><div class="wbtrack"><div class="wbfill" style="width:${p.wb}%;background:${wbColor(p.wb)}"></div></div><div class="wbnum">${p.wb.toFixed(0)}</div></div>
       <div class="passign">${assign}</div>
       <div class="flavor">${p.note} <span style="font-style:normal;color:var(--moss)">· ${TRAITS[p.trait]}.</span></div>
-      ${p.mem?`<div class="mem">${p.mem}</div>`:""}
+      ${(()=>{ const t=frontText(p); return t?`<div class="mem">${t}</div>`:""; })()}
     </button>`;
   }
   h += sickbedSection();

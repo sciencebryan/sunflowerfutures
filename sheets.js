@@ -6,7 +6,10 @@ import { S } from "./state.js";
 import { SCALES, canAfford, celebDef, costOf, dayOfYear, holdCelebration, makeTradition } from "./celebrations.js";
 import { TRADITION_NAMES } from "./data-celebrations.js";
 import { jobName, jobSkill, workDef, workName } from "./day.js";
-import { canWork, dayOfSeason, roadReady, season, seasonIdx, seasonNote } from "./seasons.js";
+import { stockOf } from "./larder.js";
+import { cropHardiness } from "./data-economy.js";
+import { tooColdToSow, typicalFrostDay } from "./climate.js";
+import { canSow, canWork, dayOfSeason, roadReady, season, seasonIdx, seasonNote } from "./seasons.js";
 import { store } from "./store.js";
 import { renderAll } from "./render.js";
 import { byId, clamp, effStat, objp, siteDef, siteName, tripDays } from "./helpers.js";
@@ -128,18 +131,29 @@ function openSowSheet(i, isForest){
         if(c.perennial || c.locked && !(S.crops&&S.crops[id])) continue;
         if(id===bed.crop || mates.includes(id)) continue;
         if(!famOf(id)) continue;
+        /* An interplanting bears on the PRIMARY's clock — it has no window
+           of its own — so anything slower than what's already in the bed
+           gets harvested early and half-grown. A sunflower dropped into
+           radishes used to come in after nine days. Only offer what ripens
+           at least as fast as the stand it's joining. */
+        if((c.minDays||0) > (curCrop.minDays||0)) continue;
         const have = (S.seedStock&&S.seedStock[id])||0;
         const need = Math.max(1, Math.round(c.seed*0.5));
-        const inSeason = c.sow.includes(sn.id) || S.flags.coldFrames;
-        // real plant-family interaction, with the reason said plainly — this is
-        // knowledge a gardener would simply have, so it isn't hidden
-        const vs = [bed.crop, ...mates].map(o => famPair(famOf(o), famOf(id)));
-        const worst = Math.min(...vs), best = Math.max(...vs);
+        // one predicate, shared with the sow list below — this path used to
+        // skip the sowWindow test entirely, so peas could go in at midsummer
+        // same temperature gate as the primary list — C4 routed both paths
+        // through one canSow(), so the guard only has to be added once each
+        const inSeason = canSow(c, S.flags.coldFrames)
+          && !(S.climate && tooColdToSow(c, S.climate.out.lo, S.climate.snowpack));
+        /* The hint is against the PRIMARY only. It used to be scored against
+           the primary and every mate already in the bed, so adding one
+           companion silently relabelled all the remaining choices and the
+           list appeared to shift under you. */
+        const v = famPair(famOf(bed.crop), famOf(id));
         const ok = have>=need && inSeason;
-        const against = worst<0 ? [bed.crop,...mates][vs.indexOf(worst)] : [bed.crop,...mates][vs.indexOf(best)];
-        const note = pairingNote(against, id);
-        const hint = worst<0 ? `<span style="color:var(--rust)">${note}</span>`
-                   : best>0  ? `<span style="color:var(--leaf)">${note}</span>`
+        const note = pairingNote(bed.crop, id);
+        const hint = v<0 ? `<span style="color:var(--rust)">${note}</span>`
+                   : v>0 ? `<span style="color:var(--leaf)">${note}</span>`
                    : note;
         h += `<button class="opt ${ok?"":"dim"}" data-mate="${id}" ${ok?"":"disabled"}>
           <span><span class="l1">${c.name}</span><div class="l2">${hint}${!inSeason?" · not this season":have<need?` · no ${c.name.toLowerCase()} seed`:""}</div></span>
@@ -180,25 +194,28 @@ function openSowSheet(i, isForest){
     if(occupied) break;              // see (7): occupied beds offer interplanting, not replacement
     if(c.locked && !(S.crops && S.crops[id])) continue;
     if(isForest !== !!c.perennial) continue;   // forest shows perennials; beds show annuals
-    const inWindow = c.sowWindow && c.sowWindow[sn.id]
-      ? (dayOfSeason(S.day)>=c.sowWindow[sn.id][0] && dayOfSeason(S.day)<=c.sowWindow[sn.id][1])
-      : true;
-    let inSeason;
-    if(c.perennial)       inSeason = c.sow.includes(sn.id);
-    else if(c.sowWindow)  inSeason = c.sow.includes(sn.id) && inWindow;
-    else                  inSeason = c.sow.includes(sn.id) || S.flags.coldFrames;
+    // same predicate the interplanting list uses — see canSow() in seasons.js
+    // 4d: the sow gate shares the KILL predicate, not a second threshold —
+    // if these disagreed there'd be a crack where the game called something
+    // plantable and then killed it the same night.
+    const tooCold = S.climate ? tooColdToSow(c, S.climate.out.lo, S.climate.snowpack) : false;
+    const inSeason = canSow(c, S.flags.coldFrames) && !tooCold;
     const have = (S.seedStock && S.seedStock[id]) || 0;
     const afford = have >= c.seed;
     // the floor is a fact; the work estimate is a guess at a decent crew's pace.
     // Take the later of the two: nothing ripens before minDays no matter who tends it.
     const floorDays = c.minDays||0;
     const days = Math.max(floorDays, Math.ceil((c.work||0)/2.2));
-    const toFrost = sn.id==="winter" ? 0
-      : ((SEASONS.findIndex(x=>x.id==="winter") - seasonIdx(S.day))*SEASON_LEN) - dayOfSeason(S.day) + 1;
-    const risky = !c.perennial && !c.hardy && !S.flags.coldFrames && toFrost>0 && days>toFrost;
+    /* First frost is emergent now — it happens wherever the weather takes
+       the low under a crop's tMin, not on a fixed calendar day. So this
+       stops being a guarantee and becomes a forecast off the seasonal
+       BASELINE curve: "typically you have this long." The real date will
+       vary with the weather like everything else. */
+    const toFrost = typicalFrostDay(c, S.day);
+    const risky = !c.perennial && toFrost!=null && toFrost>0 && days>toFrost;
     const tag = c.perennial ? '<span style="font-size:9px;color:var(--sun)">PERENNIAL</span>'
               : c.feed==="legume" ? '<span style="font-size:9px;color:var(--leaf)">LEGUME</span>'
-              : c.hardy ? '<span style="font-size:9px;color:var(--water)">HARDY</span>' : "";
+              : cropHardiness(c) ? `<span style="font-size:9px;color:var(--water)">${cropHardiness(c)}</span>` : "";
     const windowHint = c.sowWindow ? " · early spring or late summer only" : c.perennial ? " · plant in spring" : " · not this season";
     const rightSide = c.perennial
       ? `${c.seed} seed (have ${have})<br>~${c.matureYears}y to bear`
@@ -247,7 +264,7 @@ function openSowSheet(i, isForest){
         const held = (S.seedStock&&S.seedStock[bed.crop])||0;
         if(!confirm(`Turn under the ${nm}? Everything grown here so far is lost, and the seed does not come back.${held?"":`\n\nThere is no ${nm} seed left in store — a ranging or salvage party may turn some up, but nothing else will.`}`)) return;
       }
-      if(id==="__clear"){ bed.crop=null; bed.companions=[]; bed.growth=0; bed.days=0; bed.ready=false; bed.stored=0; bed.matured=false; bed.lastHarvestYear=undefined; bed.lastPickDay=undefined; }
+      if(id==="__clear"){ bed.crop=null; bed.companions=[]; bed.growth=0; bed.days=0; bed.ready=false; bed.stored=0; bed.bare=0; bed.mateGot=null; bed.picked=0; bed.matured=false; bed.lastHarvestYear=undefined; bed.lastPickDay=undefined; }
       else if(id==="__meadow"){
         // a meadow is a standing plot that yields no food; it's marked so the growth
         // and harvest loops skip it, and it feeds the valley's pollinators.
@@ -309,7 +326,7 @@ function openPersonSheet(pid){
   }
   if(S.flags.oilPress){
     const curPr=S.people.find(x=>x.job==="press"&&x.id!==p.id);
-    h+=jobRow("press","Pressing oil",`${(S.oil||0).toFixed(1)} oil${curPr?` · now: ${curPr.name}`:""}`,"hands");
+    h+=jobRow("press","Pressing oil",`${stockOf("oil").toFixed(1)} oil${curPr?` · now: ${curPr.name}`:""}`,"hands");
   }
   {
     // fab work exists while something's under construction OR any shop stands.
@@ -379,7 +396,9 @@ function drawPartySheet(target){
   }
   if(isForage && partyPick.size){
     // matches the yield math in tickExpeditions: raw × season forage × larder
-    const est=[...partyPick].reduce((a,pid)=>a+3+effStat(byId(pid),"wild","forage")*1.4,0)*season().forage*(S.larder??1);
+    // MUST match the yield math in tickExpeditions — if these two drift the
+    // sheet lies to the player about what a trip is worth
+    const est=[...partyPick].reduce((a,pid)=>a+0.4+effStat(byId(pid),"wild","forage")*0.3,0)*season().forage*(S.larder??1);
     const lowForageNote = season().forage<0.5 ? " — there isn't much to forage this season" : "";
     h+=`<div class="outline-note" style="margin:2px 2px 8px">they'd bring back about ${est.toFixed(0)} food${lowForageNote}</div>`;
   }

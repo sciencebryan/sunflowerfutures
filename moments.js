@@ -20,6 +20,7 @@ import { bondKey, bondOf } from "./bonds.js";
 import { canWork } from "./seasons.js";
 import { DOC_BY_LEAN, JOB_PLACE, MOMENTS, MOMENT_AFF, MOMENT_DAILY_P, MOMENT_PAIR_COOLDOWN, MOMENT_TIERS, SKILL_TEACH, TEACH_RATE, TEACH_TEACHER_SHARE, TOOL_BY_JOB } from "./data-moments.js";
 import { PRACTICE_BROAD_CAP } from "./data-economy.js";
+import { addMemory } from "./memories.js";
 
 const present = p => p && p.status !== "away";
 const upright = p => present(p) && p.status !== "down";
@@ -162,7 +163,33 @@ function tickMoments(lines){
   if(!pool.length) return;
 
   const m = pick(pool);
-  lines.push(m.solo ? m.t : fill(m.t, c));
+  const text = m.solo ? m.t : fill(m.t, c);
+  lines.push(text);
+
+  /* The close ones become memories. Tier 1 and ambient don't: a warm
+     afternoon is a nice line and nothing more, and if every one of them
+     took a slot then nothing rarer could ever hold twelve of them. The
+     memory reuses the moment's own filled line rather than generating a
+     second description of the same evening — it's already in the right
+     voice and it's already about the right two people.
+
+     `once` lines (moving beds into the same room; taking the cold bed by
+     the window) are the biggest thing this system records that isn't a
+     loss. The teach moment lands here too, at tier-2 rates, which is what
+     an evening of real instruction is worth. */
+  if(!m.solo){
+    let spec = null;
+    if(m.once)                 spec = {intensity:0.7, valence:0.8};
+    else if(m.tier === 3)      spec = {intensity:0.6, valence:0.7};
+    else if(m.tier === 2)      spec = {intensity:0.4, valence:0.5};
+    else if(m.tier === "visit")spec = {intensity:0.4, valence:0.6};
+    if(spec){
+      addMemory(c.A, {kind:"moment", text, ...spec,
+                      tags:{people:[c.B.id], subject:"together", action:c.A.job || null}});
+      addMemory(c.B, {kind:"moment", text, ...spec,
+                      tags:{people:[c.A.id], subject:"together", action:c.B.job || null}});
+    }
+  }
 
   // named effects — a moment that claims something happened should make it so.
   // "getting the hang of it" is the only one so far that describes a

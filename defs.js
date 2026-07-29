@@ -2,6 +2,8 @@ import { clamp, pick } from "./helpers.js";
 import { STRANGER_NAMES, STRANGER_NOTES } from "./data-events.js";
 import { S } from "./state.js";
 import { CROPS, RESTORE_GATE, RESTORE_HIGH, RESTORE_LOW, RES_CAP } from "./data-economy.js";
+import { addMemoryAll, pushRecentEvent } from "./memories.js";
+import { MEM_TEXT } from "./data-memories.js";
 
 
 
@@ -124,6 +126,13 @@ function stepRestoration(lines){
   if(!r.restored && r.mycosphere>=RESTORE_GATE && r.aquifer>=RESTORE_GATE && r.pollinator>=RESTORE_GATE){
     r.restored = true;
     lines.push("Someone stood on the ridge at dusk and couldn't tell, for a moment, where the village ended and the woods began.");
+    // the one threshold in this game that took years of nobody's particular
+    // day to cross. Everyone who's here for it keeps it.
+    addMemoryAll(S.people.filter(p=>p.status!=="away"), {
+      kind:"restoration", text:MEM_TEXT.restoration(), intensity:0.5, valence:0.7,
+      tags:{subject:"restoration"}});
+    pushRecentEvent({kind:"restoration", text:"the way the ridge looked that evening",
+                     weight:1.6, tags:{subject:"restoration"}});
   }
 }
 

@@ -7,6 +7,8 @@ import { promoteConflict } from "./mediation.js";
 import { rollStranger } from "./defs.js";
 import { canWork, grantSeedSpread } from "./seasons.js";
 import { SITE_DEF, SITE_LOOT_TABLE } from "./data-economy.js";
+import { addMemory, addMemoryAll, pushRecentEvent, recordGone } from "./memories.js";
+import { MEM_TEXT } from "./data-memories.js";
 
 
 
@@ -15,6 +17,24 @@ import { SITE_DEF, SITE_LOOT_TABLE } from "./data-economy.js";
 
 
 
+
+
+/* An arrival's valence is NOT fixed — it's read off the circumstances the
+   code already computes. Being made room for straight away by people with
+   no reason to is a different memory from being let in during a stretch
+   where the village could barely feed itself, and the difference is one
+   the person carries. Nobody currently welcomes a newcomer SPECIFICALLY
+   (it's generic), so `people` is left empty and fillable later: once a
+   first close bond forms through ordinary proximity, that id can be
+   written in here retroactively. No new mechanic needed. */
+function arrivalMemory(p){
+  const warm = (S.lowSpiritsStreak||0) < 2 && (S.hungerDays||0) === 0;
+  addMemory(p, {
+    kind:"arrival", text:MEM_TEXT.arrival(warm),
+    intensity:0.8, valence: warm ? 0.8 : 0.3, unforgettable:true,
+    tags:{subject:"arrival", place:"commons", people:[]}
+  });
+}
 
 /* ================= events ================= */
 /* Events are stored in state as {defId, ctx} — PLAIN DATA ONLY.
@@ -47,13 +67,20 @@ const EVENTS = [
     resolve:(ctx,i)=>{
       const n=S.arrivalQueue[S.newcomerIdx];
       if(i===0){
-        const p=freshPerson(n); p.wb=55; p.mem=`Arrived day ${S.day}.`;
+        const p=freshPerson(n); p.wb=55;
+        arrivalMemory(p);
         S.people.push(p); S.newcomerIdx++;
         nudgeIdeology(S.people.filter(q=>q.status!=="away"), "openness", 0.02);   // a door opened is an argument for doors
+        // the village doesn't each get a memory of this — it goes in the
+        // shared log as something to talk about instead
+        pushRecentEvent({kind:"arrival", text:`${n.name} turning up on the road`, weight:1.2,
+                         tags:{subject:"arrival", people:[p.id]}});
         S.pending.push(`${n.name} stayed. We gladly made a place for ${subj(n)} at the long table.`);
       } else {
         S.newcomerIdx++;
         S.people.forEach(p=>{ if(p.status!=="away") p.wb=clamp(p.wb-1,wbFloor(p),100); });
+        pushRecentEvent({kind:"turnedAway", text:`the one we turned away`, weight:1.6,
+                         tags:{subject:"arrival"}});
         S.pending.push(`${n.name} was turned away. Not everyone's happy about it.`);
       }
     }
@@ -78,12 +105,17 @@ const EVENTS = [
       if(i===0){
         const id="wander_"+S.day+"_"+ctx.name.toLowerCase();
         const def={id, name:ctx.name, pn:ctx.pn, trait:ctx.trait, hands:ctx.hands, green:ctx.green, care:ctx.care, wild:ctx.wild, note:ctx.note};
-        const p=freshPerson(def); p.wb=55; p.mem=`Arrived day ${S.day}, off the radio.`;
+        const p=freshPerson(def); p.wb=55;
+        arrivalMemory(p);
         S.people.push(p);
         nudgeIdeology(S.people.filter(q=>q.status!=="away"), "openness", 0.02);
+        pushRecentEvent({kind:"arrival", text:`${ctx.name} finding us off the radio`, weight:1.2,
+                         tags:{subject:"arrival", people:[p.id]}});
         S.pending.push(`${ctx.name} stayed. We gladly made a place for ${subj(ctx)} at the long table.`);
       } else {
         S.people.forEach(p=>{ if(p.status!=="away") p.wb=clamp(p.wb-1,wbFloor(p),100); });
+        pushRecentEvent({kind:"turnedAway", text:`the one we turned away`, weight:1.6,
+                         tags:{subject:"arrival"}});
         S.pending.push(`We turned ${ctx.name} away. Not everyone's happy about it.`);
       }
     }
@@ -433,6 +465,11 @@ function tickFriction(lines) {
       b.log.push({ day: S.day, cause, circumstantial, line });
       if (b.log.length > PAIR_LOG_CAP) b.log.shift();
       lines.push(line);
+      // both of them carry it, and each remembers it as being about the other
+      addMemory(x, {kind:"flare", text:MEM_TEXT.flare(y.name), intensity:0.4, valence:-0.5,
+                    tags:{people:[y.id], subject:cause}});
+      addMemory(y, {kind:"flare", text:MEM_TEXT.flare(x.name), intensity:0.4, valence:-0.5,
+                    tags:{people:[x.id], subject:cause}});
 
       if (b.flares >= FLARES_TO_CONFLICT) promoteConflict(pA, pB, b, lines);
       return;   // one flare a day is plenty
@@ -490,6 +527,18 @@ function tickDepartures(lines) {
       if (Math.random() < leaveChance) {
         S.people = S.people.filter(x => x.id !== p.id);
         S.departures = (S.departures || 0) + 1;
+        /* THE THIRD REMOVAL SITE. The two in day.js (the winter death roll
+           and the turn-of-year road-pull) are the obvious ones, but this is
+           the one that actually fires in an early game — a quiet exit after
+           ten days under 35 spirits. Miss it and ache silently never works
+           for the most common way anyone leaves, because S.gone would have
+           no record that they'd gone at all. */
+        recordGone(p, "departure");
+        addMemoryAll(S.people.filter(q => q.status !== "away"), {
+          kind:"departure", text:MEM_TEXT.departure(p.name), intensity:0.5, valence:-0.4,
+          tags:{people:[p.id], subject:"departure"}});
+        pushRecentEvent({kind:"departure", text:`${p.name} going quietly`, weight:1.8,
+                         tags:{subject:"departure", people:[p.id]}});
         
         // Remove them from any job they had so they don't linger in systems
         if (p.job) p.job = null;

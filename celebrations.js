@@ -20,6 +20,8 @@ import { season, yearOf } from "./seasons.js";
 import { SEASON_LEN } from "./data-economy.js";
 import { bondKey, bondOf } from "./bonds.js";
 import { CELEBRATIONS, SCALES, TRADITION_LINES, TRADITION_MISSED } from "./data-celebrations.js";
+import { addMemory, pushRecentEvent, tendMemories } from "./memories.js";
+import { MEM_TEXT } from "./data-memories.js";
 
 const YEAR_LEN = SEASON_LEN * 4;
 const dayOfYear = day => ((day - 1) % YEAR_LEN) + 1;
@@ -104,6 +106,29 @@ function holdCelebration(id, scaleId, traditionName){
   if(def.work && S.project) S.project.progress += (workDefWork()||40) * def.work * m;
   if(id==="remembrance") S.mournedDeaths = S.deaths||0;
 
+  /* --- what the evening does to what people carry ---
+     Every celebration lays down a small good memory. A REMEMBRANCE does the
+     thing this whole system was built to be able to express: it makes grief
+     MORE PRESENT and LESS PAINFUL at the same time. Salience up, warmth up.
+     Those are two different numbers precisely so this can happen — with one
+     combined "how much does it hurt" score, saying the names out loud would
+     have to either help or hurt, and it does both. */
+  const subject = trad ? `tradition:${trad.name}` : `celebration:${id}`;
+  for(const p of here){
+    addMemory(p, {kind:"celebration", text:MEM_TEXT.celebration(def.name.toLowerCase()),
+                  intensity: clamp(0.3*m, 0.1, 1), valence: 0.5,
+                  tags:{subject, place:"commons"}});
+    if(id==="remembrance") tendMemories(p, mm => mm.tags.subject === "death", 0.25, 0.30);
+    /* A tradition kept is warmth accumulating on a good collective memory
+       through sheer repetition — which is exactly what the journal line for
+       it already says out loud ("less like something the village decided
+       and more like something the village is"). It was describing this
+       before there was anything for it to describe. */
+    if(trad) tendMemories(p, mm => mm.tags.subject === subject && mm.kind === "tradition", 0.12, 0.05);
+  }
+  pushRecentEvent({kind:"celebration", text: trad ? trad.name : def.name.toLowerCase(),
+                   weight: 0.9, tags:{subject}});
+
   // journal
   const varied = new Set(S.dietLog.filter(e=>S.day-e.day<=21).map(e=>e.crop)).size >= 3;
   let line = pick(def.lines);
@@ -139,6 +164,13 @@ function makeTradition(name){
     day: dayOfYear(last.day), founded: yearOf(last.day), timesHeld: 1, lastHeld: last.day
   });
   S.pending.push(`It was decided that this would happen every year on this day, and that it would be called ${name.trim()}.`);
+  // the FIRST one is the memory everything after it warms — the night a
+  // decision turned into a thing the village does
+  const nm = name.trim().slice(0,32);
+  for(const p of S.people) if(p.status!=="away")
+    addMemory(p, {kind:"tradition", text:MEM_TEXT.tradition(nm),
+                  intensity:0.6, valence:0.7,
+                  tags:{subject:`tradition:${nm}`, place:"commons"}});
   return true;
 }
 function forgetTradition(name){
