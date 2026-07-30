@@ -520,10 +520,14 @@ const FOURIER_LEVELS = [
   {n:2, amps:[0.75,0.5],      signed:false, teach:"Two tones braided together. The slow one sets the shape; the quick one rides it."},
   {n:3, amps:[1,0,0.5],       signed:false, teach:"Something in the ripple. Count the crossings — not every harmonic is present."},
   {n:4, amps:[0.5,0.75,0,0.25], signed:false, teach:"A voice, almost. Four components, one of them silent."},
-  {n:5, amps:[1,-0.5,0.25],   signed:true,  teach:"One of these is upside down. A flipped tone pulls the wave the other way."},
-  {n:6, amps:[0.75,0.5,-0.25,0.25,0], signed:true, teach:"The whole band at once. Somebody is broadcasting, and this is their shape."},
-  {n:7, amps:[1,0,0,0,0,0,0,-0.5],   signed:true,  teach:"carrier"},
-  {n:8, amps:[0,0,0,0.25,0.5,0.75,1,0.75,0.5,0.25,0],   signed:true,  teach:"packet"}
+  {n:5, amps:[-1,0,0], signed:true, teach:"A voice, almost. Four components, one of them silent."}, 
+  {n:6, amps:[1,-0.5,0.25],   signed:true,  teach:"One of these is upside down. A flipped tone pulls the wave the other way."},
+  {n:7, amps:[0.75,0.5,-0.25,0.25,0], signed:true, teach:"The whole band at once. Somebody is broadcasting, and this is their shape."},
+  {n:8, amps:[1,0,0,0,0,0,0,-0.5],   signed:true,  teach:"carrier 1"},
+  {n:9, amps:[-1,0,0,0,0,0,0,0.25,0.25],   signed:true,  teach:"carrier 2"},
+  {n:10, amps:[0,0,0,0,0,0,0,0,0,1,1],   signed:false,  teach:"beats"},
+  {n:11, amps:[0,0,0,0,0.5,1,0.5,0,0],   signed:false,  teach:"packet 1"},   
+  {n:12, amps:[0,0,0,0.25,0.5,0.75,1,0.75,0.5,0.25,0],   signed:false,  teach:"packet 2"}
 ];
 const FOURIER_REWARD = {
   2:{parts:4, desc:"a clean signal, twice: +4 parts off a channel that used to be static"},
