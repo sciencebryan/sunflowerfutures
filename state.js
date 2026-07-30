@@ -75,7 +75,7 @@ function newState(){
     // fresh, because nothing has been grown yet — and nothing home-preserved,
     // because none of the racks, crocks or jars exist on day one.
     pantry:[],
-    jars:[{k:"potatoes", n:22, m:"can", d:1},{k:"beans", n:20, m:"can", d:1},{k:"peas", n:16, m:"can", d:1}],
+    jars:[{k:"potatoes", n:30, m:"can", d:1},{k:"beans", n:30, m:"can", d:1},{k:"peas", n:30, m:"can", d:1}],
     macDays:{p:0, f:0}, lastRecipeDay:0, lastRainDay:-99,
     weather:"clear",
     people: ROSTER.map(freshPerson),
