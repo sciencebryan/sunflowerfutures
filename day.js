@@ -1,11 +1,11 @@
-import { S } from "./state.js";
-import { baseTarget, comfortBand, commonsTemps, drinkHeatMult, effectiveLow, frostKills, gapRate, greenhouseTarget,
+import { S, newBed } from "./state.js";
+import { baseTarget, comfortBand, commonsTemps, drinkHeatMult, effectiveLow, frostKills, gapRate, GH_COLDFRAME_BONUS, GH_THERMAL_MASS, greenhouseTarget,
          greenhouseTemps, growthMult, irrigationHeatMult, meltSnow, soilDiscount,
          tickClimate } from "./climate.js";
 import { getState as rngGetState, setSeed as rngSetSeed, setState as rngSetState, rand as crand } from "./rng.js";
 import { ELDER, canRoad, canWork, dayOfSeason, generateFallbackChildName, grantSeedSpread, rollWeather, scaledWeather, season, seasonIdx, seasonNote, yearOf } from "./seasons.js";
 import { AC_MAX, HEATER_DRAW, HEATER_MAX, HEATER_BREAK_BASE, HEATER_BREAK_LOAD, WOOD_STOVE_MAX,
-         AC_DRAW, WELL_DRAW, AQUA_STAGNANT_WEAR, BATTERY_UNIT, CANNING_DRAW, CANNING_MIN_STOCK, CROPS, DAY_MS, FABS, FAB_DRAW, FAB_RATE, JOB_PRACTICE, LOSS_DECAY, MAX_FOREST_PLOTS, NO_CLEANING_SICK, OFFLINE_CAP, POLLINATOR_YIELD, POWER_LOSS_BASE, PRACTICE_BROAD_CAP, PRACTICE_BROAD_DECAY, PRACTICE_BROAD_GROWTH, PRACTICE_SPECIFIC_CAP, PRACTICE_SPECIFIC_DECAY, PRACTICE_SPECIFIC_GROWTH, PRESERVE, PROJECTS, RESTORE_IN, SEASONS, SEASON_LEN, SOLAR_UNIT, SYS, TURBINE_UNIT, WATER_LOSS_BASE, WITHER_CHANCE, YIELD_SOIL_FLOOR, YIELD_TEND_MAX, YIELD_TEND_SCALE } from "./data-economy.js";
+         AC_DRAW, WELL_DRAW, AQUA_STAGNANT_WEAR, BATTERY_UNIT, CANNING_DRAW, CANNING_MIN_STOCK, CROPS, DAY_MS, FABS, FAB_DRAW, FAB_RATE, JOB_PRACTICE, LOSS_DECAY, MAX_FOREST_PLOTS, NO_CLEANING_SICK, OFFLINE_CAP, POLLINATOR_YIELD, POWER_LOSS_BASE, PRACTICE_BROAD_CAP, PRACTICE_BROAD_DECAY, PRACTICE_BROAD_GROWTH, PRACTICE_SPECIFIC_CAP, PRACTICE_SPECIFIC_DECAY, PRACTICE_SPECIFIC_GROWTH, PRESERVE, PROJECTS, RESTORE_IN, SEASONS, SEASON_LEN, SOLAR_UNIT, SYS, TURBINE_UNIT, WATER_LOSS_BASE, WITHER_CHANCE, GH_BEDS_BUILT, GH_WITHER_CHANCE, YIELD_SOIL_FLOOR, YIELD_TEND_MAX, YIELD_TEND_SCALE } from "./data-economy.js";
 import { Cap, byId, clamp, decayPractice, eff, effStat, growPractice, hasHave, isAre, mult, objp, pick, poss, practiceOf, subj, wbFloor, working } from "./helpers.js";
 import { TRAITS, VISUALS, addRes, addRestore, built, decayOf, foodCap, stepRestoration, waterCapEff } from "./defs.js";
 import { tickExpeditions } from "./expeditions.js";
@@ -363,9 +363,20 @@ function applyTemperature(lines, tempEvent, commonsT, band, isSummer, isWinter, 
     if (isWinter && dayOfSeason(S.day) === 1 && yearOf(S.day) === 2) {
       lines.push("This winter has a different edge to it than the last one. The first year here was kind, and nobody had understood that it was being kind.");
     }
+    /* This used to branch on isWinter, so any season that wasn't winter got
+       the HEAT line — including a raw 45F week in early spring, where the
+       Commons is failing its band from underneath and the journal cheerfully
+       reported that it was holding the day's heat past dark. Branch on the
+       direction the temperature is actually missing in, which is the same
+       thing hearthSafety() measured to get here. Winter keeps its own
+       phrasing because "cold in winter" and "cold in April" are different
+       complaints and people say them differently. */
     if (dayOfSeason(S.day) === 2 && safety < 0.4) {
-      lines.push(isWinter
-        ? "The Commons never really gets warm. People keep their coats on indoors and go to bed early to be out of it."
+      const tooCold = commonsT.mean < band.lo;
+      lines.push(tooCold
+        ? (isWinter
+            ? "The Commons never really gets warm. People keep their coats on indoors and go to bed early to be out of it."
+            : "The Commons is colder than the season has any right to make it. People come in from outside and don't take their coats off.")
         : "The Commons holds the day's heat well past dark. Nobody sleeps well in this.");
     }
   }
@@ -600,8 +611,23 @@ function simulateDay(){
   const _woodLift = (F.woodStove && S.res.wood > 0.3) ? heatIn : 0;
   const heatGapRaw = Math.max(0, (_band.lo + 2) - (_unheated + _woodLift));
   const acAl      = (F.acUnit && coolGapRaw > 1) ? alv("ac") * Math.min(1, coolGapRaw/8) : 0;
-  const heaterAl  = (F.eHeater && heatGapRaw > 1 && !S.heaterBroken)
-                    ? alv("heater") * Math.min(1, heatGapRaw/10) : 0;
+  /* The heaters serve the Commons AND the greenhouse (see the project's own
+     blurb), so the demand they size themselves against is whichever of the
+     two is further from where it wants to be. Sizing off the Commons alone
+     meant a comfortable 62F October evening switched them off entirely while
+     the greenhouse went to 34F and lost the tomatoes. */
+  /* What the greenhouse would fall to tonight with nothing burning, against
+     the floor whatever is planted in it needs. greenhouseTemps() is asked
+     directly rather than the arithmetic being restated here, so the two can
+     never drift apart. */
+  const ghMass = GH_THERMAL_MASS + (F.coldFrames ? GH_COLDFRAME_BONUS : 0);
+  const _ghUnheated = greenhouseTemps(outHi, outLo, (wx.solar||1)*sn.solar, ghMass, 0);
+  const ghTarget    = greenhouseTarget(S.greenhouse || [], CROPS);
+  const _ghGapRaw   = (F.greenhouse && (S.greenhouse||[]).some(b=>b.crop))
+                    ? Math.max(0, ghTarget - _ghUnheated.lo) : 0;
+  const heatDemand = Math.max(heatGapRaw, _ghGapRaw);
+  const heaterAl  = (F.eHeater && heatDemand > 1 && !S.heaterBroken)
+                    ? alv("heater") * Math.min(1, heatDemand/10) : 0;
   /* Built is not the same as running. The kitchen needs hands on the job
      AND enough cannable stock on the shelf to be worth heating the boilers
      -- otherwise a village that built the kitchen in year one paid 1.0
@@ -644,8 +670,13 @@ function simulateDay(){
     if (acOn) { coolIn += gapRate(coolGapRaw, AC_MAX, AC_MAX) * acAl; addWarm("the cooling unit", acAl); }
     else if (tempEvent === "heatwave") lines.push("The cooling unit sat dead through the worst of the heat. Nothing to run it on.");
   }
+  /* Kept separate from heatIn on purpose. A masonry heater in the Commons
+     does nothing whatever for a glasshouse fifty feet away — only the wired
+     resistance heaters reach both, and what they give one they cannot also
+     give the other. eHeat is that shared pool; it gets split below. */
+  let eHeat = 0;
   if (F.eHeater && heaterAl > 0) {
-    if (!brownout) { heatIn += gapRate(heatGapRaw, HEATER_MAX, HEATER_MAX) * heaterAl; addWarm("the electric heaters", heaterAl); }
+    if (!brownout) { eHeat = gapRate(heatDemand, HEATER_MAX, HEATER_MAX) * heaterAl; addWarm("the electric heaters", heaterAl); }
     else if (tempEvent === "deepfreeze") lines.push("The heaters were dead all night. Nothing on the bank to run them with.");
   }
   /* Breakage is rolled at NIGHT, after the day's load is known, so you find
@@ -658,13 +689,33 @@ function simulateDay(){
   }
 
   // --- indoor temperatures, resolved ---
+  /* Split the electric heat between the two rooms that want it, in
+     proportion to how badly each wants it. The old line handed the
+     greenhouse min(heatIn, ...) — which took the FIRE's output as its
+     ceiling and then charged the Commons nothing for what it took, so the
+     greenhouse was heated for free by a stove that couldn't reach it. */
+  const ghShare = (F.greenhouse && (_ghGapRaw + heatGapRaw) > 0.01)
+                ? _ghGapRaw / (_ghGapRaw + heatGapRaw) : 0;
+  const ghHeat = eHeat * ghShare;
+  heatIn += eHeat - ghHeat;
+
   const commonsT = commonsTemps({outMean:clim.out.mean, outHi, outLo, groundCoupling,
                                  loadReduction, heatIn, coolIn, massDamping,
                                  prevMean:(S.climate.commons||{}).mean});
   S.climate.commons = commonsT;
-  const ghTarget = greenhouseTarget(S.greenhouse||[], CROPS);
-  const ghHeat = F.greenhouse ? Math.min(heatIn, gapRate(Math.max(0, ghTarget-outLo), HEATER_MAX, HEATER_MAX)) : 0;
-  S.climate.greenhouse = greenhouseTemps(outHi, outLo, (wx.solar||1)*sn.solar, massDamping*4, ghHeat);
+  /* Always computed, even with no greenhouse standing — the sow sheet reads
+     these to decide what could go in under glass, and a null here was the
+     other half of why the whole feature had quietly stopped working. */
+  S.climate.greenhouse = greenhouseTemps(outHi, outLo, (wx.solar||1)*sn.solar,
+                                         ghMass, ghHeat);
+  /* What the house was ASKED for against what it actually reached. The card
+     reads this to say "the heaters are flat out and still short" while the
+     crop is alive, rather than the player finding out from an obituary. A
+     single-pane glasshouse on salvaged solar cannot hold tomatoes through a
+     January night — that is the intended answer, but it has to be legible
+     before it costs someone a bed. */
+  S.climate.ghAsk = {target: ghTarget, got: S.climate.greenhouse.lo,
+                     heat: ghHeat, short: Math.max(0, ghTarget - S.climate.greenhouse.lo)};
   S.report.hearth = {commons: commonsT, out: clim.out, band: comfortBand(sn.id), parts: hearthParts,
                      safety: hearthSafety(commonsT, comfortBand(sn.id))};
   applyTemperature(lines, tempEvent, commonsT, comfortBand(sn.id), isSummer, isWinter, yr1);
@@ -712,14 +763,27 @@ function simulateDay(){
   /* Beds drink more when it's hot (evapotranspiration) and less when the
      soil is still holding rain. Two separate effects, and they stack: a hot
      day right after a downpour still costs less than a hot dry one. */
-  let gardenWater = (irr>0.75 ? 2.5 : 4) * irrigationHeatMult(outHi) * soilDiscount(S.climate.soilMoisture);
-  if(F.dripRetrofit) gardenWater=Math.max(1.5,gardenWater-1);
-  if(F.keyline) gardenWater=Math.max(1,gardenWater-0.8);
-  if(F.graywater) gardenWater=Math.max(0.6,gardenWater-1.4);
+  /* One bill, two weathers. `sheltered` is the greenhouse: it is hotter than
+     outside every single day, and — the part that actually costs you — no
+     rain has ever landed on it, so the soil-moisture discount that carries
+     the outdoor beds through the week after a downpour simply doesn't apply.
+     Keyline is landform work on a hillside and there is no hillside under
+     glass; drip and graywater are plumbing and work fine in there. */
+  const bedWater = (hi, sheltered) => {
+    let w = (irr>0.75 ? 2.5 : 4) * irrigationHeatMult(hi)
+          * (sheltered ? 1 : soilDiscount(S.climate.soilMoisture));
+    if(F.dripRetrofit)         w = Math.max(1.5, w-1);
+    if(F.keyline && !sheltered) w = Math.max(1, w-0.8);
+    if(F.graywater)            w = Math.max(0.6, w-1.4);
+    return w;
+  };
+  const gardenWater = bedWater(outHi, false);
+  const ghWater     = bedWater(S.climate.greenhouse.hi, true);
   // annual beds drink fully; the food forest is established and deep-rooted, so
   // each forest plot costs only a quarter of a bed's water
   const wateredBeds = S.beds.reduce((a,b)=> a + (b.crop?1:0), 0)
                     + (S.forest||[]).reduce((a,p)=> a + (p.crop?0.25:0), 0);
+  const wateredGH   = (S.greenhouse||[]).reduce((a,b)=> a + (b.crop?1:0), 0);
   // --- allocation: the player's water triage (Water tab) ---
   // the old flat 2/day base use is split into cooking (1) and cleaning (1);
   // at full allocation the total is exactly what it was.
@@ -733,7 +797,7 @@ function simulateDay(){
   // fall away with cold
   const drinkNeed = S.people.reduce((a,p)=>a+(canWork(p)?0.5:0.3),0) * drinkHeatMult(outHi);
   const drinkUse  = drinkNeed*(drinkAl===1?1:0.7);   // rationing saves 3/10
-  const wOut = drinkUse + gardenWater*wateredBeds*irrAl + 1*cookAl + 1*cleanAl;
+  const wOut = drinkUse + (gardenWater*wateredBeds + ghWater*wateredGH)*irrAl + 1*cookAl + 1*cleanAl;
   let thirst=0;
   let w = S.res.water + wIn - wOut;
   if(w<0){ thirst = Math.min(1, -w/wOut); w=0; }
@@ -848,7 +912,22 @@ function simulateDay(){
   // The kitchen garden (S.beds, annuals) and the food forest (S.forest,
   // perennials) are separate ground: annual beds want tending; forest plots
   // want years. They don't compete for space or for the gardener's day.
-  const annualPlanted = S.beds.filter(b=>b.crop).length;
+  /* TWO annual fields, ONE set of rules. The kitchen garden and the
+     greenhouse grow the same crops, tended by the same hands, scored by the
+     same companion grid — what differs is the weather each sees and the
+     water each costs, and both of those ride on the entry rather than being
+     re-derived halfway down the loop. Beds under glass see no snow (so no
+     snow insulation) and no rain (so no soil-moisture discount, handled up
+     in the water bill). The food forest stays out of this: perennials have
+     their own loop below and their own rules. */
+  const annualFields = () => [
+    ...S.beds.map((bed, i) => ({bed, gh:false, label:`Bed ${i+1}`})),
+    ...(S.greenhouse||[]).map((bed, i) => ({bed, gh:true, label:`Greenhouse bed ${i+1}`}))
+  ];
+  // the low a given bed actually experiences overnight
+  const bedLow  = gh => gh ? S.climate.greenhouse.lo : S.climate.out.lo;
+  const bedSnow = gh => gh ? 0 : S.climate.snowpack;
+  const annualPlanted = annualFields().filter(f=>f.bed.crop).length;
 
   // shared harvest bookkeeping — the food forest's whole-plot pick. Annual
   // beds no longer come through here: they bear across a window (below) and
@@ -871,7 +950,7 @@ function simulateDay(){
   };
 
   // --- kitchen garden: annuals grow with tending, then wait on hands to harvest ---
-  for(const bed of S.beds){
+  for(const {bed, gh, label} of annualFields()){
     if(!bed.crop) continue;
     const crop=CROPS[bed.crop];
     // defensive, and symmetric with the food-forest loop below: a bed holding
@@ -885,31 +964,37 @@ function simulateDay(){
        couldn't kill anything because winter had already done it on schedule.
        Snow cover insulates; established perennials go dormant rather than
        dying (handled inside frostKills). */
-    if(frostKills(crop, S.climate.out.lo, S.climate.snowpack)){
+    if(frostKills(crop, bedLow(gh), bedSnow(gh))){
       /* This used to announce itself only when growth was past halfway, so
          a bed sown in early spring and killed a week later vanished in
          total silence — the player saw an empty bed and no reason for it.
          A seedling dying is MORE worth saying than a mature crop dying,
          because it's the one the player could still have prevented. */
-      const degrees = Math.round(effectiveLow(S.climate.out.lo, S.climate.snowpack));
+      const degrees = Math.round(effectiveLow(bedLow(gh), bedSnow(gh)));
+      /* Under glass this is worth saying differently. A frost outdoors is
+         weather; a frost in the greenhouse is a thing the village failed to
+         prevent, and the player should hear which one just happened. */
+      const where = gh ? `the greenhouse (${label.toLowerCase()})` : label.toLowerCase();
       lines.push(bed.growth > 0.5
-        ? `The cold took the ${crop.name.toLowerCase()} in bed ${S.beds.indexOf(bed)+1} — it got down to ${degrees}° overnight.`
+        ? `The cold took the ${crop.name.toLowerCase()} in ${where} — it got down to ${degrees}° in there overnight.`
         // crop names are already plural ("Tomatoes"), so no noun after them
-        : `The young ${crop.name.toLowerCase()} in bed ${S.beds.indexOf(bed)+1} didn't survive the night. It got down to ${degrees}°, and they wanted ${Math.round(crop.tMin)}° or better.`);
+        : `The young ${crop.name.toLowerCase()} in ${where} didn't survive the night. It got down to ${degrees}°, and they wanted ${Math.round(crop.tMin)}° or better.`);
       bed.fertility=clamp((bed.fertility??75)-2,10,100);
       bed.crop=null; bed.companions=[]; bed.growth=0; bed.days=0;
       bed.ready=false; bed.stored=0; bed.bare=0; bed.mateGot=null; bed.picked=0;
       continue;
     }
-    if(false){
-      if(false){ continue; }
-      if(!F.coldFrames){
-        if(bed.growth>0.5) lines.push(`The ${crop.name.toLowerCase()} in bed ${S.beds.indexOf(bed)+1} died with the first hard frost.`);
-        bed.crop=null; bed.companions=[]; bed.growth=0; bed.days=0; bed.ready=false; bed.stored=0; bed.bare=0; bed.mateGot=null; bed.picked=0; bed.fertility=clamp((bed.fertility??75)-2,10,100); continue;
-      }
-    }
-    if(irrAl===0 && Math.random()<WITHER_CHANCE){
-      lines.push(`With the irrigation shut off, the ${crop.name.toLowerCase()} in bed ${S.beds.indexOf(bed)+1} died.`);
+    /* (Removed: a calendar-driven winter wipe, dead behind `if(false)` since
+       frost became a temperature. It still referenced S.beds.indexOf() and
+       would have thrown the moment anything re-enabled it from a greenhouse
+       bed, which is exactly the kind of tripwire that makes a feature look
+       broken for reasons unrelated to the feature.) */
+    // nothing under glass is ever rained on, so shutting the pipe off in
+    // there is not a gamble, it is a decision to lose the crop
+    if(irrAl===0 && Math.random()<(gh?GH_WITHER_CHANCE:WITHER_CHANCE)){
+      lines.push(gh
+        ? `Nothing has fallen on the greenhouse in weeks and the pipe is shut. The ${crop.name.toLowerCase()} in ${label.toLowerCase()} dried out and died.`
+        : `With the irrigation shut off, the ${crop.name.toLowerCase()} in ${label.toLowerCase()} died.`);
       bed.crop=null; bed.companions=[]; bed.growth=0; bed.days=0; bed.ready=false; bed.stored=0; bed.bare=0; bed.mateGot=null; bed.picked=0;
       bed.fertility=clamp((bed.fertility??75)-2,10,100); continue;
     }
@@ -925,9 +1010,8 @@ function simulateDay(){
     /* Sun and temperature are SEPARATE limiters on purpose: a heated
        greenhouse doesn't save a sunflower in December, short days do it in,
        and either one has to be able to be the binding constraint alone. */
-    const inGH = !!bed.greenhouse;
-    const tHi = inGH ? S.climate.greenhouse.hi : S.climate.out.hi;
-    const tLo = inGH ? S.climate.greenhouse.lo : S.climate.out.lo;
+    const tHi = gh ? S.climate.greenhouse.hi : S.climate.out.hi;
+    const tLo = gh ? S.climate.greenhouse.lo : S.climate.out.lo;
     const tempRate = growthMult(crop, tHi, tLo);
     const seasonRate = Math.max(0.25, sn.grow) * tempRate;
     // tending, water, season and soil set the PACE toward crop.work; falling
@@ -952,27 +1036,40 @@ function simulateDay(){
      nights it's actually close. Once a day, consolidated, and only for
      crops genuinely near the line rather than every hardy green in autumn. */
   {
-    const lo = effectiveLow(S.climate.out.lo, S.climate.snowpack);
-    const atRisk = [];
-    for(const bed of S.beds){
-      const crop = bed.crop && CROPS[bed.crop];
-      if(!crop || crop.perennial || crop.tMin == null) continue;
-      if(frostKills(crop, S.climate.out.lo, S.climate.snowpack)) continue;   // already gone
-      if(lo - crop.tMin < 6) atRisk.push(crop.name.toLowerCase());
-    }
-    if(atRisk.length && !S._frostWarned){
-      const kinds = [...new Set(atRisk)];
-      lines.push(`It went down to ${Math.round(lo)}° in the night. The ${kinds.join(" and the ")} came through it, but not by much${S.flags.coldFrames ? "" : " — another few degrees and they won't"}.`);
+    const near = gh => {
+      const lo = effectiveLow(bedLow(gh), bedSnow(gh));
+      const kinds = new Set();
+      for(const {bed, gh:g} of annualFields()){
+        if(g !== gh) continue;
+        const crop = bed.crop && CROPS[bed.crop];
+        if(!crop || crop.perennial || crop.tMin == null) continue;
+        if(frostKills(crop, bedLow(g), bedSnow(g))) continue;   // already gone
+        if(lo - crop.tMin < 6) kinds.add(crop.name.toLowerCase());
+      }
+      return {lo, kinds:[...kinds]};
+    };
+    const out = near(false), inside = near(true);
+    if(out.kinds.length && !S._frostWarned){
+      lines.push(`It went down to ${Math.round(out.lo)}° in the night. The ${out.kinds.join(" and the ")} came through it, but not by much${S.flags.coldFrames ? "" : " — another few degrees and they won't"}.`);
       S._frostWarned = true;
     }
-    if(!atRisk.length) S._frostWarned = false;   // re-arm once the danger passes
+    if(!out.kinds.length) S._frostWarned = false;   // re-arm once the danger passes
+    /* Its own warning and its own latch. Single-pane glass is close to no
+       insulation at all, so on a clear still night the greenhouse can sit
+       within a degree or two of outside — and the player, reasonably, does
+       not expect that of a building. Say the number. */
+    if(inside.kinds.length && !S._ghFrostWarned){
+      lines.push(`It was ${Math.round(inside.lo)}° inside the greenhouse before dawn — glass holds almost nothing once the sun is off it. The ${inside.kinds.join(" and the ")} are close to the line in there.`);
+      S._ghFrostWarned = true;
+    }
+    if(!inside.kinds.length) S._ghFrostWarned = false;
   }
   // --- the picking window: an annual doesn't come in all at once ---
   // A ready bed bears stored/window food per day, for `window` days, and only
   // on days someone is in the gardens (picking still waits on hands — unpicked
   // days don't advance the window, the crop stands and waits, same as before).
   // Seed return and the fertility hit settle once, when the stand is spent.
-  for(const bed of S.beds){
+  for(const {bed, label} of annualFields()){
     if(!bed.ready || !bed.crop) continue;
     const crop=CROPS[bed.crop];
     if(!crop || crop.perennial) continue;
@@ -1026,7 +1123,6 @@ function simulateDay(){
     // sunflower's byproduct accrues per picking day — seed set aside for the
     // press, not a cut of the food value itself
     if(bed.crop==="sunflower") S.res.rawSeed = (S.res.rawSeed||0) + perDay*0.5;
-    const label = `Bed ${S.beds.indexOf(bed)+1}`;
     if(bed.picked===1 && win>1){
       lines.push(`${label}: the first ${crop.name.toLowerCase()} came in — ${perDay.toFixed(0)} food today${alongside}, more ripening behind it.`);
     } else if(win>2 && bed.picked>1 && bed.picked<win && (bed.picked%2===0 || win<=4)){
@@ -1100,8 +1196,11 @@ function simulateDay(){
 
   if(gardenFood>0) gWhy.push("harvest");
   else {
-    const planted=S.beds.filter(b=>b.crop).length;
-    gWhy.push(planted?`${planted} bed${planted>1?"s":""} growing`:"nothing planted");
+    const planted=annualFields().filter(f=>f.bed.crop).length;
+    const ghPlanted=(S.greenhouse||[]).filter(b=>b.crop).length;
+    gWhy.push(planted
+      ? `${planted} bed${planted>1?"s":""} growing${ghPlanted?` (${ghPlanted} under glass)`:""}`
+      : "nothing planted");
     if(!tenders.length && planted) gWhy.push("untended — growth crawls");
   }
   if(fo.foodTrickle) addFood(S.crops&&S.crops.chestnut?"chestnut":"greens", fo.foodTrickle);
@@ -1304,7 +1403,7 @@ function simulateDay(){
   // than asking for another manual action — this is upkeep, not a decision.
   let compostSpread=false, compostTarget=null;
   if(F.compost && (S.compost||0)>=5){
-    const plots=[...S.beds, ...(S.forest||[])];
+    const plots=[...S.beds, ...(S.greenhouse||[]), ...(S.forest||[])];
     const target=plots.reduce((worst,pl)=> (pl.fertility??75) < (worst?worst.fertility??75:101) ? pl : worst, null);
     if(target && (target.fertility??75) < 92){
       target.fertility = clamp((target.fertility??75)+8, 10, 100);
@@ -1473,19 +1572,29 @@ function simulateDay(){
 
   // --- blight: a monoculture invites disaster. 
   {
-    const planted=S.beds.filter(b=>b.crop);
+    /* The greenhouse is IN this pool, and deliberately so: still, humid air
+       under glass is close to ideal for a fungal blight, and a village that
+       could quarantine its monoculture indoors would have found a loophole
+       rather than a strategy. Beds under glass carry a little extra weight in
+       the roll for the same reason. */
+    const planted=[...S.beds.map(b=>({b,gh:false})), ...(S.greenhouse||[]).map(b=>({b,gh:true}))]
+                  .filter(e=>e.b.crop);
     if(planted.length>=2){
-      const kinds={};
-      for(const b of planted) kinds[b.crop]=(kinds[b.crop]||0)+1;
+      const kinds={};   // crop -> {n, weight}
+      for(const e of planted){
+        const k = kinds[e.b.crop] || (kinds[e.b.crop] = {n:0, weight:0});
+        k.n++; k.weight += e.gh ? 1.35 : 1;
+      }
       // if one crop dominates the beds, it can catch blight — but a living soil web
       // (mycosphere) suppresses it: at full health, monoculture blight nearly vanishes.
       const myco = (S.restore && S.restore.mycosphere) || 0;
       const blightMult = 1 - 0.85*(myco/100);   // 1.0 at 0, ~0.15 at 100
-      for(const [crop,n] of Object.entries(kinds)){
-        if(n>=2 && Math.random()<0.012*n*blightMult){
-          const hit=planted.filter(b=>b.crop===crop);
-          for(const b of hit){ b.crop=null; b.growth=0; b.days=0; b.ready=false; b.stored=0; }
-          lines.push(`Blight took the ${CROPS[crop]?CROPS[crop].name.toLowerCase():crop} — all ${n} beds of it, discolored and wilting by morning. Multiple beds of the same crop increases the risk of this.`);
+      for(const [crop,k] of Object.entries(kinds)){
+        if(k.n>=2 && Math.random()<0.012*k.weight*blightMult){
+          const hit=planted.filter(e=>e.b.crop===crop);
+          const anyGH=hit.some(e=>e.gh);
+          for(const e of hit){ const b=e.b; b.crop=null; b.growth=0; b.days=0; b.ready=false; b.stored=0; }
+          lines.push(`Blight took the ${CROPS[crop]?CROPS[crop].name.toLowerCase():crop} — all ${k.n} beds of it, discolored and wilting by morning.${anyGH?" It went through the greenhouse fastest; nothing moves in there to dry a leaf off." :""} Multiple beds of the same crop increases the risk of this.`);
           break;
         }
       }
@@ -1530,7 +1639,15 @@ function simulateDay(){
         lines.push(`The ${def.name.toLowerCase()} is up and running. ${def.draw>0?"It's using power.":""}`);
       } else {
         S.flags[def.id]=true;
-        if(def.id==="gardenBeds") S.beds.push({crop:null,companions:[],growth:0,days:0,ready:false,stored:0,fertility:75,plantedDay:0});
+        if(def.id==="gardenBeds") S.beds.push(newBed());
+        /* Extends a founding pair to three rather than raising a second
+           house — ghBuilt is what the migration reads to know which count
+           this save is owed. */
+        if(def.id==="greenhouse"){
+          S.flags.ghBuilt = true;
+          S.greenhouse = S.greenhouse || [];
+          while(S.greenhouse.length < GH_BEDS_BUILT) S.greenhouse.push(newBed());
+        }
         lines.push(`The ${def.name.toLowerCase()} is finished. ${def.blurb}`);
       }
       /* Three tiers, on purpose. Someone who spent a season on it, someone
@@ -1568,7 +1685,8 @@ function simulateDay(){
   let aura = (cc>=70 ? 1 : cc>=50 ? 0.5 : cc<40 ? -1 : 0) + (fa.spirits||0);
   if(fa.spiritsGrey && wx.id!=="clear") aura += fa.spiritsGrey;
   // sunflowers in the beds lift the whole village a little
-  if(S.beds.some(b=>b.crop==="sunflower")) aura += 0.4;
+  // a sunflower is a sunflower whichever field it's standing in
+  if([...S.beds, ...(S.greenhouse||[])].some(b=>b.crop==="sunflower")) aura += 0.4;
   // a recent festival's afterglow — see holdFestival()
   if((S.festivalBoostDays||0)>0){ aura += 1.5; S.festivalBoostDays--; }
   if((S.festivalCooldown||0)>0) S.festivalCooldown--;
@@ -2067,7 +2185,7 @@ const WORK_USER_JOB = {
   aquaponics:"aquatend", irrigation:"garden", catchment:"garden", commons:"cook",
   solar:"solar", turbine:"turbine", battery:"battery",
   rootCellar:"preserve", dryRacks:"preserve", crocks:"preserve", canning:"preserve",
-  oilPress:"press", gardenBeds:"garden", coldFrames:"garden", compost:"garden",
+  oilPress:"press", gardenBeds:"garden", coldFrames:"garden", greenhouse:"garden", compost:"garden",
   graywater:"garden", dripRetrofit:"garden", seedSaving:"garden",
   herbalStores:"care", toolLibrary:"project", well:"catchment",
   woodStove:"cook", rocketHeater:"cook", earthBerming:"project"

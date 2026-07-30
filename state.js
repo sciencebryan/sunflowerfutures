@@ -1,4 +1,4 @@
-import { CROPS, MAX_BATTERIES, MAX_SOLAR, SEASON_LEN, SITE_DEF, SYS } from "./data-economy.js";
+import { CROPS, GH_BEDS_BUILT, GH_BEDS_FOUND, MAX_BATTERIES, MAX_SOLAR, SEASON_LEN, SITE_DEF, SYS } from "./data-economy.js";
 import { PUZ_META } from "./data-puzzles.js";
 
 import { AGES } from "./seasons.js";
@@ -15,6 +15,12 @@ import { seedPregameMemory } from "./memories.js";
 
 
 
+
+/* ONE bed literal. This shape was pasted out longhand in six places and had
+   already drifted between them (some carried `bare`, some didn't), so every
+   new bed — kitchen garden, greenhouse, migration top-up — comes from here. */
+const newBed = () => ({crop:null, companions:[], growth:0, days:0, ready:false,
+                       stored:0, bare:0, fertility:75, plantedDay:0});
 
 /* ================= state ================= */
 function newSites(){
@@ -92,6 +98,7 @@ function newState(){
     // not new; it fades from here and nobody can repair it. See tickCells().
     cells: [{cap:0.90, since:1}],
     forest: [],    // food forest: perennial plots, separate from the annual beds
+    greenhouse: [], // beds under glass: a third field, with its own weather (see climate.js)
     discovered: {}, // gated builds/projects found via expedition (parallel to S.crops)
     beds: [{crop:null,companions:[],growth:0,days:0,ready:false,stored:0,fertility:75,plantedDay:0},{crop:null,companions:[],growth:0,days:0,ready:false,stored:0,fertility:75,plantedDay:0}],
     preserved: 58, spoilMemo: 0, winterDays: 0,   // oil is a pantry food now (FOOD_DATA.oil, noBulk), not a scalar
@@ -253,6 +260,14 @@ function applyFounding(s, visualIds){
       s.batteries = s.cells.length;
     }
     if(fx.coldStart) s.flags.coldFrames=true;
+    /* A greenhouse you were handed rather than built: fewer beds, and the
+       glass is somebody else's patch job (see stormBreak). It still counts
+       as the greenhouse for every gate downstream. */
+    if(fx.ghStart){
+      s.flags.greenhouse = true;
+      s.greenhouse = s.greenhouse || [];
+      while(s.greenhouse.length < GH_BEDS_FOUND) s.greenhouse.push(newBed());
+    }
     // accumulating sim modifiers
     if(fx.drawReduce)   f.drawReduce=(f.drawReduce||0)+fx.drawReduce;
     if(fx.safeReturn)   f.safeReturn=true;
@@ -517,7 +532,25 @@ function migrate(s){
   if(s.res.wood === undefined) s.res.wood = 0;
   // beds track garden slots, however they were gained
   while(s.beds.length < 1 + (s.flags.gardenBeds?1:0) + (s.flags.terraces?1:0))
-    s.beds.push({crop:null,companions:[],growth:0,days:0,ready:false,stored:0,fertility:75,plantedDay:0});
+    s.beds.push(newBed());
+  /* Greenhouse beds live in their own array for the same reason the food
+     forest does: they run on a different temperature and a different water
+     bill, and folding them into S.beds would mean every loop that touches a
+     bed has to remember to ask which kind it is. Any save from before the
+     greenhouse existed lands here with no array at all; any save that had
+     the flag but not the beds (there was a window where the flag was read
+     and nothing ever created them) gets topped up. */
+  if(!Array.isArray(s.greenhouse)) s.greenhouse = [];
+  if(s.flags.greenhouse){
+    const want = s.flags.ghBuilt ? GH_BEDS_BUILT : GH_BEDS_FOUND;
+    while(s.greenhouse.length < want) s.greenhouse.push(newBed());
+  }
+  for(const b of s.greenhouse){
+    if(!Array.isArray(b.companions)) b.companions = [];
+    if(b.fertility === undefined)  b.fertility = 75;
+    if(b.plantedDay === undefined) b.plantedDay = 0;
+    if(b.bare === undefined)       b.bare = b.stored || 0;
+  }
   // restoration metrics — absent from any pre-restoration save
   if(!s.restore) s.restore = {mycosphere:0, aquifer:0, pollinator:0, seen:false, restored:false};
   // repair: bring home anyone stranded "away" with no expedition backing them.
@@ -548,4 +581,4 @@ function setS(v){ S = v; }
 
 
 
-export { FOUNDER_COUNT, S, applyFounders, applyFounding, freshPerson, migrate, newState, setS };
+export { FOUNDER_COUNT, S, applyFounders, applyFounding, freshPerson, migrate, newBed, newState, setS };

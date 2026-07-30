@@ -387,6 +387,77 @@ function woodpileSection(){
   </div>`;
   return h;
 }
+/* ---- the greenhouse ----
+   The one card in the game that MUST show a number. Everywhere else a player
+   can reason from the season; under glass they cannot, because the house runs
+   +25F by day and barely above outdoor by night, and both of those will
+   surprise them. A cooked tomato in July and a frozen one in October are both
+   correct behaviour that reads as a bug unless the temperature is on screen
+   the whole time. */
+function greenhouseSection(){
+  const beds = S.greenhouse || [];
+  if(!S.flags.greenhouse || !beds.length) return "";
+  let h="";
+  const gh = (S.climate && S.climate.greenhouse) || {hi:0, lo:0};
+  const out = (S.climate && S.climate.out) || {hi:0, lo:0};
+  const t = v => `${Math.round(v)}°`;
+  /* Colour the two numbers by what they're doing to what's actually planted,
+     rather than against a fixed comfort band — a house of kale and a house of
+     tomatoes want to be told different things about the same 40F night. */
+  const planted = beds.filter(b=>b.crop && CROPS[b.crop]);
+  const floors  = planted.map(b=>CROPS[b.crop].tMin).filter(v=>v!=null);
+  const ceils   = planted.map(b=>CROPS[b.crop].tMax).filter(v=>v!=null);
+  const coldRisk = floors.length && gh.lo - Math.max(...floors) < 6;
+  const hotRisk  = ceils.length  && gh.hi > Math.min(...ceils) - 4;
+  const loCol = coldRisk ? "var(--rust)" : "var(--water)";
+  const hiCol = hotRisk  ? "var(--rust)" : "var(--sun)";
+  /* The standing condition, distinct from the risk colours above: the heaters
+     are doing all they can and the house still will not reach what's planted.
+     Actionable — pick early, or plant something hardier — so it says so. */
+  const ask = (S.climate && S.climate.ghAsk) || null;
+  const maxedOut = ask && ask.short > 1 && ask.heat > 0.2;
+  const note = maxedOut
+    ? `The heaters are flat out and it is still ${Math.round(ask.short)}° short of what's planted in here. Glass and salvaged power will not hold a hard night — pick early, or put something hardier in.`
+    : hotRisk
+    ? "The vents are wide open and it is still too hot in there for what's planted. Midsummer is the season this building is worst at."
+    : coldRisk
+      ? "It is getting close to the line overnight. Glass gives back everything it took as soon as the sun is off it."
+      : "Holding, for what's in it.";
+  h+=`<div class="card"${(coldRisk||hotRisk)?' style="border-color:var(--rust)"':''}>
+    <div class="card-top"><div class="sysname">The greenhouse</div><div class="condpct">${beds.length} bed${beds.length!==1?"s":""} under glass</div></div>
+    <div class="blurb">Fifty feet of frame and a thousand cut-down windshields. It runs a month ahead of the valley in spring and a month behind it in autumn — and it is never rained on, so the pipe has to reach it.</div>
+    <div class="sysmeta"><span class="outline-note">inside today
+      <b style="color:${hiCol}">${t(gh.hi)}</b> / <b style="color:${loCol}">${t(gh.lo)}</b></span>
+      <span class="outline-note" style="opacity:.65">outside ${t(out.hi)} / ${t(out.lo)}</span></div>
+    <div class="sysmeta"><span class="outline-note" style="opacity:.75">${note}</span></div>`;
+  beds.forEach((bed,i)=>{
+    const soilTag = ` <span class="outline-note" style="opacity:.65">· ${SOIL_WORD(bed.fertility??75)}</span>`;
+    if(!bed.crop){
+      h+=`<div class="sysmeta" style="margin-top:7px"><span class="outline-note">Greenhouse bed ${i+1} — bare${soilTag}</span>
+        <button class="go" data-ghsow="${i}">Sow</button></div>`;
+      return;
+    }
+    const crop=CROPS[bed.crop];
+    if(!crop){
+      h+=`<div class="sysmeta" style="margin-top:7px"><span class="outline-note">Greenhouse bed ${i+1} — something unrecognised${soilTag}</span>
+        <button class="go" data-ghsow="${i}">Manage</button></div>`;
+      return;
+    }
+    // same two gates as the kitchen beds: work banked, and days elapsed
+    const workFrac = crop.work>0 ? bed.growth/crop.work : 1;
+    const dayFrac  = crop.minDays ? bed.days/crop.minDays : 1;
+    const pc=clamp(Math.min(workFrac,dayFrac)*100,0,100);
+    const gate = bed.ready ? " · ready to pick"
+               : workFrac>=1 ? ` · grown out, ripens in ${Math.ceil(crop.minDays-bed.days)}d`
+               : dayFrac>=1  ? " · wants more tending" : "";
+    h+=`<div class="sysmeta" style="margin-top:7px"><span class="outline-note">Greenhouse bed ${i+1} — ${crop.name.toLowerCase()}${gate}${soilTag}</span>
+        <span class="outline-note">${bed.ready?pickNote(bed):`${pc.toFixed(0)}%`}</span>
+        <button class="go" data-ghsow="${i}" style="margin-left:6px">Manage</button></div>
+      <div class="cbar" style="margin:3px 0 2px"><div class="fill ${bed.ready?'c-good':'c-sun'}" style="width:${pc}%"></div></div>`;
+  });
+  h+=`</div>`;
+  return h;
+}
 function forestSection(){
   let h="";
   // --- the food forest: perennial ground, separate from the kitchen beds ---
@@ -686,7 +757,10 @@ function bindTabActions(el){
     el.onclick=()=>openSystemSheet(el.dataset.open);
   });
   el.querySelectorAll("[data-sow]").forEach(b=>{
-    b.onclick=()=>openSowSheet(+b.dataset.sow);
+    b.onclick=()=>openSowSheet(+b.dataset.sow, "beds");
+  });
+  el.querySelectorAll("[data-ghsow]").forEach(b=>{
+    b.onclick=()=>openSowSheet(+b.dataset.ghsow, "greenhouse");
   });
   el.querySelectorAll("[data-shop]").forEach(b=>{
     b.onclick=()=>{
@@ -757,7 +831,7 @@ function bindTabActions(el){
     };
   });
   el.querySelectorAll("[data-forest]").forEach(b=>{
-    b.onclick=()=>openSowSheet(+b.dataset.forest, true);
+    b.onclick=()=>openSowSheet(+b.dataset.forest, "forest");
   });
   el.querySelectorAll("[data-clearplot]").forEach(b=>{
     b.onclick=()=>{
@@ -865,6 +939,7 @@ function renderFood(){
   let h="";
   h += larderSection();
   h += gardensSection();
+  h += greenhouseSection();
   h += forestSection();
   h += sysSection(["aquaponics"], true);
   h += preserveSection();

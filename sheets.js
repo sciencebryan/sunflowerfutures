@@ -88,14 +88,33 @@ function openSystemSheet(jobId){
 
 const SOIL_WORD = f => f>=80?"rich soil":f>=55?"good soil":f>=30?"tired soil":"barren soil";
 
-function openSowSheet(i, isForest){
-  isForest = !!isForest;
+/* `kind` is "beds" | "forest" | "greenhouse". The old signature was a
+   boolean isForest, which had no room for a third field; `true` is still
+   accepted and still means the forest so no caller can be left behind. */
+function openSowSheet(i, kind){
+  if(kind === true) kind = "forest";
+  if(kind === false || kind == null) kind = "beds";
+  const isForest = kind === "forest";
+  const isGH     = kind === "greenhouse";
   const sn=season();
-  const coll = isForest ? S.forest : S.beds;
+  const coll = isForest ? (S.forest||[]) : isGH ? (S.greenhouse||[]) : S.beds;
   const bed = coll[i];
+  if(!bed) return;   // a stale button from a re-render that dropped the field
   const curCrop = bed.crop ? CROPS[bed.crop] : null;
   const soil = SOIL_WORD(bed.fertility??75);
-  const place = isForest ? "forest plot" : "bed";
+  const place = isForest ? "forest plot" : isGH ? "greenhouse bed" : "bed";
+  /* The two ways this sheet differs under glass, both of them in ONE place so
+     the crop list and the interplanting list can never disagree about them
+     (which is precisely how peas ended up sowable at midsummer):
+       - the greenhouse is protected ground, so it repeals the SEASON gate
+         exactly the way cold frames do (it does not repeal a sowWindow —
+         warmer ground is not a different month; see canSow()).
+       - the temperature the sow gate tests is the one inside the house, and
+         no snow ever lands on a greenhouse bed to insulate it. */
+  const shelter  = isGH || !!S.flags.coldFrames;
+  const gateLo   = S.climate ? (isGH ? S.climate.greenhouse.lo : S.climate.out.lo) : null;
+  const gateSnow = isGH ? 0 : (S.climate ? S.climate.snowpack : 0);
+  const tooColdHere = c => gateLo == null ? false : tooColdToSow(c, gateLo, gateSnow);
 
   // a meadow plot: no crop menu, just the choice to return it to production
   if(isForest && bed.meadow){
@@ -112,8 +131,25 @@ function openSowSheet(i, isForest){
     return;
   }
 
-  let h=`<h3>${isForest?"Plant in the food forest":"Sow bed "+(i+1)}</h3><div class="sub">${sn.name}. ${isForest?"Perennials — they don't have to be replanted but take time to reach maturity.":seasonNote(sn)+" Seeds come out of seed storage; food is harvested when the plant is mature as long as someone is tending the garden bed."}</div>
-    <div class="sub" style="margin-top:4px">${isForest?'<span style="color:var(--sun)">PERENNIAL</span> plantings take years to bear, but require no regular care.':'<span style="color:var(--water)">HARDY</span> crops survive winter frost without a cold frame or greenhouse. <span style="color:var(--sun)">Legumes</span> increase soil fertility; other crops decrease it.'} This ${place}: <b>${soil}</b> (${(bed.fertility??75).toFixed(0)}).</div>`;
+  const title = isForest ? "Plant in the food forest"
+              : isGH     ? `Sow greenhouse bed ${i+1}`
+              : `Sow bed ${i+1}`;
+  const lead = isForest
+    ? "Perennials — they don't have to be replanted but take time to reach maturity."
+    : isGH
+      ? `Inside the glass it is ${Math.round(S.climate?S.climate.greenhouse.hi:0)}° by day and ${Math.round(S.climate?S.climate.greenhouse.lo:0)}° before dawn, against ${Math.round(S.climate?S.climate.out.hi:0)}° / ${Math.round(S.climate?S.climate.out.lo:0)}° outside. Season is no longer the gate in here — temperature is.`
+      : seasonNote(sn)+" Seeds come out of seed storage; food is harvested when the plant is mature as long as someone is tending the garden bed.";
+  const second = isForest
+    ? '<span style="color:var(--sun)">PERENNIAL</span> plantings take years to bear, but require no regular care.'
+    : isGH
+      /* Deliberately says what the greenhouse does NOT do. Players read
+         "greenhouse" as "winter garden", and the honest answer is that
+         single-pane glass gives back everything it gained the moment the sun
+         is off it — so a hard January night still kills, and midsummer cooks. */
+      ? 'Glass buys about a month either side of the outdoor year, not a whole winter: it holds almost nothing overnight without the heaters, and in high summer it runs far hotter than anything wants. <span style="color:var(--sun)">Legumes</span> increase soil fertility; other crops decrease it.'
+      : '<span style="color:var(--water)">HARDY</span> crops survive winter frost without a cold frame or greenhouse. <span style="color:var(--sun)">Legumes</span> increase soil fertility; other crops decrease it.';
+  let h=`<h3>${title}</h3><div class="sub">${sn.name}. ${lead}</div>
+    <div class="sub" style="margin-top:4px">${second} This ${place}: <b>${soil}</b> (${(bed.fertility??75).toFixed(0)}).</div>`;
 
   /* --- interplanting ---
      A bed already sown with an annual can take up to MAX_COMPANIONS
@@ -143,8 +179,7 @@ function openSowSheet(i, isForest){
         // skip the sowWindow test entirely, so peas could go in at midsummer
         // same temperature gate as the primary list — C4 routed both paths
         // through one canSow(), so the guard only has to be added once each
-        const inSeason = canSow(c, S.flags.coldFrames)
-          && !(S.climate && tooColdToSow(c, S.climate.out.lo, S.climate.snowpack));
+        const inSeason = canSow(c, shelter) && !tooColdHere(c);
         /* The hint is against the PRIMARY only. It used to be scored against
            the primary and every mate already in the bed, so adding one
            companion silently relabelled all the remaining choices and the
@@ -170,7 +205,7 @@ function openSowSheet(i, isForest){
   // handler just sets bed.crop, so with a crop already growing it silently
   // replaced it — indistinguishable, on screen, from choosing an interplant.
   // Clearing is now an explicit, separate, confirmed step.
-  const occupied = !!(curCrop && !curCrop.perennial && !isForest);
+  const occupied = !!(curCrop && !curCrop.perennial && !isForest);   // true for greenhouse beds too: they interplant like any annual bed
 
   // an established planting locks the plot -- no accidental overwrite of years of growth
   if(curCrop && curCrop.perennial){
@@ -193,13 +228,14 @@ function openSowSheet(i, isForest){
   for(const [id,c] of Object.entries(CROPS)){
     if(occupied) break;              // see (7): occupied beds offer interplanting, not replacement
     if(c.locked && !(S.crops && S.crops[id])) continue;
-    if(isForest !== !!c.perennial) continue;   // forest shows perennials; beds show annuals
+    // the forest shows perennials; both annual fields show annuals
+    if(isForest !== !!c.perennial) continue;
     // same predicate the interplanting list uses — see canSow() in seasons.js
     // 4d: the sow gate shares the KILL predicate, not a second threshold —
     // if these disagreed there'd be a crack where the game called something
     // plantable and then killed it the same night.
-    const tooCold = S.climate ? tooColdToSow(c, S.climate.out.lo, S.climate.snowpack) : false;
-    const inSeason = canSow(c, S.flags.coldFrames) && !tooCold;
+    const tooCold = tooColdHere(c);
+    const inSeason = canSow(c, shelter) && !tooCold;
     const have = (S.seedStock && S.seedStock[id]) || 0;
     const afford = have >= c.seed;
     // the floor is a fact; the work estimate is a guess at a decent crew's pace.
@@ -211,7 +247,14 @@ function openSowSheet(i, isForest){
        stops being a guarantee and becomes a forecast off the seasonal
        BASELINE curve: "typically you have this long." The real date will
        vary with the weather like everything else. */
-    const toFrost = typicalFrostDay(c, S.day);
+    /* typicalFrostDay() forecasts against the OUTDOOR baseline curve, which
+       is simply the wrong curve for a bed under glass — quoting it in here
+       would tell the player a radish sown in October won't finish when in
+       fact it comfortably will. Rather than invent a second forecast that
+       would drift out of step with the first, the greenhouse says nothing
+       about frost dates and points at the live temperature instead (which
+       the greenhouse card keeps on screen). */
+    const toFrost = isGH ? null : typicalFrostDay(c, S.day);
     const risky = !c.perennial && toFrost!=null && toFrost>0 && days>toFrost;
     const tag = c.perennial ? '<span style="font-size:9px;color:var(--sun)">PERENNIAL</span>'
               : c.feed==="legume" ? '<span style="font-size:9px;color:var(--leaf)">LEGUME</span>'

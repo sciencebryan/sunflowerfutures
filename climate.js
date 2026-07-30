@@ -102,20 +102,79 @@ const precipKind = (wxId, lo) => wxId !== "rain" ? null : (lo < FREEZING ? "snow
    loses hard by night, which is exactly why it extends a season rather
    than providing comfort. Venting is automatic (no player decision), so
    the daytime gain is capped rather than allowed to run away. */
-const GH_VENT_CAP = 25, GH_NIGHT_PENALTY = 2;
+/* Venting is automatic (there is no player decision here), and the thing an
+   earlier pass got wrong is that a vent has no authority of its own — it can
+   only trade the house's air for OUTSIDE air. So the hotter the day, the less
+   opening the vents can accomplish, and a wide-open glasshouse on a 91F
+   afternoon settles a few degrees over ambient rather than 25 over it.
+   Modelling that as a flat +25 cap made the greenhouse strictly WORSE than
+   open ground all summer: it drove the house to 109F, which is past every
+   crop's tMax, so greens stopped growing entirely and tomatoes crawled at a
+   fifth of the rate of the bed outside. Below the setpoint the vents are shut
+   and the full solar gain stands; above it they are open and only the
+   irreducible bit of glasshouse effect is left. */
+const GH_VENT_TARGET = 82;   // the temperature the vents are trying to hold
+const GH_MIN_GAIN = 4;       // glass still traps this much with everything open
+const GH_NIGHT_PENALTY = 2;
+/* The house's OWN thermal mass — the soil in the beds and the frame itself.
+   Deliberately small: a 50x20 glasshouse holds a couple of degrees overnight
+   and no more. This is the knob to raise if water walls or a bermed north
+   wall ever become a buildable upgrade; it is NOT the Commons' massDamping,
+   which an earlier pass wrongly borrowed (a bermed Commons wall fifty feet
+   away does nothing at all for the greenhouse). */
+/* Raised from 3 after watching a year of it. At 3 (net +1 overnight, once
+   the night penalty is taken off) the greenhouse was almost exactly as frosty
+   as open ground, which meant the single thing players buy a greenhouse FOR —
+   not losing the tender crops — it did not do, while costing more than
+   anything else in the build table. A real unheated glasshouse over warm soil,
+   out of the wind, runs several degrees over the outdoor minimum; this is that.
+   Still nowhere near enough to hold a January night, which is correct: that is
+   what the heaters are for. */
+const GH_THERMAL_MASS = 8;
+/* Row cover and cloches INSIDE the house — cold frames stack with glass, the
+   way they actually do for anyone growing under both. This is the cheap
+   upgrade path for the greenhouse, and it needs no new project. */
+const GH_COLDFRAME_BONUS = 5;
+/* Note what these two numbers mean together, because it IS the design: at
+   +25F by day the house cooks in midsummer (tomatoes top out around 95F and
+   a 90F August day makes it 115F inside), and at outLo+1 by night it freezes
+   in midwinter unless something is burning. The greenhouse buys SHOULDER
+   SEASON — a month either side of the outdoor year — not a warm room. */
 function greenhouseTemps(outHi, outLo, solarFactor, thermalMass, heatIn){
-  const gain = Math.min(GH_VENT_CAP, 16 * solarFactor);
+  const closedGain = 16 * (solarFactor == null ? 1 : solarFactor);
+  const headroom = Math.max(0, GH_VENT_TARGET - outHi);
+  const gain = Math.max(GH_MIN_GAIN, Math.min(closedGain, headroom));
   return {
     hi: outHi + gain,
-    lo: outLo + (thermalMass || 0) + (heatIn || 0) - GH_NIGHT_PENALTY
+    lo: outLo + (thermalMass == null ? GH_THERMAL_MASS : thermalMass) + (heatIn || 0) - GH_NIGHT_PENALTY
   };
 }
-/* Target driven by what's actually planted: a house full of cold-hardy
-   greens in midwinter shouldn't burn wood chasing tomato temperatures. */
+/* What the NIGHT has to be held above, driven by what's actually planted:
+   a house full of cold-hardy greens in midwinter shouldn't burn power
+   chasing tomato temperatures.
+
+   This is a floor, not a setpoint. An earlier pass averaged the planted
+   crops' tOpt, which is a DAYTIME growing optimum — it asked the heaters to
+   hold ~65F all night for a bed of kale that is perfectly happy at 30F, and
+   the resulting demand was large enough that the greenhouse looked to the
+   allocator like an emergency every night of the year. Take the most tender
+   thing in the house, add the same margin frostKills() uses, and hold that.
+   With nothing planted, hold just clear of freezing and no more. */
+const GH_EMPTY_FLOOR = 36;
 function greenhouseTarget(beds, cropData){
   const planted = (beds || []).filter(b => b && b.crop && cropData[b.crop]);
-  if(!planted.length) return 50;                      // just keep it above freezing
-  return planted.reduce((a,b)=>a + (cropData[b.crop].tOpt ?? 65), 0) / planted.length;
+  if(!planted.length) return GH_EMPTY_FLOOR;
+  // every crop in the house, primary and interplanted alike — the tenderest
+  // one sets the bill, which is exactly the decision a grower actually faces
+  const floors = [];
+  for(const b of planted){
+    for(const id of [b.crop, ...(b.companions || [])]){
+      const c = cropData[id];
+      if(c && c.tMin != null && !c.perennial) floors.push(c.tMin + FROST_BUFFER);
+    }
+  }
+  if(!floors.length) return GH_EMPTY_FLOOR;
+  return Math.max(GH_EMPTY_FLOOR, ...floors);
 }
 
 /* ---- 3. the commons ----
@@ -301,7 +360,8 @@ const freshClimate = () => ({
 });
 
 export {
-  FREEZING, FROST_BUFFER, GAP_REF, GROUND_TEMP, SNOWMELT_WOOD_PER_UNIT, YEAR_LEN,
+  FREEZING, FROST_BUFFER, GAP_REF, GH_COLDFRAME_BONUS, GH_THERMAL_MASS, GH_VENT_TARGET, GROUND_TEMP,
+  SNOWMELT_WOOD_PER_UNIT, YEAR_LEN,
   baseHi, baseLo, baseTarget, comfortBand, commonsTemps, drinkHeatMult, effectiveLow, freshClimate,
   frostKills, gapRate, greenhouseTarget, greenhouseTemps, growthMult, growTemp,
   irrigationHeatMult, meltSnow, precipKind, snowInsulation, soilDiscount,

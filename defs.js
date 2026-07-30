@@ -137,7 +137,9 @@ function stepRestoration(lines){
 }
 
 const BASE_GARDEN_SLOTS = 1;
-const gardenSlots=()=>(S.beds?S.beds.length:1);
+/* Beds under glass want tending exactly like beds outside, so they count
+   toward how many pairs of hands the gardens can usefully absorb. */
+const gardenSlots=()=>((S.beds?S.beds.length:1) + ((S.greenhouse&&S.greenhouse.length)||0));
 const foodCap=()=>S.flags.rootCellar?120:90;   // fresh-food storage ceiling; the root cellar project raises it
 const waterCapEff=()=>(S.waterCap||80)+(S.flags.cutCistern?12:0);
 const built=id=>!!(S.sys[id] && S.sys[id].built);
@@ -210,8 +212,13 @@ const VISUALS = [
    fx:{wetter:true, waterStart:15, floodRisk:0.035, journal:"river"}},
   {id:"library",   label:"a library, kept dry at all costs",
    fx:{projectFaster:true, upkeepScrap:0.16, journal:"library", ideology:{complexity:+0.20}}},
+  /* The one visual that hands you a whole SYSTEM rather than a modifier. It
+     is a smaller, patchier house than the one the project builds (two beds,
+     not three) and the panes keep breaking, which is what stormBreak is for.
+     Building the greenhouse project later extends this pair to three rather
+     than starting a second house. */
   {id:"greenhouse",label:"greenhouses patched with car glass",
-   fx:{coldStart:true, stormBreak:true, journal:"greenhouse", ideology:{intervention:+0.15}}},
+   fx:{ghStart:true, stormBreak:true, journal:"greenhouse", ideology:{intervention:+0.15}}},
   {id:"reservoir", label:"the reservoir low, showing old foundations", //weak
    fx:{scrapStart:10, drier:true, journal:"reservoir"}},
   {id:"turbinehum",label:"a turbine you can hear at night",

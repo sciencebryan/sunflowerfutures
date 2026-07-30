@@ -273,6 +273,12 @@ const PROJECTS = [
   {id:"dripRetrofit",name:"Drip retrofit",         cost:{scrap:6, parts:4},  work:14, gate:{sys:"irrigation"}, blurb:"Every joint resealed. Irrigation wears slower, gardens drink less."},
   {id:"graywater",   name:"Graywater loop",        cost:{scrap:7, parts:3},  work:16, gate:{sys:"irrigation"}, blurb:"Wash water and rinse water, filtered through sand and reed, sent back to the beds. The gardens take far less from the cisterns."},
   {id:"coldFrames",  name:"Cold frames",           cost:{scrap:8},           work:16, gate:{sys:"irrigation"}, blurb:"Miniature greenhouses to keep the garden growing straight through winter frost, and you can sow out of season."},
+  /* The most expensive thing in this table, and it should be: fifty feet of
+     welded frame, a poured sill, and every windshield left in the valley cut
+     down and puttied into it. Gated on irrigation because nothing under glass
+     is ever rained on — a greenhouse with no pipe to it is three beds of dust. */
+  {id:"greenhouse",  name:"The greenhouse",        cost:{scrap:26, parts:10}, work:52, gate:{flag:"coldFrames"},
+   blurb:"Fifty feet by twenty, framed in salvaged steel and glazed in car glass. Three beds that keep their own weather — a month of growing either side of the outdoor year. It gains hard by day and loses all of it by night, so what it buys is a longer season, not a warm room."},
   {id:"herbalStores",name:"Herbal stores",         cost:{meds:6},            work:12, gate:{discover:true}, blurb:"Dried, labeled, jarred. Illness is briefer and less frequent."},
   {id:"oilPress",    name:"Oil press",             cost:{scrap:7, parts:3},  work:14, gate:{crop:"sunflower"}, blurb:"A hand crank and a screw. Turns seed into oil, if someone's willing to stand there and turn it."},
   {id:"compost",     name:"Compost bins",          cost:{scrap:3},           work:8,  blurb:"Rotten food and vegetable scraps are composted. Discarded food contributes to soil fertility."},
@@ -599,7 +605,20 @@ const AC_DRAW = 1.6;   // heavy on purpose: the cooling unit is the most expensi
                        // strong and everyone else wants power too
 const AQUA_STAGNANT_WEAR = 1.5;
 const WITHER_CHANCE = 0.04;
+/* Nothing under glass ever gets rained on, so shutting irrigation off is a
+   death sentence in there rather than a gamble. Same roll, much worse odds. */
+const GH_WITHER_CHANCE = 0.22;
 const NO_CLEANING_SICK = 0.10;
+
+/* ---- the greenhouse ----
+   Fifty feet by twenty, which is a thousand square feet of floor and, once
+   you take out the centre path and the potting end, about three long beds
+   of growing ground. GH_BEDS_FOUND is the smaller, already-standing pair
+   you can start with as a founding visual; GH_BEDS_BUILT is what the
+   project gets you, and building it on top of a founding pair EXTENDS that
+   pair rather than starting over. */
+const GH_BEDS_FOUND = 2;
+const GH_BEDS_BUILT = 3;
 
 const POWER_DEMANDS = [
   {id:"pump",    name:"Catchment pump",   gate:"catchment",  levels:[0,0.5,1],
@@ -730,4 +749,5 @@ const YIELD_SOIL_FLOOR = 0.65;
 const POLLINATOR_YIELD = 0.20;
 
 
-export { AC_MAX, HEATER_DRAW, HEATER_MAX, HEATER_BREAK_BASE, HEATER_BREAK_LOAD, WOOD_STOVE_MAX, cropHardiness, SEED_RICH_SITES, MAX_SEED_ROLLS, CANNING_MIN_STOCK, WELL_DRAW, AC_DRAW, AQUA_STAGNANT_WEAR, BATTERY_UNIT, CANNING_DRAW, CROPS, DAY_MS, FABS, FAB_DRAW, FAB_RATE, FOREST_PLOT_COST, INJURY_PER_DAY, JOB_PRACTICE, LOSS_DECAY, MAX_BATTERIES, MAX_FOREST_PLOTS, MAX_SOLAR, NO_CLEANING_SICK, OFFLINE_CAP, POLLINATOR_YIELD, POWER_DEMANDS, POWER_LOSS_BASE, PRACTICE_BROAD_CAP, PRACTICE_BROAD_DECAY, PRACTICE_BROAD_GROWTH, PRACTICE_SPECIFIC_CAP, PRACTICE_SPECIFIC_DECAY, PRACTICE_SPECIFIC_GROWTH, PRESERVE, PROJECTS, RESTORE_GATE, RESTORE_HIGH, RESTORE_IN, RESTORE_LOW, RES_CAP, SEASONS, SEASON_LEN, SITE_DEF, SITE_LOOT_TABLE, SOLAR_UNIT, STACKABLE, SYS, TURBINE_UNIT, WATER_DEMANDS, WATER_LOSS_BASE, WEATHERS, WITHER_CHANCE, YIELD_SOIL_FLOOR, YIELD_TEND_MAX, YIELD_TEND_SCALE };
+export { GH_BEDS_BUILT, GH_BEDS_FOUND, GH_WITHER_CHANCE,
+  AC_MAX, HEATER_DRAW, HEATER_MAX, HEATER_BREAK_BASE, HEATER_BREAK_LOAD, WOOD_STOVE_MAX, cropHardiness, SEED_RICH_SITES, MAX_SEED_ROLLS, CANNING_MIN_STOCK, WELL_DRAW, AC_DRAW, AQUA_STAGNANT_WEAR, BATTERY_UNIT, CANNING_DRAW, CROPS, DAY_MS, FABS, FAB_DRAW, FAB_RATE, FOREST_PLOT_COST, INJURY_PER_DAY, JOB_PRACTICE, LOSS_DECAY, MAX_BATTERIES, MAX_FOREST_PLOTS, MAX_SOLAR, NO_CLEANING_SICK, OFFLINE_CAP, POLLINATOR_YIELD, POWER_DEMANDS, POWER_LOSS_BASE, PRACTICE_BROAD_CAP, PRACTICE_BROAD_DECAY, PRACTICE_BROAD_GROWTH, PRACTICE_SPECIFIC_CAP, PRACTICE_SPECIFIC_DECAY, PRACTICE_SPECIFIC_GROWTH, PRESERVE, PROJECTS, RESTORE_GATE, RESTORE_HIGH, RESTORE_IN, RESTORE_LOW, RES_CAP, SEASONS, SEASON_LEN, SITE_DEF, SITE_LOOT_TABLE, SOLAR_UNIT, STACKABLE, SYS, TURBINE_UNIT, WATER_DEMANDS, WATER_LOSS_BASE, WEATHERS, WITHER_CHANCE, YIELD_SOIL_FLOOR, YIELD_TEND_MAX, YIELD_TEND_SCALE };
