@@ -18,6 +18,36 @@ let picrossPaintState = 0; // What color are we painting right now? (0, 1, or 2)
 
 
 let pz = null;   // {kind, lvl, paths|placed, sel}
+
+/* ---- picross progress survives leaving the tab ----
+   `pz` is a module-level variable, so it died the moment you closed the
+   puzzle to go look at anything else — and a picross grid is twenty minutes
+   of work, not twenty seconds. The grid is now mirrored into S (which the
+   store already persists) on every change, keyed by LEVEL, so a half-solved
+   board is exactly where you left it when you come back.
+
+   Keyed by level index rather than a single slot because finishing one
+   level immediately rolls into the next; a single slot would restore the old
+   board over the new one. Solved levels are dropped, so this never grows
+   past the one board actually in progress. */
+function picrossSave(){
+  if(!pz || pz.kind !== "picross" || pz.solved) return;
+  S.puzSave = S.puzSave || {};
+  S.puzSave.picross = {level: S.puz.picross, state: pz.state.map(r=>[...r])};
+  store.save(S);
+}
+function picrossRestore(level, h, w){
+  const sv = (S.puzSave||{}).picross;
+  if(!sv || sv.level !== level || !Array.isArray(sv.state)) return null;
+  // shape-check before trusting it: a level table edited between sessions
+  // must not paint a stale grid into a board of a different size
+  if(sv.state.length !== h || sv.state.some(r=>!Array.isArray(r) || r.length !== w)) return null;
+  return sv.state.map(r=>r.map(v=>(v===1||v===2)?v:0));
+}
+function picrossClearSave(){
+  if(S.puzSave) delete S.puzSave.picross;
+  store.save(S);
+}
 function setPz(v){ pz = v; }
 
 /* which tab each puzzle lives on — boards render into their host tab, and
@@ -115,7 +145,8 @@ function openPuzzle(kind){
     const L=PICROSS_LEVELS[S.puz.picross];
     const w=L.grid[0].length;
     const h=L.grid.length;
-    pz={kind, L, state: Array(h).fill().map(() => Array(w).fill(0))};
+    const saved = picrossRestore(S.puz.picross, h, w);
+    pz={kind, L, state: saved || Array(h).fill().map(() => Array(w).fill(0))};
   } else {
     return;   // unknown kind — retired puzzles land here harmlessly
   }
@@ -1110,10 +1141,13 @@ export function renderPicross() {
   </div>`;
   
   // ADDED: The Mode Toggle for Mobile
+  const anyPaint = pz.state.some(row=>row.some(v=>v!==0));
   h += `<div class="picross-controls">
     <button class="go ${picrossMode === 1 ? 'active' : ''}" id="pmode-fill">■ Fill</button>
     <button class="go ${picrossMode === 2 ? 'active' : ''}" id="pmode-cross">× Mark</button>
-  </div>`;
+    <button class="go" id="pclear" ${anyPaint?"":"disabled"} style="margin-left:auto;opacity:${anyPaint?1:.45}">Clear</button>
+  </div>
+  <div class="sysmeta"><span class="outline-note" style="opacity:.6">Your progress is kept — you can leave and come back to it.</span></div>`;
 
   const gw=L.grid[0].length, gh=L.grid.length;
   const cell = Math.min(20, Math.floor((Math.min(window.innerWidth,620)-90)/gw));
@@ -1148,6 +1182,22 @@ export function renderPicross() {
   
   $("pmode-fill").onclick = () => { picrossMode = 1; renderPicross(); };
   $("pmode-cross").onclick = () => { picrossMode = 2; renderPicross(); };
+  const clearBtn = $("pclear");
+  /* Two-step, because twenty minutes of work sits behind it and a stray tap
+     on a phone should not be able to wipe the board. The second tap has to
+     land within a few seconds or it re-arms. */
+  if(clearBtn) clearBtn.onclick = () => {
+    if(!clearBtn.dataset.armed){
+      clearBtn.dataset.armed = "1";
+      clearBtn.textContent = "Clear it all?";
+      setTimeout(()=>{ if(clearBtn.isConnected && clearBtn.dataset.armed){
+        delete clearBtn.dataset.armed; clearBtn.textContent = "Clear"; } }, 3500);
+      return;
+    }
+    pz.state = pz.state.map(row=>row.map(()=>0));
+    picrossClearSave();
+    renderPicross();
+  };
 
   // Setup Drag-to-Paint Logic
   attachPicrossDragEvents();
@@ -1198,6 +1248,10 @@ function attachPicrossDragEvents() {
     if (picrossDragging) {
       picrossDragging = false;
       grid.releasePointerCapture(e.pointerId);
+      // flush the debounced write: letting go always commits the stroke, so
+      // closing the tab a heartbeat later can never lose it
+      if(picrossSaveTimer){ clearTimeout(picrossSaveTimer); picrossSaveTimer=null; }
+      picrossSave();
       checkPicrossWin(); // Check for a win only when they finish a drag stroke
     }
   };
@@ -1207,9 +1261,19 @@ function attachPicrossDragEvents() {
 }
 
 // Helper: Applies paint and updates UI instantly without a full re-render
+let picrossSaveTimer = null;
+/* A drag paints cell after cell, and writing to the store on each one would
+   serialise the whole save object dozens of times a second. Coalesce into a
+   single write shortly after the last change instead; pointer-up flushes it
+   immediately so letting go always commits. */
+function picrossSaveSoon(){
+  if(picrossSaveTimer) clearTimeout(picrossSaveTimer);
+  picrossSaveTimer = setTimeout(()=>{ picrossSaveTimer=null; picrossSave(); }, 400);
+}
 function applyPicrossPaint(r, c, targetState) {
   if (pz.state[r][c] !== targetState) {
     pz.state[r][c] = targetState;
+    picrossSaveSoon();
     const cell = document.querySelector(`.puzzle-cell[data-px="${r},${c}"]`);
     if (cell) {
       cell.className = "puzzle-cell" + (targetState === 1 ? " filled" : targetState === 2 ? " crossed" : "");
@@ -1222,6 +1286,7 @@ function handlePicrossClick(el, actionType) {
   
   // Toggle logic: if already this type, set to 0, else set to actionType
   pz.state[r][c] = pz.state[r][c] === actionType ? 0 : actionType;
+  picrossSave();
   renderPicross(); // Re-render to update classes
   checkPicrossWin();
 }
@@ -1237,6 +1302,7 @@ function checkPicrossWin() {
   if (!isWin) return;
 
   pz.solved = true;
+  picrossClearSave();   // the board is finished; don't restore it over the next level
   S.pending.push(L.rewardText);
   // finishPuzzle handles the rest — the sunflower modal, the level's own
   // `parts`/`rewardText`, advancing S.puz.picross, saving, and rolling into

@@ -68,6 +68,8 @@ const FOOD_DATA = {
   peas:      {name:"peas",          dk:0.030, mac:{c:0.70,f:0.04,p:0.26}, pres:["dry","can","ferment"],      tags:["legume","protein"]},
   grain:     {name:"grain",         dk:0.004, mac:{c:0.83,f:0.04,p:0.13}, pres:["dry"],                      tags:["grain","staple"]},
   amaranth:  {name:"amaranth",      dk:0.005, mac:{c:0.70,f:0.14,p:0.16}, pres:["dry"],                      tags:["grain","staple"]},
+  // squash seed, recovered only when a squash is actually processed
+  pepita:    {name:"pepitas",       dk:0.010, mac:{c:0.18,f:0.55,p:0.27}, pres:["dry"],                      tags:["seed","fat"]},
   sunflower: {name:"sunflower seed",dk:0.010, mac:{c:0.22,f:0.60,p:0.18}, pres:["dry"],                      tags:["seed","fat"]},
 
   // ---- the food forest ----
@@ -137,6 +139,12 @@ const PRES_KEEP = {
 /* PRESERVE (data-economy) is keyed by project flag; this maps those to the
    method ids above so the two tables never drift apart. */
 const PRES_METHOD_OF = {drying:"dry", fermenting:"ferment", canning:"can"};
+
+/* What a unified crop's planting stock is CALLED when it is being talked
+   about as seed rather than as dinner. Only potatoes really need this —
+   "3 potatoes to plant" is wrong, they are seed potatoes — but the hook is
+   general so the next one is a data line, not a special case. */
+const SEED_NAME_OF = {potatoes:"seed potatoes"};
 
 /* ---- recipes ----
    Real dishes, every one of them, using only what this valley grows.
@@ -343,4 +351,4 @@ const MAX_COMPANIONS = 2;   // a bed holds a primary plus this many
 
 export { COMP_FERT, COMP_YIELD, CROP_FAM, FAM_PAIR, famOf, famPair, pairingNote, FOOD_DATA, FORAGE_RAIN_DAYS, FORAGE_TABLE,
          MAC_FLOOR_MIN, MAC_FLOOR_RATE, MAC_FLOOR_START, MAC_CEIL, MAC_CEIL_AT, MAC_DRAG, MAC_DRAG_CAP, MAC_GRACE, MAC_LINES, MAC_MIN, MAC_RECOVER,
-         MAX_COMPANIONS, PRES_KEEP, PRES_METHOD_OF, RECIPES, RIVAL_YIELD };
+         MAX_COMPANIONS, PRES_KEEP, PRES_METHOD_OF, SEED_NAME_OF, RECIPES, RIVAL_YIELD };

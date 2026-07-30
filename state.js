@@ -1,4 +1,4 @@
-import { CROPS, GH_BEDS_BUILT, GH_BEDS_FOUND, MAX_BATTERIES, MAX_SOLAR, SEASON_LEN, SITE_DEF, SYS } from "./data-economy.js";
+import { CROPS, isEdibleSeed, GH_BEDS_BUILT, GH_BEDS_FOUND, MAX_BATTERIES, MAX_SOLAR, SEASON_LEN, SITE_DEF, SYS } from "./data-economy.js";
 import { PUZ_META } from "./data-puzzles.js";
 
 import { AGES } from "./seasons.js";
@@ -75,7 +75,7 @@ function newState(){
     // fresh, because nothing has been grown yet — and nothing home-preserved,
     // because none of the racks, crocks or jars exist on day one.
     pantry:[],
-    jars:[{k:"potatoes", n:30, m:"can", d:1},{k:"beans", n:30, m:"can", d:1},{k:"peas", n:30, m:"can", d:1}],
+    jars:[{k:"potatoes", n:30, m:"can", d:1},{k:"beans", n:30, m:"can", d:1},{k:"peas", n:32, m:"can", d:1}],
     macDays:{p:0, f:0}, lastRecipeDay:0, lastRainDay:-99,
     weather:"clear",
     people: ROSTER.map(freshPerson),
@@ -99,6 +99,15 @@ function newState(){
     cells: [{cap:0.90, since:1}],
     forest: [],    // food forest: perennial plots, separate from the annual beds
     greenhouse: [], // beds under glass: a third field, with its own weather (see climate.js)
+    /* Per-crop planting reserve for the unified (edibleSeed) crops.
+       {release:true} means the player has said to eat this one down to
+       nothing; absent means hold back SEED_RESERVE_PLANTINGS worth of it.
+       Permanent in both directions until they flip it back. */
+    eatSeedReserve: {},
+    /* In-progress puzzle boards that are too long to redo. Only picross uses
+       it so far — the others are a minute's work and lose nothing by resetting. */
+    puzSave: {},
+    mysterySeed: 0,   // sealed salvage packets, opened at the player's leisure
     discovered: {}, // gated builds/projects found via expedition (parallel to S.crops)
     beds: [{crop:null,companions:[],growth:0,days:0,ready:false,stored:0,fertility:75,plantedDay:0},{crop:null,companions:[],growth:0,days:0,ready:false,stored:0,fertility:75,plantedDay:0}],
     preserved: 58, spoilMemo: 0, winterDays: 0,   // oil is a pantry food now (FOOD_DATA.oil, noBulk), not a scalar
@@ -540,6 +549,29 @@ function migrate(s){
      greenhouse existed lands here with no array at all; any save that had
      the flag but not the beds (there was a window where the flag was read
      and nothing ever created them) gets topped up. */
+  if(!s.eatSeedReserve || typeof s.eatSeedReserve !== "object") s.eatSeedReserve = {};
+  if(!s.puzSave || typeof s.puzSave !== "object") s.puzSave = {};
+  if(typeof s.mysterySeed !== "number") s.mysterySeed = 0;
+  /* THE UNIFICATION MIGRATION. Any save from before the unified crops kept
+     their planting stock in S.seedStock; those six pools now live in the
+     pantry, because for a bean the thing you eat and the thing you plant are
+     the same object. Fold them across and delete the old entries, or the
+     village would appear to lose every bean it had saved. */
+  {
+    const p = Array.isArray(s.pantry) ? s.pantry : (s.pantry = []);
+    for(const id of Object.keys(s.seedStock || {})){
+      if(!isEdibleSeed(id)) continue;
+      const n = s.seedStock[id] || 0;
+      delete s.seedStock[id];
+      if(!(n > 0)) continue;
+      const e = p.find(x=>x.k===id);
+      if(e){ e.d = (e.d*e.n + (s.day||1)*n)/(e.n+n); e.n += n; }
+      else p.push({k:id, n, d:s.day||1});
+    }
+  }
+  // people who existed before parenthood had a cooldown have simply never
+  // raised one as far as the new rule is concerned
+  for(const p of s.people) if(p.lastChildYear === undefined) p.lastChildYear = null;
   if(!Array.isArray(s.greenhouse)) s.greenhouse = [];
   if(s.flags.greenhouse){
     const want = s.flags.ghBuilt ? GH_BEDS_BUILT : GH_BEDS_FOUND;

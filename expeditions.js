@@ -1,7 +1,7 @@
 import { S } from "./state.js";
 import { Cap, byId, clamp, effStat, isAre, objp, siteDef, siteName, subj, wbFloor } from "./helpers.js";
 import { CROPS, INJURY_PER_DAY, MAX_SEED_ROLLS, SEED_RICH_SITES, SITE_DEF } from "./data-economy.js";
-import { discoverRandomCrop, discoverRandomUseful, discoveryLine, lockedCrops, lockedUseful, restockRandomCrop, restockLine, usefulLine, season } from "./seasons.js";
+import { addMysteryPacket, discoverRandomCrop, grantSeedSpread, totalSeeds, discoverRandomUseful, discoveryLine, lockedCrops, lockedUseful, restockRandomCrop, restockLine, usefulLine, season } from "./seasons.js";
 import { addRes, foodCap } from "./defs.js";
 import { addForage, addPreservedFound, foodName, pantryTotal, resync } from "./larder.js";
 import { addMemory, injuryIsNotable, pushRecentEvent, reluctance } from "./memories.js";
@@ -164,6 +164,29 @@ function tickExpeditions(lines){
             resync();
             S.preserved = clamp(S.preserved, 0, S.flags.rootCellar?300:170);
             if(tins>0) gotWords.push(`${tins.toFixed(0)} can${tins===1?"":"s"} of food`);
+          } else if(k==="seeds"){
+            /* THERE IS NO GENERIC SEED ANY MORE. This used to call
+               addRes("seeds", ...), writing to an S.res.seeds that does not
+               exist in the state shape and has no cap and no spender — a
+               phantom resource that silently swallowed every seed-vault
+               haul in the game. Spread it across the crops the village
+               actually knows instead, which is what the grant already
+               means everywhere else. */
+            /* Some of the haul comes up as sealed packets whose labels have
+               gone. Those become mystery packets the player opens when they
+               like; the rest spreads across what the village already grows. */
+            const packets = Math.min(2, Math.floor(take/6));
+            if(packets > 0){
+              addMysteryPacket(packets);
+              gotWords.push(`${packets} unlabelled seed packet${packets===1?"":"s"}`);
+            }
+            const loose = Math.max(0, Math.round(take) - packets*6);
+            if(loose > 0){
+              const before = totalSeeds();
+              grantSeedSpread(loose);
+              const got = totalSeeds() - before;
+              if(got > 0.05) gotWords.push(`${amountWord(got)} seed`);
+            }
           } else {
             const actual = addRes(k, take);
             if(actual>0.05) gotWords.push(`${amountWord(actual)} ${k}`);

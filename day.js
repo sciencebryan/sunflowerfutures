@@ -1,11 +1,11 @@
 import { S, newBed } from "./state.js";
-import { baseTarget, comfortBand, commonsTemps, drinkHeatMult, effectiveLow, frostKills, gapRate, GH_COLDFRAME_BONUS, GH_THERMAL_MASS, greenhouseTarget,
+import { baseTarget, comfortBand, commonsTemps, drinkHeatMult, effectiveLow, FREEZING, frostKills, gapRate, GH_COLDFRAME_BONUS, GH_THERMAL_MASS, greenhouseTarget,
          greenhouseTemps, growthMult, irrigationHeatMult, meltSnow, soilDiscount,
          tickClimate } from "./climate.js";
 import { getState as rngGetState, setSeed as rngSetSeed, setState as rngSetState, rand as crand } from "./rng.js";
-import { ELDER, canRoad, canWork, dayOfSeason, generateFallbackChildName, grantSeedSpread, rollWeather, scaledWeather, season, seasonIdx, seasonNote, yearOf } from "./seasons.js";
+import { ELDER, canRoad, canWork, dayOfSeason, generateFallbackChildName, grantSeedSpread, grantPlantingStock, pantryAmount, reserveFloor, rollWeather, scaledWeather, season, seasonIdx, seasonNote, yearOf } from "./seasons.js";
 import { AC_MAX, HEATER_DRAW, HEATER_MAX, HEATER_BREAK_BASE, HEATER_BREAK_LOAD, WOOD_STOVE_MAX,
-         AC_DRAW, WELL_DRAW, AQUA_STAGNANT_WEAR, BATTERY_UNIT, CANNING_DRAW, CANNING_MIN_STOCK, CROPS, DAY_MS, FABS, FAB_DRAW, FAB_RATE, JOB_PRACTICE, LOSS_DECAY, MAX_FOREST_PLOTS, NO_CLEANING_SICK, OFFLINE_CAP, POLLINATOR_YIELD, POWER_LOSS_BASE, PRACTICE_BROAD_CAP, PRACTICE_BROAD_DECAY, PRACTICE_BROAD_GROWTH, PRACTICE_SPECIFIC_CAP, PRACTICE_SPECIFIC_DECAY, PRACTICE_SPECIFIC_GROWTH, PRESERVE, PROJECTS, RESTORE_IN, SEASONS, SEASON_LEN, SOLAR_UNIT, SYS, TURBINE_UNIT, WATER_LOSS_BASE, WITHER_CHANCE, GH_BEDS_BUILT, GH_WITHER_CHANCE, YIELD_SOIL_FLOOR, YIELD_TEND_MAX, YIELD_TEND_SCALE } from "./data-economy.js";
+         AC_DRAW, WELL_DRAW, AQUA_STAGNANT_WEAR, BATTERY_UNIT, CANNING_DRAW, CANNING_MIN_STOCK, CROPS, DAY_MS, FABS, FAB_DRAW, FAB_RATE, JOB_PRACTICE, LOSS_DECAY, MAX_FOREST_PLOTS, NO_CLEANING_SICK, OFFLINE_CAP, POLLINATOR_YIELD, POWER_LOSS_BASE, PRACTICE_BROAD_CAP, PRACTICE_BROAD_DECAY, PRACTICE_BROAD_GROWTH, PRACTICE_SPECIFIC_CAP, PRACTICE_SPECIFIC_DECAY, PRACTICE_SPECIFIC_GROWTH, PRESERVE, PROJECTS, RESTORE_IN, SEASONS, SEASON_LEN, SOLAR_UNIT, SYS, TURBINE_UNIT, WATER_LOSS_BASE, WITHER_CHANCE, GH_BEDS_BUILT, GH_WITHER_CHANCE, SEED_RESERVE_PLANTINGS, YIELD_SOIL_FLOOR, YIELD_TEND_MAX, YIELD_TEND_SCALE } from "./data-economy.js";
 import { Cap, byId, clamp, decayPractice, eff, effStat, growPractice, hasHave, isAre, mult, objp, pick, poss, practiceOf, subj, wbFloor, working } from "./helpers.js";
 import { TRAITS, VISUALS, addRes, addRestore, built, decayOf, foodCap, stepRestoration, waterCapEff } from "./defs.js";
 import { tickExpeditions } from "./expeditions.js";
@@ -13,7 +13,7 @@ import { CHILD_NAMES, CHILD_NOTES, FV } from "./data-events.js";
 import { bestSpecific, practiceLabel, renderAll } from "./render.js";
 import { maybeSpawnEvent, resetSeasonFlares, tickDepartures, tickDinnerBonds, tickFriction, tickRelationships, tickVillageSpiritsStreak } from "./events.js";
 import { store } from "./store.js";
-import { rollMusic, rollPersonality } from "./bonds.js";
+import { bondKey, bondOf, rollMusic, rollPersonality } from "./bonds.js";
 import { driftIdeology, seedIdeology } from "./ideology.js";
 import { addFood, addForage, addPreserved, bestMethodFor, cookRecipe, decayStock, eatFresh, eatJars,
          eatForDeficiency, jarComposition, pantryTotal, preserveInto, resync, stockOf, stockTakingMethod,
@@ -345,6 +345,11 @@ function hearthSafety(commonsT, band){
 }
 
 function applyTemperature(lines, tempEvent, commonsT, band, isSummer, isWinter, yr1){
+  /* This function is called AFTER tickClimate() has written S.climate.out, so
+     the outdoor temperatures are available here even though they were never
+     passed in as parameters. Read once, up top, rather than reaching into the
+     state object at each of the three places below that need them. */
+  const outHi = S.climate.out.hi, outLo = S.climate.out.lo;
   const safety = hearthSafety(commonsT, band);
   const indoorSafety = safety;
 
@@ -382,8 +387,16 @@ function applyTemperature(lines, tempEvent, commonsT, band, isSummer, isWinter, 
   }
 
   // --- the extremes ---
+  /* climate.js flags "heatwave" for a warm FRONT — a sharp move relative to
+     the days either side of it — which is the right trigger for the memory
+     and the recent-events feed, but it says nothing about the absolute
+     temperature. A warm front landing on a cool week produced "A blistering
+     heatwave today" over an 81/52 summer day and, worse, over a 66-degree
+     one. The event still fires; only the WORD changes with the thermometer. */
   if (tempEvent === "heatwave") {
-    lines.push("A blistering heatwave today.");
+    lines.push(outHi >= 88 ? "A blistering heatwave today."
+             : outHi >= 78 ? "The heat came up hard today — well above what the week had been."
+             : "A warm front pushed through. Not hot, but a long way from where the week started.");
     // climate.js only flags an extreme on the day the front lands, so this
     // fires once per event rather than once per day of it
     addMemoryAll(S.people.filter(q=>q.status!=="away" && canWork(q)), {
@@ -543,7 +556,12 @@ function simulateDay(){
       } else if (daysLeft <= 7 && S.day % 3 === 0) {
         lines.push(`The woodpile is down to about ${daysLeft} more day${daysLeft === 1 ? "" : "s"} of burning. Somebody should be at the tree line.`);
       }
-    } else if (F.woodStove && heatGap > 6 && S.res.wood < 0.3) {
+    /* heatGap is the COMMONS' shortfall against its comfort band, not a
+       statement about the weather: a summer night where the building wants
+       65F and gets 52F clears `heatGap > 6` easily. That put "A freezing
+       day" under an 81/52 clear summer sky. Gate it on the actual outdoor
+       low, which is the thing the sentence is about. */
+    } else if (F.woodStove && outLo < FREEZING && heatGap > 6 && S.res.wood < 0.3) {
       lines.push("A freezing day, and the woodpile is empty. The hearth sits cold.");
     }
   }
@@ -1131,14 +1149,21 @@ function simulateDay(){
       lines.push(`${label}: another ${perDay.toFixed(0)} of ${crop.name.toLowerCase()} picked${alongside} — ${win-bed.picked} more day${win-bed.picked===1?"":"s"} of it to come.`);
     }
     if(bed.picked >= win){
+      /* Through the granter, which decides the pool. For a unified crop the
+         harvest already landed in the pantry as food, so the seed saved back
+         folds into that same entry instead of opening a second one. */
       const seeds = seedReturn(crop);
-      if(seeds){ S.seedStock = S.seedStock||{}; S.seedStock[bed.crop] = (S.seedStock[bed.crop]||0) + seeds; }
+      if(seeds) grantPlantingStock(bed.crop, seeds);
+      /* Winter squash keeps all winter INTACT, so its seed only comes free
+         when the squash is processed. Pepitas are their own small pantry
+         entry, quite separate from the flesh. */
+      if(crop.seedFood) addFood(crop.seedFood, (bed.stored||0)*0.06);
       // companions return their own seed too, and a legume among them leaves
       // the ground better than it found it — the real mechanism, as fertility
       for(const c of (bed.companions||[])){
         const cd = CROPS[c]; if(!cd || !cd.seeds) continue;
         S.seedStock = S.seedStock||{};
-        S.seedStock[c] = (S.seedStock[c]||0) + Math.max(1, Math.round(cd.seeds*0.5));
+        grantPlantingStock(c, Math.max(1, Math.round(cd.seeds*0.5)));
       }
       bed.fertility = clamp((bed.fertility??75) + feedDelta(crop.feed) + legumeMates(bed)*COMP_FERT, 10, 100);
       const mateSum = Object.entries(bed.mateGot||{})
@@ -1261,6 +1286,12 @@ function simulateDay(){
       S.report.fromJars = fromJarsDraw.taken;
       eaten = {c:eaten.c+fromJarsDraw.mac.c, f:eaten.f+fromJarsDraw.mac.f, p:eaten.p+fromJarsDraw.mac.p};
       short -= fromJarsDraw.taken;
+      /* (The hand-rolled "third tier" that used to live here is gone. Once
+         the unified crops keep their planting stock in the pantry, the
+         ORDINARY meal draw eats them with no special case at all, and
+         takeFrom()'s floor guard holds the planting reserve back. Two code
+         paths that both knew how food becomes calories was exactly the
+         duplication the accessor pair exists to prevent.) */
       if(short > 1e-6) hunger = Math.min(1, short/foodOut);
     }
     // what was actually eaten, not what was harvested — the honest input to
@@ -1333,27 +1364,56 @@ function simulateDay(){
   S._preserveWhy = "";   // reset daily, or yesterday's line reads as today's
   const preservers = working("preserve");
   if(preservers.length){
-    const method = canningOn ? PRESERVE.canning
-                 : F.crocks   ? PRESERVE.fermenting
-                 : F.dryRacks ? PRESERVE.drying : null;
-    if(method){
+    /* USE EVERY METHOD THE VILLAGE HAS, in keeping-quality order.
+       The old line picked ONE method for the whole day by fixed priority —
+       canning if powered, else crocks, else racks — and then, if the pantry
+       held nothing that method could take, wasted the day and reported
+       "nothing in the stores takes crocks" while a drying rack and a canning
+       kitchen stood idle beside it. Worse, `canningOn` folds in today's power
+       allocation, so a village with canning BUILT but unpowered never fell
+       through to the crocks at all: it chose canning, failed, and stopped.
+
+       bestMethodFor() already returns exactly the list wanted here, best-
+       keeping first, and the overflow path forty lines up was already using
+       it. Each method gets a rate sized to itself and takes what it can;
+       whatever it can't touch falls through to the next one. */
+    const avail = bestMethodFor(canningOn);           // ["can","ferment","dry"] subset
+    const DEF_OF = {};                                 // pres-key -> PRESERVE entry
+    for(const k of Object.keys(PRESERVE)) DEF_OF[PRES_METHOD_OF[k]] = PRESERVE[k];
+    let totalTaken = 0, totalWasted = 0;
+    const ran = [], allKinds = [];
+    for(const m of avail){
+      const def = DEF_OF[m]; if(!def) continue;
       let rate = 0;
-      for(const p of preservers) rate += method.rate*0.55 + effStat(p,"care","preserve")*0.4*eff(p);
-      // the method decides what it can even touch now: drying takes almost
-      // anything, fermenting wants vegetables, canning can't handle a leaf.
-      // If nothing in the pantry suits today's method, the day is wasted —
-      // which is the argument for building more than one.
-      const r = preserveInto(rate, PRES_METHOD_OF[Object.keys(PRESERVE).find(k=>PRESERVE[k]===method)]);
-      if(r.taken>0.2){
-        const wasted = r.taken*method.loss;
-        if(F.compost) S.compost = clamp((S.compost||0) + wasted*0.5, 0, 80);
-        S._preserveWhy = `${method.name.toLowerCase()} · ${r.taken.toFixed(1)} put by (${[...new Set(r.kinds)].slice(0,3).join(", ")}), ${wasted.toFixed(1)} lost`;
-        resync();
-      } else {
-        S._preserveWhy = `nothing in the stores takes ${method.name.toLowerCase()}`;
+      for(const p of preservers) rate += def.rate*0.55 + effStat(p,"care","preserve")*0.4*eff(p);
+      /* Hands are split across whatever is running, not duplicated: two
+         methods do not double the day's output, they widen what the day can
+         accept. Anything already put by this morning comes off the rate. */
+      rate = Math.max(0, rate/avail.length);
+      const r = preserveInto(rate, m);
+      if(r.taken > 0.05){
+        totalTaken += r.taken; totalWasted += r.taken*def.loss;
+        ran.push(def.name.toLowerCase()); allKinds.push(...r.kinds);
       }
     }
+    if(totalTaken > 0.2){
+      if(F.compost) S.compost = clamp((S.compost||0) + totalWasted*0.5, 0, 80);
+      S._preserveWhy = `${ran.join(" + ")} · ${totalTaken.toFixed(1)} put by (${[...new Set(allKinds)].slice(0,3).join(", ")}), ${totalWasted.toFixed(1)} lost`;
+      resync();
+    } else if(!avail.length){
+      S._preserveWhy = "nothing built that keeps food";
+    } else {
+      // now an honest statement: EVERY method was tried and none of them
+      // could take anything on the shelf today
+      S._preserveWhy = `nothing in the stores takes ${ran.length?ran.join(" or "):avail.map(m=>DEF_OF[m].name.toLowerCase()).join(" or ")}`;
+    }
   }
+
+  /* (The hand-rolled seed helpers that lived here — seedReserveFor,
+     spareSeed, edibleSeedIds, eatSeed — are gone. Their job now belongs
+     to reserveFloor()/plantableStock()/grantPlantingStock() in seasons.js,
+     and to the floor guard inside takeFrom() in larder.js. One set of
+     rules about what may be eaten, in one place.) */
 
   // --- pressing: sunflower seed set aside becomes oil, slowly, and only with hands on it ---
   S._pressWhy = "";
@@ -1367,9 +1427,20 @@ function simulateDay(){
     // side. It's flagged noBulk in FOOD_DATA, so nobody eats it by the
     // bowl -- it leaves through the oil dishes and the dinner line.
     const room = Math.max(0, OIL_CAP - stockOf("oil"));
-    const take = Math.min(S.res.rawSeed||0, rate, room/OIL_EFF);
+    /* S.res.rawSeed is filled ONLY by the sunflower picking window (see the
+       harvest loop), so once that closed the press reported an empty hopper
+       while the seed store held plenty — the two had no connection at all.
+       The press may now draw from the sunflower seed store as well, but only
+       from what is SPARE: reserveFloor() holds back whatever the player has
+       reserved for planting, so pressing can never eat the next crop unless
+       they have deliberately released it. */
+    const spare = Math.max(0, pantryAmount("sunflower") - reserveFloor("sunflower"));
+    const take = Math.min((S.res.rawSeed||0) + spare, rate, room/OIL_EFF);
     if(take>0.2){
-      S.res.rawSeed -= take;
+      const fromRaw = Math.min(S.res.rawSeed||0, take);
+      S.res.rawSeed -= fromRaw;
+      const fromStore = take - fromRaw;
+      if(fromStore > 1e-6) takeStock("sunflower", fromStore);
       addFood("oil", take*OIL_EFF);
       resync();
       S._pressWhy = `${take.toFixed(1)} seed pressed, ${(take*OIL_EFF).toFixed(1)} oil`;
@@ -1512,13 +1583,32 @@ function simulateDay(){
       const want = S.res.food*eatFrac;
       const p = S.pantry||[];
       let need = want;
-      for(const e of [...p].sort((a,b)=>b.n-a.n)){ const t=Math.min(e.n,need); e.n-=t; need-=t; if(need<=0) break; }
+      /* Rats go for the FOOD first and only reach into the seed jars once
+         there is nothing else left — which is realistic (they absolutely will
+         eat seed) but has to be legible, because losing next year's beans to
+         vermin in silence is indistinguishable from a bug. Two passes: above
+         the floor for everyone, then, only if still hungry, into the reserve,
+         and the journal says so when that happens. */
+      const gnaw = (rows, floored) => {
+        for(const e of rows){
+          const avail = floored ? Math.max(0, e.n - reserveFloor(e.k)) : e.n;
+          if(avail <= 1e-9) continue;
+          const t = Math.min(avail, need); e.n -= t; need -= t;
+          if(!floored && t > 0.05) ratSeed.add(e.k);
+          if(need <= 0) break;
+        }
+      };
+      const ratSeed = new Set();
+      const rows = [...p].sort((a,b)=>b.n-a.n);
+      gnaw(rows, true);
+      if(need > 0) gnaw(rows.filter(e=>reserveFloor(e.k) > 0), false);
       for(let i=p.length-1;i>=0;i--) if(p[i].n<=1e-6) p.splice(i,1);
       const eaten = want-Math.max(0,need);
       resync();
       lines.push(F.rootCellar
         ? `Rats got into what wasn't in the cellar — ${eaten.toFixed(0)} food gone.`
         : `Rats found the stores. ${eaten.toFixed(0)} food gone, and droppings in what's left. A root cellar would keep them out of most of it.`);
+      if(ratSeed.size) lines.push(`They got into the seed as well — the ${[...ratSeed].map(k=>(CROPS[k]?CROPS[k].name.toLowerCase():k)).join(" and the ")} we were keeping back to sow.`);
     }
   }
 
@@ -1839,19 +1929,60 @@ function simulateDay(){
     const yr = yearOf(S.day);
     for(const p of S.people){ p.age++; p.years++; }
 
-    // a child comes into the village
-    const adults = S.people.filter(p=>canWork(p) && p.age<48 && p.status!=="away");
+    /* a child comes into the village.
+       PARENT_MIN/PARENT_MAX bound who can be a raiser at all. The old filter
+       used canWork(), which is age 16 — so sixteen-year-olds were being
+       assigned as co-parents. */
+    const PARENT_MIN = 20, PARENT_MAX = 47;
+    const PARENT_COOLDOWN = 2;   // years before the same person raises another
+    const adults = S.people.filter(p=>p.age>=PARENT_MIN && p.age<=PARENT_MAX && p.status!=="away");
     const wellFed = S.res.food + S.preserved > 25;
     if(adults.length>=4 && wellFed && S.people.length<18 && Math.random()<0.45){
       const used = new Set(S.people.map(p=>p.name));
       const name = pick(CHILD_NAMES.filter(n=>!used.has(n))) || generateFallbackChildName(used);
       if(name){
-        // two distinct raisers where the village is big enough; if only one adult
-        // is eligible, they raise the child alone rather than co-parenting themselves
-        const r0 = pick(adults);
-        const rest = adults.filter(a=>a!==r0);
-        const r1 = rest.length ? pick(rest) : r0;
-        const raisers = [r0, r1];
+        /* WHO RAISES IT. This was two pick() calls over every adult in the
+           village, so the pairing was pure noise — it cheerfully handed a
+           child to a couple at 1.23 affinity while a bonded pair stood next
+           to them. Score every eligible pair by the warmth actually between
+           them, then draw from the top of that list rather than its single
+           highest entry: the best pair should be LIKELY, not inevitable, or
+           the same two people raise every child in the village's history.
+
+           Eligibility, beyond the age bounds above:
+             - half-plus-seven, the ordinary version of the rule. Both ends
+               are already inside 20..47, which makes a separate maximum-gap
+               test redundant (at 47 the rule alone caps the gap near 16).
+             - nobody who has raised a child within PARENT_COOLDOWN years,
+               so a village of six doesn't hand every newborn to one couple. */
+        const yr = yearOf(S.day);
+        const freeOf = p => (p.lastChildYear == null) || (yr - p.lastChildYear >= PARENT_COOLDOWN);
+        const halfPlusSeven = (a,b) => {
+          const older = Math.max(a.age,b.age), younger = Math.min(a.age,b.age);
+          return younger >= older/2 + 7;
+        };
+        const pool = adults.filter(freeOf);
+        const pairs = [];
+        for(let i=0;i<pool.length;i++) for(let j=i+1;j<pool.length;j++){
+          const a=pool[i], b=pool[j];
+          if(!halfPlusSeven(a,b)) continue;
+          const bond = bondOf(S.bonds||(S.bonds={}), bondKey(a.id,b.id));
+          pairs.push({a, b, score: (bond.affinity||0) + (bond.familiarity||0)*0.15});
+        }
+        let raisers;
+        if(pairs.length){
+          pairs.sort((x,y)=>y.score-x.score);
+          const top = pairs.slice(0, Math.min(10, pairs.length));
+          const chosen = pick(top);
+          raisers = [chosen.a, chosen.b];
+        } else {
+          /* No pair clears the rules — a very small or very lopsided village.
+             Fall back to one raiser rather than inventing a bad match, which
+             the phrasing below already handles. */
+          const solo = pick(pool.length ? pool : adults);
+          raisers = [solo, solo];
+        }
+        for(const r of raisers) r.lastChildYear = yr;
         // a child inherits from who raises them, not who bore them
         const inh = k => clamp(Math.round((raisers[0][k]+raisers[1][k])/2 + (Math.random()<0.5?-1:1)), 1, 5);
         const kid = {

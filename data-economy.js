@@ -360,28 +360,28 @@ const CROPS = {
   // "Greens" stays as the catch-all cut-and-come-again planting — the named
   // brassicas above are what you grow on purpose once you know them.
   greens:  {name:"Greens", tMin:22, tOpt:62, tMax:82,    work:14, minDays:10,  window:10, yield:24, seed:1, seeds:1, sow:["spring","summer","autumn"], feed:"light",  note:"Whatever leaf comes up fastest. Cut and come again, until it bolts."},
-  beans:   {name:"Beans", tMin:33, tOpt:75, tMax:92,     work:26, minDays:18,  window:7,  yield:38, seed:2, seeds:3, sow:["spring","summer"],          feed:"legume", locked:true, note:"Feeds you, then feeds the soil, then feeds you again."},
+  beans:   {name:"Beans", edibleSeed:true, tMin:33, tOpt:75, tMax:92,     work:26, minDays:18,  window:7,  yield:38, seed:2, seeds:3, sow:["spring","summer"],          feed:"legume", locked:true, note:"Feeds you, then feeds the soil, then feeds you again."},
   // The old single "squash" was internally contradictory — it kept like a
   // winter squash (barely decays) but matured and picked like a summer one.
   // Split, they're two genuinely different crops: one you eat all season and
   // can't store, one you harvest once and live on until spring.
   summersquash:{name:"Summer squash", tMin:33, tOpt:78, tMax:95, work:24, minDays:18, window:12, yield:40, seed:2, seeds:2, sow:["spring","summer"], feed:"heavy", locked:true, note:"Gives and gives until you're sick of it, and keeps about a week."},
-  wintersquash:{name:"Winter squash", tMin:33, tOpt:76, tMax:93, work:40, minDays:32, window:3,  yield:48, seed:2, seeds:2, sow:["spring","summer"], feed:"heavy", locked:true, note:"Slow, heavy, and it keeps all winter in a cold room."},
+  wintersquash:{name:"Winter squash", seedFood:"pepita", tMin:33, tOpt:76, tMax:93, work:40, minDays:32, window:3,  yield:48, seed:2, seeds:2, sow:["spring","summer"], feed:"heavy", locked:true, note:"Slow, heavy, and it keeps all winter in a cold room."},
   cucumber:{name:"Cucumbers", tMin:35, tOpt:78, tMax:92, work:22, minDays:17, window:10, yield:34, seed:1, seeds:2, sow:["spring","summer"],        feed:"heavy", locked:true, note:"Half water and no use to anyone in February — unless it went into the crocks first."},
   tomato:  {name:"Tomatoes", tMin:34, tOpt:77, tMax:92,  work:30, minDays:24, window:14, yield:52, seed:1, seeds:2, sow:["spring","summer"],        feed:"heavy", locked:true, note:"Wants heat and hates its own relatives. Keeps not at all, dries beautifully."},
   spinach: {name:"Spinach", tMin:15, tOpt:60, tMax:78,   work:12, minDays:9,  window:6,  yield:20, seed:1, seeds:1, sow:["spring","autumn"],        feed:"light", locked:true, note:"Bolts the moment it feels summer. Grow it at the cold ends of the year."},
   tatsoi:  {name:"Tatsoi", tMin:14, tOpt:58, tMax:78,    work:12, minDays:8,  window:6,  yield:18, seed:1, seeds:1, sow:["spring","autumn"],  feed:"light", locked:true, note:"Flat rosettes that shrug off a frost and sweeten after one."},
   kale:    {name:"Kale", tMin:10, tOpt:60, tMax:80,      work:16, minDays:17, window:20, yield:34, seed:1, seeds:1, sow:["spring","summer","autumn"],  feed:"light", locked:true, note:"Cut it all season, and it's better after the first hard frost than before."},
   cabbage: {name:"Cabbage", tMin:20, tOpt:62, tMax:80,   work:26, minDays:24, window:2,  yield:36, seed:1, seeds:1, sow:["spring","autumn"],        feed:"heavy", locked:true, note:"One head, all at once, and a cellar or a crock will hold it for months."},
-  potatoes:{name:"Potatoes", tMin:30, tOpt:68, tMax:85,  work:36, minDays:33,  window:2,  yield:46, seed:3, seeds:3, sow:["spring"],                   feed:"heavy", locked:true, note:"Dull, heavy, and the reason anyone survived anything. Keep back the small ones to plant."},
-  grain:   {name:"Grain", tMin:5, tOpt:65, tMax:88,     work:48, minDays:40,  window:2,  yield:68, seed:3, seeds:4, sow:["spring","autumn"],  feed:"heavy", locked:true, note:"The one crop frost won't kill: plant it in autumn and it sleeps under the snow, ready in spring. Slow, but it feeds a winter."},
-  peas:    {name:"Peas", tMin:24, tOpt:62, tMax:80,      work:30, minDays:21,  window:5,  yield:48, seed:2, seeds:3, sow:["spring","summer"],
+  potatoes:{name:"Potatoes", edibleSeed:true, tMin:30, tOpt:68, tMax:85,  work:36, minDays:33,  window:2,  yield:46, seed:3, seeds:3, sow:["spring"],                   feed:"heavy", locked:true, note:"Dull, heavy, and the reason anyone survived anything. Keep back the small ones to plant."},
+  grain:   {name:"Grain", edibleSeed:true, tMin:5, tOpt:65, tMax:88,     work:48, minDays:40,  window:2,  yield:68, seed:3, seeds:4, sow:["spring","autumn"],  feed:"heavy", locked:true, note:"The one crop frost won't kill: plant it in autumn and it sleeps under the snow, ready in spring. Slow, but it feeds a winter."},
+  peas:    {name:"Peas", edibleSeed:true, tMin:24, tOpt:62, tMax:80,      work:30, minDays:21,  window:5,  yield:48, seed:2, seeds:3, sow:["spring","summer"],
             sowWindow:{spring:[1,12], summer:[22,30]}, feed:"legume", locked:true,
             note:"Wants the cold shoulders of the year, not the middle of it. Early spring, or the very end of summer as it breaks toward autumn — never the heat between."},
   // discovered through the seed-frame puzzles; locked until then
   turnip:  {name:"Turnips", tMin:18, tOpt:62, tMax:80,   work:20, minDays:18,  window:4,  yield:30, seed:1, seeds:1, sow:["spring","summer","autumn"],  locked:true, feed:"light", note:"Homely and dependable. Shrugs off an early frost and keeps in the cellar."},
-  sunflower:{name:"Sunflowers", tMin:32, tOpt:76, tMax:95,work:34, minDays:33, window:2,  yield:36, seed:2, seeds:4, sow:["spring","summer"],          locked:true, feed:"heavy", note:"Oil for the lamps, seed for the birds, and a wall of gold that lifts the whole village."},
-  amaranth:{name:"Amaranth", tMin:34, tOpt:80, tMax:100,  work:32, minDays:30,  window:4,  yield:45, seed:2, seeds:3, sow:["spring","summer","autumn"], locked:true, feed:"light", note:"Grain and greens both, and it grows where little else will. An old, stubborn plant."},
+  sunflower:{name:"Sunflowers", edibleSeed:true, tMin:32, tOpt:76, tMax:95,work:34, minDays:33, window:2,  yield:36, seed:2, seeds:4, sow:["spring","summer"],          locked:true, feed:"heavy", note:"Oil for the lamps, seed for the birds, and a wall of gold that lifts the whole village."},
+  amaranth:{name:"Amaranth", edibleSeed:true, tMin:34, tOpt:80, tMax:100,  work:32, minDays:30,  window:4,  yield:45, seed:2, seeds:3, sow:["spring","summer","autumn"], locked:true, feed:"light", note:"Grain and greens both, and it grows where little else will. An old, stubborn plant."},
   // perennials: planted once, never resown. They take years to earn their keep,
   // then keep giving with almost no labor — see the perennial handling in the
   // growth loop. Each bears in exactly one season; the rest of the year they
@@ -617,6 +617,30 @@ const NO_CLEANING_SICK = 0.10;
    you can start with as a founding visual; GH_BEDS_BUILT is what the
    project gets you, and building it on top of a founding pair EXTENDS that
    pair rather than starting over. */
+/* ---- seed held back for planting ----
+   How many plantings' worth of an edible seed crop the village keeps in
+   reserve rather than eating or pressing. Two is enough to re-sow and have
+   a second go if the first fails. The player can release a crop's reserve
+   entirely from the larder card (see seedReserveFor in day.js). */
+const SEED_RESERVE_PLANTINGS = 2;
+/* ---- unified seed-and-food crops ----
+   `edibleSeed:true` on a CROPS entry means the thing you eat and the thing
+   you plant are THE SAME OBJECT: a bean is a bean. For these there is no
+   S.seedStock entry at all — the pantry is the only pool, and "how much can
+   we plant" is a computed read of it. See plantableStock()/grantPlantingStock()
+   in seasons.js; nothing outside those two functions should touch either pool.
+
+   `seedFood:"pepita"` is the OTHER case: the seed is a byproduct, not the
+   harvest. Winter squash flesh keeps all winter intact, so its seeds only
+   come free when the squash is actually processed — eaten or preserved —
+   which is handled at the harvest, not here.
+
+   The old tag-sniffing version of this (seed/grain/legume off FOOD_DATA) is
+   gone: it answered "is this food seed-like", which is a different question
+   from "is this crop's seed its harvest", and it had no way to express the
+   squash case at all. */
+const isEdibleSeed = id => !!(CROPS[id] && CROPS[id].edibleSeed);
+
 const GH_BEDS_FOUND = 2;
 const GH_BEDS_BUILT = 3;
 
@@ -749,5 +773,5 @@ const YIELD_SOIL_FLOOR = 0.65;
 const POLLINATOR_YIELD = 0.20;
 
 
-export { GH_BEDS_BUILT, GH_BEDS_FOUND, GH_WITHER_CHANCE,
+export { GH_BEDS_BUILT, GH_BEDS_FOUND, GH_WITHER_CHANCE, SEED_RESERVE_PLANTINGS, isEdibleSeed,
   AC_MAX, HEATER_DRAW, HEATER_MAX, HEATER_BREAK_BASE, HEATER_BREAK_LOAD, WOOD_STOVE_MAX, cropHardiness, SEED_RICH_SITES, MAX_SEED_ROLLS, CANNING_MIN_STOCK, WELL_DRAW, AC_DRAW, AQUA_STAGNANT_WEAR, BATTERY_UNIT, CANNING_DRAW, CROPS, DAY_MS, FABS, FAB_DRAW, FAB_RATE, FOREST_PLOT_COST, INJURY_PER_DAY, JOB_PRACTICE, LOSS_DECAY, MAX_BATTERIES, MAX_FOREST_PLOTS, MAX_SOLAR, NO_CLEANING_SICK, OFFLINE_CAP, POLLINATOR_YIELD, POWER_DEMANDS, POWER_LOSS_BASE, PRACTICE_BROAD_CAP, PRACTICE_BROAD_DECAY, PRACTICE_BROAD_GROWTH, PRACTICE_SPECIFIC_CAP, PRACTICE_SPECIFIC_DECAY, PRACTICE_SPECIFIC_GROWTH, PRESERVE, PROJECTS, RESTORE_GATE, RESTORE_HIGH, RESTORE_IN, RESTORE_LOW, RES_CAP, SEASONS, SEASON_LEN, SITE_DEF, SITE_LOOT_TABLE, SOLAR_UNIT, STACKABLE, SYS, TURBINE_UNIT, WATER_DEMANDS, WATER_LOSS_BASE, WEATHERS, WITHER_CHANCE, YIELD_SOIL_FLOOR, YIELD_TEND_MAX, YIELD_TEND_SCALE };

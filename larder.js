@@ -25,7 +25,7 @@
 
 import { S } from "./state.js";
 import { clamp, pick } from "./helpers.js";
-import { season } from "./seasons.js";
+import { reserveFloor, season } from "./seasons.js";
 import { FOOD_DATA, FORAGE_RAIN_DAYS, FORAGE_TABLE, MAC_CEIL, MAC_CEIL_AT, MAC_DRAG,
          MAC_DRAG_CAP, MAC_FLOOR_MIN, MAC_FLOOR_RATE, MAC_FLOOR_START, MAC_GRACE, MAC_LINES, MAC_MIN, MAC_RECOVER, PRES_KEEP,
          RECIPES } from "./data-food.js";
@@ -88,13 +88,21 @@ function addPreserved(k, n, method){
    noBulk in FOOD_DATA (oil, so far) are food and count in the stores, but
    they are not a meal on their own -- they leave through recipes. The one
    exception is hunger: see eatFresh below. */
-function takeFrom(list, want, order, allowNoBulk){
+/* `floored` — respect the planting reserve. THE single chokepoint for every
+   automatic draw out of the pantry, which is exactly why the reserve is
+   enforced here and nowhere else: the meal, the deficiency override and the
+   recipes all funnel through this function, so one guard covers all three
+   and none of them can forget. The jars are never floored (a jar of beans is
+   food, it isn't seed), and planting doesn't come through here at all. */
+function takeFrom(list, want, order, allowNoBulk, floored){
   const got = {c:0, f:0, p:0};
   let taken = 0;
   const rows = [...list].sort(order).filter(e => allowNoBulk || !(fd(e.k)||{}).noBulk);
   for(const e of rows){
     if(taken >= want-1e-9) break;
-    const t = Math.min(e.n, want - taken);
+    const avail = floored ? Math.max(0, e.n - reserveFloor(e.k)) : e.n;
+    if(avail <= 1e-9) continue;
+    const t = Math.min(avail, want - taken);
     const m = (fd(e.k)||{mac:{c:1,f:0,p:0}}).mac;
     got.c += t*m.c; got.f += t*m.f; got.p += t*m.p;
     e.n -= t; taken += t;
@@ -112,10 +120,12 @@ const oldestFirst     = (a,b) => a.d - b.d;
    starve standing next to a jar of fat. Only the shortfall is drawn, so
    in any normal week this second call takes nothing at all. */
 function eatFresh(want){
-  const first = takeFrom(pantry(), want, perishableFirst, false);
+  const first = takeFrom(pantry(), want, perishableFirst, false, true);
   const short = want - first.taken;
   if(short <= 1e-6) return first;
-  const second = takeFrom(pantry(), short, perishableFirst, true);
+  // the desperation pass reaches for the oil, but STILL not through the
+  // planting reserve — releasing that is the player's call, not the sim's
+  const second = takeFrom(pantry(), short, perishableFirst, true, true);
   return {taken: first.taken + second.taken,
           mac: {c: first.mac.c + second.mac.c,
                 f: first.mac.f + second.mac.f,
@@ -157,7 +167,11 @@ function eatForDeficiency(want){
     if(!e) continue;
     const m = (fd(e.k)||{mac:{c:1,f:0,p:0}}).mac;
     if((m[ax]||0) < MAC_MIN[ax]*1.5) continue;   // nothing here actually helps
-    const t = Math.min(e.n, want*FIX_SHARE - taken);
+    /* Floored like every other automatic draw. bestFor() can return a pantry
+       row or a jar row; jars carry no reserve, so reserveFloor() is simply 0
+       for those and this reads the same either way. */
+    const avail = Math.max(0, e.n - (jars().includes(e) ? 0 : reserveFloor(e.k)));
+    const t = Math.min(avail, want*FIX_SHARE - taken);
     if(t <= 0.01) continue;
     got.c += t*m.c; got.f += t*m.f; got.p += t*m.p;
     e.n -= t; taken += t;
@@ -181,11 +195,20 @@ function decayStock(lines){
                * (S.flags.rootCellar ? 0.72 : 1)
                * (season().heat ? 1.5 : 1)
                * (S.flags.seedLibrary ? 0.95 : 1);
-    let loss = e.n * rate;
+    /* THE RESERVE DOES NOT ROT WITH THE REST. Everything above the planting
+       floor is food in a cellar and decays like food; the floor itself is
+       seed, kept dry and dark and cool in a jar, which is exactly what seed
+       saving IS. Without this the whole feature was a fiction — a 400-day
+       test found the bean reserve silently at zero, because the pantry rate
+       models roots going soft in a cellar, not dry beans in a sealed jar,
+       and it quietly ate next year's crop while reporting a healthy floor. */
+    const floor = reserveFloor(e.k);
+    const rots = Math.max(0, e.n - floor);
+    let loss = rots * rate;
     const whole = Math.floor(loss);
     loss = whole + (Math.random() < (loss-whole) ? 1 : 0);
     if(loss > 0){
-      loss = Math.min(loss, e.n);
+      loss = Math.min(loss, rots);
       e.n -= loss; lostFresh += loss;
       if(!worst || loss > worst.n) worst = {k:e.k, n:loss};
     }
@@ -221,7 +244,13 @@ function preserveInto(want, method){
   let taken = 0; const kinds = [];
   for(const e of eligible){
     if(taken >= want-1e-9) break;
-    const t = Math.min(e.n, want - taken);
+    /* THE FLOOR APPLIES HERE TOO. Preservation doesn't go through takeFrom(),
+       so it was quietly exempt — and a preserver would cheerfully put the
+       entire bean seed reserve into jars, which costs you next year's crop
+       exactly as surely as eating it would. Jarring seed is a draw like any
+       other; the player releases it or it stays in the pantry. */
+    const t = Math.min(Math.max(0, e.n - reserveFloor(e.k)), want - taken);
+    if(t <= 1e-9) continue;
     e.n -= t; taken += t;
     addPreserved(e.k, t*(1-keep.loss), method);
     kinds.push(foodName(e.k));
@@ -335,7 +364,11 @@ function cookRecipe(lines){
     if(left <= 0) break;
     const e = pantry().find(x=>matches(nd, x) && x.n > 0);
     if(!e) continue;
-    const t = Math.min(e.n, r.takes/r.needs.length);
+    /* Floored like every other automatic draw — a cook reaching past the
+       seed jar for the last of the dry beans is the same loss as eating
+       them, just with a nicer name on it. */
+    const t = Math.min(Math.max(0, e.n - reserveFloor(e.k)), r.takes/r.needs.length);
+    if(t <= 1e-9) continue;
     e.n -= t; left -= t;
   }
   const p = pantry();

@@ -5,7 +5,7 @@ import { nudgeIdeology } from "./ideology.js";
 import { addFoodFound, resync } from "./larder.js";
 import { promoteConflict } from "./mediation.js";
 import { rollStranger } from "./defs.js";
-import { canWork, grantSeedSpread } from "./seasons.js";
+import { ADULT, canWork, grantSeedSpread } from "./seasons.js";
 import { SITE_DEF, SITE_LOOT_TABLE } from "./data-economy.js";
 import { addMemory, addMemoryAll, pushRecentEvent, recordGone } from "./memories.js";
 import { MEM_TEXT } from "./data-memories.js";
@@ -521,8 +521,12 @@ function tickDepartures(lines) {
       p.lowSpiritsDays = Math.max(0, (p.lowSpiritsDays || 0) - 1);
     }
 
-    // Daily rolling chance to leave once consistent sadness is established
-    if (p.lowSpiritsDays >= DAYS_TO_LEAVE) {
+    /* Daily rolling chance to leave once consistent sadness is established.
+       AGE GATE: there was none, so an unhappy child could pack her things in
+       the grey light before dawn and walk out of the valley — the village lost
+       a two-year-old to low spirits. Children are unhappy in a village; they
+       do not leave one. */
+    if (p.lowSpiritsDays >= DAYS_TO_LEAVE && p.age >= ADULT) {
       const leaveChance = 0.35; // 35% chance to leave each day once they've had enough
       if (Math.random() < leaveChance) {
         S.people = S.people.filter(x => x.id !== p.id);

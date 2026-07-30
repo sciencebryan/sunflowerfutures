@@ -1,7 +1,12 @@
 import { byId, pick } from "./helpers.js";
 import { rand } from "./rng.js";
-import { CROPS, SEASONS, SEASON_LEN, WEATHERS } from "./data-economy.js";
+import { CROPS, SEED_RESERVE_PLANTINGS, isEdibleSeed, SEASONS, SEASON_LEN, WEATHERS } from "./data-economy.js";
 import { S } from "./state.js";
+/* Cycle note: larder.js imports season() from here, and this imports the
+   pantry writers from there. Both sides are hoisted function declarations
+   resolved at call time, not module-init time, so the cycle is safe — and
+   the harness exercises it on every run. */
+import { addFood, takeStock } from "./larder.js";
 
 
 
@@ -51,13 +56,119 @@ function lockedCrops(){
    There is no generic seed pool. Planting spends the crop's own seed;
    harvest returns it (see the picking window in day.js); gifts, trades,
    and puzzle rewards hand out spreads of what the village already grows. */
-function addSeeds(id, n){
-  if(!id || !n) return;
+/* ================= the two seed accessors =================
+   Every site that asks "how much of this can we plant" or "give the village
+   some of this seed" goes through ONE of these two, and nothing anywhere
+   touches S.seedStock or the pantry directly for planting purposes. That is
+   the whole point: adding a future edible-seed crop is then a one-line data
+   change (`edibleSeed:true`) rather than a code change at eight call sites.
+
+   For a unified crop (beans, peas, grain, amaranth, sunflower, potatoes) the
+   pantry IS the seed store — there is no S.seedStock entry at all. For
+   everything else the seed store is what it always was. */
+function pantryAmount(id){
+  const p = Array.isArray(S.pantry) ? S.pantry : [];
+  const e = p.find(x=>x.k===id);
+  return e ? e.n : 0;
+}
+/* How much is held back from the AUTOMATIC draws — the meal, the deficiency
+   override, recipes, the oil press. Computed, never stored, so there is no
+   second number that can drift out of sync with the stock it describes.
+   Zero once the player has released the crop from the larder card, and zero
+   for anything that isn't a unified crop. */
+function reserveFloor(id){
+  if(!isEdibleSeed(id)) return 0;
+  if(((S.eatSeedReserve||{})[id]||{}).release) return 0;
+  return Math.max(1, (CROPS[id]||{}).seed || 1) * SEED_RESERVE_PLANTINGS;
+}
+/* THE GETTER. What can go in the ground right now. Note that planting is
+   never floor-limited: the floor exists to protect planting, so it would be
+   incoherent for it to block planting. */
+function plantableStock(id){
+  return isEdibleSeed(id) ? pantryAmount(id) : ((S.seedStock && S.seedStock[id]) || 0);
+}
+/* THE GRANTER. Where a seed return, gift, trade, discovery or puzzle reward
+   actually lands. */
+function grantPlantingStock(id, n){
+  if(!id || !(n>0)) return 0;
+  if(isEdibleSeed(id)) return addFood(id, n);
   S.seedStock = S.seedStock || {};
   S.seedStock[id] = (S.seedStock[id]||0) + n;
+  return n;
 }
-const seedCount = id => (S.seedStock && S.seedStock[id]) || 0;
-const totalSeeds = () => Object.values(S.seedStock||{}).reduce((a,b)=>a+b,0);
+/* THE SPENDER, for the planting cost itself. */
+function spendPlantingStock(id, n){
+  if(!(n>0)) return;
+  if(isEdibleSeed(id)){ takeStock(id, n); return; }
+  S.seedStock[id] = Math.max(0, (S.seedStock[id]||0) - n);
+}
+// kept as the old name so existing callers read naturally; same granter
+function addSeeds(id, n){ grantPlantingStock(id, n); }
+const seedCount = id => plantableStock(id);
+const totalSeeds = () => Object.keys(CROPS).reduce((a,id)=>a+plantableStock(id),0);
+/* ================= mystery packets =================
+   A salvaged packet whose label rotted off. It sits in S.mysterySeed until
+   the player opens it, because a packet you get to hold onto and open when
+   you feel like it is a small gift, and one that resolves in a log line is
+   just a number going up.
+
+   WHAT CAN BE IN ONE is botany, not balance. A seed vault is a dry basement
+   archive, so it holds ORTHODOX seed — the kind that survives being dried
+   and stored. Recalcitrant seed (chestnut, oak, hickory, pawpaw, hazelnut)
+   dies if it dries out, so after twenty years in a basement those are dead
+   nuts and cannot come out of salvage at all. And apple does not come true
+   from seed — every orchard apple in history is grafted — so a packet can
+   never contain one; scionwood comes off a living tree, not out of an
+   archive. Those arrive by other doors: remnant orchards, travellers, trade. */
+const RECALCITRANT = ["chestnut","oakhickory","pawpaw","hazelnut","persimmon"];
+const CUTTING_ONLY = ["apple","strawberry"];
+function packetPool(){
+  return Object.keys(CROPS).filter(id=>{
+    const c = CROPS[id];
+    if(!c) return false;
+    if(RECALCITRANT.includes(id) || CUTTING_ONLY.includes(id)) return false;
+    if(c.matureYears >= 12) return false;      // the legacy plantings aren't in packets
+    return true;
+  });
+}
+/* Locked crops are IN the pool, and weighted up when the village knows few
+   of them — opening a packet should be able to hand you something new, and
+   that matters most early. It never fully replaces going out and looking:
+   the unlock chance is a minority of draws even at its most generous. */
+function rollPacket(){
+  const pool = packetPool();
+  if(!pool.length) return null;
+  const known  = pool.filter(id=>!CROPS[id].locked || (S.crops&&S.crops[id]));
+  const locked = pool.filter(id=>CROPS[id].locked && !(S.crops&&S.crops[id]));
+  const scarcity = known.length ? clampNum(1 - known.length/14, 0, 1) : 1;
+  const unlockChance = locked.length ? 0.18 + 0.42*scarcity : 0;
+  const fromLocked = Math.random() < unlockChance;
+  const from = fromLocked ? locked : (known.length ? known : locked);
+  if(!from.length) return null;
+  const id = from[Math.floor(Math.random()*from.length)];
+  return {id, unlock: CROPS[id].locked && !(S.crops&&S.crops[id])};
+}
+const clampNum = (v,lo,hi)=>Math.max(lo,Math.min(hi,v));
+/* Grant a packet. Called when salvage turns one up. */
+function addMysteryPacket(n){
+  S.mysterySeed = (S.mysterySeed||0) + (n||1);
+}
+/* Open one: resolve it, unlock if it's new, and hand over the seed. The
+   caller does the reveal animation; this is only the outcome. */
+function openMysteryPacket(){
+  if(!(S.mysterySeed>0)) return null;
+  const roll = rollPacket();
+  if(!roll) return null;
+  S.mysterySeed--;
+  const c = CROPS[roll.id];
+  if(roll.unlock){ S.crops = S.crops || {}; S.crops[roll.id] = true; }
+  // a real packet's worth: enough to actually plant with, more if it's new
+  const n = Math.max(1, (c.seed||1) * (roll.unlock ? 3 : 2));
+  grantPlantingStock(roll.id, n);
+  return {id: roll.id, name: c.name, unlock: roll.unlock, n,
+          perennial: !!c.perennial, seedWord: c.perennial ? "cuttings" : "seed"};
+}
+
 /* n seeds spread round-robin across the unlocked ANNUALS — the shape every
    untyped grant (gift crates, traveler trades, puzzle drawers) takes now. */
 function grantSeedSpread(n){
@@ -102,7 +213,7 @@ function restockableCrops(){
     const c = CROPS[id];
     if(!c.seed) return false;                                  // nothing to restock
     if(c.locked && !(S.crops && S.crops[id])) return false;    // never known it
-    return ((S.seedStock && S.seedStock[id]) || 0) <= 0;       // known, and out
+    return plantableStock(id) <= 0;       // known, and out
   });
 }
 function restockRandomCrop(){
@@ -236,4 +347,4 @@ function forecastUnlocked(){
 
 
 
-export { ADULT, AGES, ELDER, addSeeds, canSow, discoverRandomUseful, isFoodCrop, lockedUseful, usefulLine, restockLine, restockRandomCrop, restockableCrops, canRoad, canWork, dayOfSeason, discoverRandomCrop, discoveryLine, generateFallbackChildName, grantSeedSpread, lockedCrops, roadReady, rollWeather, scaledWeather, season, seasonIdx, seasonNote, seedCount, totalSeeds, yearOf };
+export { ADULT, AGES, ELDER, addSeeds, addMysteryPacket, openMysteryPacket, packetPool, plantableStock, grantPlantingStock, spendPlantingStock, reserveFloor, pantryAmount, canSow, discoverRandomUseful, isFoodCrop, lockedUseful, usefulLine, restockLine, restockRandomCrop, restockableCrops, canRoad, canWork, dayOfSeason, discoverRandomCrop, discoveryLine, generateFallbackChildName, grantSeedSpread, lockedCrops, roadReady, rollWeather, scaledWeather, season, seasonIdx, seasonNote, seedCount, totalSeeds, yearOf };

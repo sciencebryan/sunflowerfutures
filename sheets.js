@@ -9,7 +9,7 @@ import { jobName, jobSkill, workDef, workName } from "./day.js";
 import { stockOf } from "./larder.js";
 import { cropHardiness } from "./data-economy.js";
 import { tooColdToSow, typicalFrostDay } from "./climate.js";
-import { canSow, canWork, dayOfSeason, roadReady, season, seasonIdx, seasonNote } from "./seasons.js";
+import { canSow, canWork, dayOfSeason, plantableStock, roadReady, season, seasonIdx, seasonNote, spendPlantingStock } from "./seasons.js";
 import { store } from "./store.js";
 import { renderAll } from "./render.js";
 import { byId, clamp, effStat, objp, siteDef, siteName, tripDays } from "./helpers.js";
@@ -173,7 +173,7 @@ function openSowSheet(i, kind){
            radishes used to come in after nine days. Only offer what ripens
            at least as fast as the stand it's joining. */
         if((c.minDays||0) > (curCrop.minDays||0)) continue;
-        const have = (S.seedStock&&S.seedStock[id])||0;
+        const have = plantableStock(id);
         const need = Math.max(1, Math.round(c.seed*0.5));
         // one predicate, shared with the sow list below — this path used to
         // skip the sowWindow test entirely, so peas could go in at midsummer
@@ -236,7 +236,7 @@ function openSowSheet(i, kind){
     // plantable and then killed it the same night.
     const tooCold = tooColdHere(c);
     const inSeason = canSow(c, shelter) && !tooCold;
-    const have = (S.seedStock && S.seedStock[id]) || 0;
+    const have = plantableStock(id);
     const afford = have >= c.seed;
     // the floor is a fact; the work estimate is a guess at a decent crew's pace.
     // Take the later of the two: nothing ripens before minDays no matter who tends it.
@@ -290,9 +290,9 @@ function openSowSheet(i, kind){
         const c=CROPS[id]; if(!c) return;
         const need=Math.max(1, Math.round(c.seed*0.5));
         S.seedStock = S.seedStock || {};
-        if(((S.seedStock[id])||0) < need) return;
+        if(plantableStock(id) < need) return;
         if(bed.companions.length >= MAX_COMPANIONS) return;
-        S.seedStock[id] -= need;
+        spendPlantingStock(id, need);
         bed.companions.push(id);
         S.pending.push(`Bed ${i+1} was interplanted with ${c.name.toLowerCase()}.`);
       }
@@ -304,7 +304,7 @@ function openSowSheet(i, kind){
       const id=b.dataset.crop;
       if(id==="__clear" && bed.crop && !bed.ready){
         const nm = (CROPS[bed.crop]||{name:"it"}).name.toLowerCase();
-        const held = (S.seedStock&&S.seedStock[bed.crop])||0;
+        const held = plantableStock(bed.crop);
         if(!confirm(`Turn under the ${nm}? Everything grown here so far is lost, and the seed does not come back.${held?"":`\n\nThere is no ${nm} seed left in store — a ranging or salvage party may turn some up, but nothing else will.`}`)) return;
       }
       if(id==="__clear"){ bed.crop=null; bed.companions=[]; bed.growth=0; bed.days=0; bed.ready=false; bed.stored=0; bed.bare=0; bed.mateGot=null; bed.picked=0; bed.matured=false; bed.lastHarvestYear=undefined; bed.lastPickDay=undefined; }
@@ -318,8 +318,8 @@ function openSowSheet(i, kind){
       else{
         const c=CROPS[id];
         S.seedStock = S.seedStock || {};
-        if(((S.seedStock[id])||0) < c.seed) return;
-        S.seedStock[id] -= c.seed;
+        if(plantableStock(id) < c.seed) return;
+        spendPlantingStock(id, c.seed);
         bed.crop=id; bed.growth=0; bed.days=0; bed.ready=false; bed.stored=0; bed.plantedDay=S.day; bed.matured=false; bed.lastHarvestYear=undefined; bed.lastPickDay=undefined;
         // native perennials in the forest feed the soil web
         if(isForest && c.native) addRestore("mycosphere", RESTORE_IN.nativePlant);

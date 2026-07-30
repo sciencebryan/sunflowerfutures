@@ -1,16 +1,16 @@
-import { ADULT, ELDER, canWork, dayOfSeason, season, seasonNote } from "./seasons.js";
+import { ADULT, ELDER, canWork, dayOfSeason, openMysteryPacket, pantryAmount, plantableStock, reserveFloor, season, seasonNote } from "./seasons.js";
 import { S } from "./state.js";
 import { $ } from "./dom.js";
 import { SKILL_INFO, TRAITS, built, decayOf, isVisible, waterCapEff } from "./defs.js";
 import { eventDef, eventView, exWhere } from "./events.js";
-import { cropHardiness, CROPS, FABS, FAB_RATE, FOREST_PLOT_COST, MAX_FOREST_PLOTS, POWER_DEMANDS, PRACTICE_SPECIFIC_CAP, PRESERVE, PROJECTS, RESTORE_GATE, RESTORE_HIGH, RESTORE_LOW, SEASONS, SEASON_LEN, SITE_DEF, STACKABLE, SYS, WATER_DEMANDS } from "./data-economy.js";
+import { cropHardiness, CROPS, isEdibleSeed, FABS, FAB_RATE, FOREST_PLOT_COST, MAX_FOREST_PLOTS, POWER_DEMANDS, PRACTICE_SPECIFIC_CAP, PRESERVE, PROJECTS, RESTORE_GATE, RESTORE_HIGH, RESTORE_LOW, SEASONS, SEASON_LEN, SITE_DEF, STACKABLE, SYS, WATER_DEMANDS } from "./data-economy.js";
 import { Cap, byId, clamp, eff, effStat, isAre, pick, poss, practiceOf, siteName, siteRemainFrac, subj, tripDays, wbFloor } from "./helpers.js";
 import { SOIL_WORD, openCelebrationSheet, openPartySheet, openPersonSheet, openSowSheet, openSystemSheet } from "./sheets.js";
 import { assignPhrase, workDef } from "./day.js";
 import { store } from "./store.js";
 import { FORAGE_FLAVOR } from "./data-events.js";
 import { composition, intakeReadout, jarComposition, pantryTotal, jarsTotal, stockMacros, stockOf } from "./larder.js";
-import { MAC_GRACE, MAX_COMPANIONS, PRES_KEEP } from "./data-food.js";
+import { FOOD_DATA, MAC_GRACE, MAX_COMPANIONS, PRES_KEEP, SEED_NAME_OF } from "./data-food.js";
 import { bindPuzzleEntries, puzzleEntryCard, renderOpenPuzzle } from "./puzzle-ui.js";
 import { openConflictSheet } from "./mediation.js";
 import { CELEBRATIONS, canAfford, celebDef, costOf, forgetTradition, gatesOk, onCooldown } from "./celebrations.js";
@@ -83,7 +83,12 @@ function renderHeader() {
   `;
 
   // People and materials: compact ledger lines; zeros render dimmed
-  const resting = S.people.filter(p => p.job === null && p.status === "ok").length;
+  /* Children were being counted as "Resting", which reads as an idle pair of
+     hands you could put to work. They aren't — canWork() is age 16 — so a
+     village of four adults and three toddlers reported seven villagers with
+     three resting and no way to tell why nothing got done. */
+  const children = S.people.filter(p => p.age < ADULT && p.status !== "away").length;
+  const resting = S.people.filter(p => p.age >= ADULT && p.job === null && p.status === "ok").length;
   const laidup = S.people.filter(p => p.status === "down" || p.status === "spent").length;
   const away = S.people.filter(p => p.status === "away").length;
 
@@ -91,7 +96,7 @@ function renderHeader() {
     `<span class="item"><span class="lbl">${l}</span><span class="val${v === 0 ? ' dim' : ''}">${v}</span></span>`;
 
   $("hudPeople").innerHTML = [
-    ["Villagers", S.people.length], ["Resting", resting], ["Laid up", laidup], ["Away", away]
+    ["Villagers", S.people.length], ["Children", children], ["Resting", resting], ["Laid up", laidup], ["Away", away]
   ].map(x => ledgerItem(x[0], x[1])).join("");
 
   $("hudMaterials").innerHTML = [
@@ -592,9 +597,24 @@ function worksSection(){
     const isBuild=S.project.kind==="build";
     const def=workDef();
     const pc=clamp(S.project.progress/def.work*100,0,100);
+    /* Days remaining AT TODAY'S RATE — mirrors the points formula in day.js
+       exactly (trait, tools, efficiency and all), because an estimate built
+       from a different formula than the one doing the work is worse than no
+       estimate. It moves as you add or pull hands, which is the point: the
+       number is a readout of the current crew, not a promise. */
+    const crew = S.people.filter(p=>p.job==="project" && p.status==="ok");
+    let rate = 0;
+    for(const p of crew)
+      rate += (effStat(p,"hands",isBuild?S.project.id:null)+(p.trait==="Tinkerer"?1.5:0))
+              *1.2*eff(p)*((S.f||{}).projectFaster?1.2:1)*(S.flags.fineTools?1.1:1);
+    const left = Math.max(0, def.work - S.project.progress);
+    const eta = !crew.length ? "nobody on it"
+              : rate < 0.01 ? "no progress at this rate"
+              : `~${Math.max(1, Math.ceil(left/rate))}d left at this rate`;
     h+=`<div class="card">
       <div class="card-top"><div class="sysname">${isBuild?`Raising the ${def.name.toLowerCase()}`:def.name}</div><div class="condpct">${pc.toFixed(0)}%</div></div>
       <div class="blurb">${def.blurb}</div>
+      <div class="sysmeta"><span class="outline-note">${eta}</span></div>
       <div class="cbar"><div class="fill c-sun" style="width:${pc}%"></div></div>
       <div class="rolerow">${roleChip("project","hands","no hands on it")}</div>
     </div>`;
@@ -759,6 +779,32 @@ function bindTabActions(el){
   el.querySelectorAll("[data-sow]").forEach(b=>{
     b.onclick=()=>openSowSheet(+b.dataset.sow, "beds");
   });
+  const openBtn = el.querySelector("#packet-open");
+  if(openBtn) openBtn.onclick = () => {
+    const result = openMysteryPacket();
+    if(!result) return;
+    /* Timers rather than CSS animation callbacks so the sequence is the same
+       whether or not the browser honours the keyframes, and so a re-render
+       midway through can't strand the card in a half-open state. */
+    packetReveal = {stage:"shaking", result};
+    renderAll();
+    setTimeout(()=>{ if(packetReveal){ packetReveal.stage="hint";  renderAll(); } }, 1100);
+    setTimeout(()=>{ if(packetReveal){ packetReveal.stage="done"; renderAll(); } }, 2400);
+    store.save(S);
+  };
+  const okBtn = el.querySelector("#packet-ok");
+  if(okBtn) okBtn.onclick = () => { packetReveal = null; renderAll(); };
+  el.querySelectorAll("[data-cropref]").forEach(b=>{
+    b.onclick=()=>{ const id=b.dataset.cropref;
+      expandedCrop.has(id) ? expandedCrop.delete(id) : expandedCrop.add(id); renderAll(); };
+  });
+  el.querySelectorAll("[data-seedrel]").forEach(b=>{
+    b.onclick=()=>{ const id=b.dataset.seedrel;
+      S.eatSeedReserve = S.eatSeedReserve || {};
+      const cur = !!(S.eatSeedReserve[id]||{}).release;
+      S.eatSeedReserve[id] = {release: !cur};   // permanent either way until pressed again
+      store.save(); renderAll(); };
+  });
   el.querySelectorAll("[data-ghsow]").forEach(b=>{
     b.onclick=()=>openSowSheet(+b.dataset.ghsow, "greenhouse");
   });
@@ -900,8 +946,19 @@ function larderSection(){
   // a shelf that is 70% starch isn't "bad", it's just what's on the shelf.
   const chip = (x,label) => `<span class="cost">${label} ${pct(x)}%</span>`;
   const row = e => `<span class="cost${e.fast?" short":""}">${e.n.toFixed(0)} ${e.name}${e.fast?" ·":""}</span>`;
+  /* THE NUDGE. Fires only when all three are true: the shelves are short,
+     there is edible seed on hand, and it is still being held back. Somebody
+     watching the village starve should not have to already know this system
+     exists to find it. Threshold matches the dinner line's own idea of a lean
+     day rather than inventing a second one. */
+  const foodDays = (pantryTotal()+jarsTotal()) / Math.max(1, S.people.filter(p=>p.status!=="away").length);
+  const heldSeed = Object.keys(CROPS).filter(id=>
+    isEdibleSeed(id) && reserveFloor(id) > 0 && pantryAmount(id) > 0.01);
+  const nudge = (foodDays < 1.5 && heldSeed.length)
+    ? `<div class="sysmeta"><span class="outline-note" style="color:var(--rust)">There is ${heldSeed.map(id=>CROPS[id].name.toLowerCase()).slice(0,3).join(", ")} seed being held back for sowing. It can be eaten instead — see below.</span></div>`
+    : "";
   let h = `<div class="sectionlbl">The larder — ${pantryTotal().toFixed(0)} fresh${kept.length?`, ${jarsTotal().toFixed(0)} put by`:""}</div>
-    <div class="card">
+    <div class="card">${nudge}
       <div class="costchips">${fresh.map(row).join("")}</div>
       ${fresh.some(e=>e.fast)?`<div class="sysmeta"><span class="outline-note">· won't keep — these get eaten first</span></div>`:""}`;
   if(kept.length){
@@ -934,6 +991,124 @@ function larderSection(){
   return h;
 }
 
+/* ---- #7: the seed store, and what the village is willing to eat ----
+   Only crops whose seed IS food appear here; a radish seed is not dinner.
+   The toggle is permanent in both directions — releasing a crop during a
+   famine does not quietly re-reserve itself once the shelves refill, because
+   that would undo a deliberate decision at the worst possible moment. */
+function seedReserveSection(){
+  const ids = Object.keys(CROPS)
+    .filter(id => isEdibleSeed(id) && pantryAmount(id) > 0.01)
+    .sort((a,b)=>CROPS[a].name.localeCompare(CROPS[b].name));
+  if(!ids.length) return "";
+  let h=`<div class="sectionlbl">Seed you could eat</div><div class="card">
+    <div class="blurb">These are crops whose seed is food. Two plantings' worth of each is held back by default; the rest is already on the table. Release one and the whole store becomes food — including what you would have sown.</div>`;
+  for(const id of ids){
+    const have = pantryAmount(id);
+    const rel = !!((S.eatSeedReserve||{})[id]||{}).release;
+    const held = reserveFloor(id);
+    const spare = Math.max(0, have-held);
+    // "3 potatoes to plant" is wrong; they're seed potatoes
+    const seedWord = SEED_NAME_OF[id] || "seed";
+    h+=`<div class="sysmeta" style="margin-top:7px">
+      <span class="outline-note">${CROPS[id].name} — ${have.toFixed(0)} ${seedWord}${rel
+        ? ` · <b style="color:var(--rust)">all of it eatable</b>`
+        : ` · ${held.toFixed(0)} held for sowing, ${spare.toFixed(0)} spare`}</span>
+      <button class="go" data-seedrel="${id}" style="margin-left:6px">${rel?"Keep for planting":"Eat all of it"}</button></div>`;
+  }
+  return h+`</div>`;
+}
+
+/* ---- #8: what each crop actually does ----
+   Collapsed to a row per crop; clicking opens the numbers. Annuals first,
+   then perennials, alphabetical within each — the two behave differently
+   enough that "days to produce" doesn't even mean the same thing across the
+   divide, so they are not interleaved. */
+const expandedCrop = new Set();
+function cropRefSection(){
+  const known = Object.keys(CROPS).filter(id=>!CROPS[id].locked || (S.crops&&S.crops[id]));
+  if(!known.length) return "";
+  const byName = (a,b)=>CROPS[a].name.localeCompare(CROPS[b].name);
+  const annuals = known.filter(id=>!CROPS[id].perennial).sort(byName);
+  const peren   = known.filter(id=> CROPS[id].perennial).sort(byName);
+  const pct = x => Math.round((x||0)*100);
+  const row = id => {
+    const c = CROPS[id], f = FOOD_DATA[id];
+    const open = expandedCrop.has(id);
+    let detail = "";
+    if(open){
+      const bits = [];
+      bits.push(`${c.tMin}°–${c.tMax}° (best near ${c.tOpt}°)`);
+      bits.push(`sow in ${(c.sow||[]).join(", ")||"—"}`);
+      if(c.perennial){
+        bits.push(`${c.matureYears||c.bearYears||"?"} years to maturity`);
+        bits.push(`bears in ${c.harvestSeason||"—"}`);
+        bits.push(`${c.yield||0} food per harvest`);
+      }else{
+        bits.push(`${c.minDays||0} days to produce`);
+        bits.push(`${c.yield||0} food, picked over ${c.window||1}d`);
+        if(c.minDays) bits.push(`${((c.yield||0)/c.minDays).toFixed(1)} food/day of growing`);
+        bits.push(`${c.seed||1} seed to sow, ${c.seeds||0} back`);
+      }
+      if(f && f.mac) bits.push(`${pct(f.mac.c)}% carb · ${pct(f.mac.f)}% fat · ${pct(f.mac.p)}% protein`);
+      if(f && f.pres && f.pres.length) bits.push(`keeps by ${f.pres.join(", ")}`);
+      detail = `<div class="blurb" style="margin:2px 0 6px 0">${bits.join(" · ")}${
+        c.note?`<br><span style="opacity:.7">${c.note}</span>`:""}</div>`;
+    }
+    return `<div class="sysmeta" style="margin-top:5px">
+        <button class="go" data-cropref="${id}" style="background:none;border:none;padding:0;text-align:left;cursor:pointer;color:var(--ink)">
+          ${open?"⌄":"›"} ${c.name}</button>
+        <span class="outline-note" style="opacity:.6">${c.perennial?"perennial":"annual"}${
+          c.perennial?` · ${c.harvestSeason||"—"}`:` · ${c.minDays||0}d`}</span>
+      </div>${detail}`;
+  };
+  let h=`<div class="sectionlbl">What grows here</div><div class="card">`;
+  h+=`<div class="blurb" style="opacity:.75">Annuals</div>` + annuals.map(row).join("");
+  if(peren.length) h+=`<div class="blurb" style="opacity:.75;margin-top:9px">Perennials</div>` + peren.map(row).join("");
+  return h+`</div>`;
+}
+
+/* ---- the mystery packet ----
+   A two-stage reveal, because one flip is a result and two is a moment: the
+   packet shakes and narrows to a HINT first ("something that climbs"), then
+   settles on the crop. The hint is derived from the real crop so it is never
+   a lie — it just isn't the whole answer yet. */
+const PACKET_HINT = c =>
+  c.perennial            ? "Something woody. This one will outlive us."
+: c.feed === "legume"    ? "Something that climbs, and feeds the ground it stands in."
+: (c.tMin != null && c.tMin <= 20) ? "Something hardy. Whatever this is, frost doesn't frighten it."
+: (c.minDays && c.minDays <= 12)   ? "Something quick. Weeks, not months."
+: (c.yield||0) >= 45     ? "Something heavy. A real crop, if it takes."
+:                          "Something ordinary and useful.";
+
+let packetReveal = null;   // {stage:"shaking"|"hint"|"done", result}
+function mysterySection(){
+  const held = S.mysterySeed||0;
+  if(!held && !packetReveal) return "";
+  let h=`<div class="sectionlbl">Unlabelled seed</div><div class="card">`;
+  if(packetReveal && packetReveal.stage !== "idle"){
+    const r = packetReveal.result;
+    if(packetReveal.stage === "shaking"){
+      h+=`<div class="blurb" style="text-align:center;font-size:34px;line-height:1.6" class="packet-shake">
+            <span id="packet-glyph" style="display:inline-block">✦</span></div>
+          <div class="blurb" style="text-align:center;opacity:.7">Tipping it out…</div>`;
+    } else if(packetReveal.stage === "hint"){
+      h+=`<div class="blurb" style="text-align:center;font-size:34px;line-height:1.6">✦</div>
+          <div class="blurb" style="text-align:center">${PACKET_HINT(CROPS[r.id])}</div>`;
+    } else {
+      h+=`<div class="blurb" style="text-align:center;font-size:34px;line-height:1.6">${r.perennial?"🌳":"🌱"}</div>
+          <div class="blurb" style="text-align:center">
+            <b>${r.name}</b> — ${r.n} ${r.seedWord}.${r.unlock
+              ? ` <span style="color:var(--leaf)">We've never grown this.</span>` : ""}</div>
+          <div class="sysmeta" style="justify-content:center"><button class="go" id="packet-ok">Put it away</button></div>`;
+    }
+    return h+`</div>`;
+  }
+  h+=`<div class="blurb">${held===1?"A seed packet":`${held} seed packets`} out of the vault, ${held===1?"its":"their"} label gone soft and unreadable. No telling what's in ${held===1?"it":"them"} until it's opened.</div>
+    <div class="sysmeta" style="justify-content:center"><button class="go" id="packet-open">Open one${held>1?` (${held})`:""}</button></div>`;
+  return h+`</div>`;
+}
+
 function renderFood(){
   if(renderOpenPuzzle("food")) return;
   let h="";
@@ -944,7 +1119,10 @@ function renderFood(){
   h += sysSection(["aquaponics"], true);
   h += preserveSection();
   h += oilSection();
+  h += mysterySection();
+  h += seedReserveSection();
   h += puzzleEntryCard("seed");
+  h += cropRefSection();
   $("tab-food").innerHTML=h;
   bindTabActions($("tab-food"));
 }
